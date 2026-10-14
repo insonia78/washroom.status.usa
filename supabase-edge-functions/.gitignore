@@ -1,0 +1,20 @@
+# Environment secrets
+.env
+.env.*
+!.env.example
+supabase/functions/.env
+supabase/functions/.env.*
+!supabase/functions/.env.example
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Dependency and tool output
+node_modules/
+.deno/
+coverage/
+
+# OS-generated files
+.DS_Store
+Thumbs.db

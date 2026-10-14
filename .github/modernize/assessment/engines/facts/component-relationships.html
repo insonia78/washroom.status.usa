@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Washroom Status USA - Component Relationships</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      color: #0f172a;
+    }
+
+    .frame {
+      width: 1700px;
+      margin: 0 auto;
+      padding: 40px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #dbe2f0;
+      border-radius: 20px;
+      padding: 32px;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 38px;
+    }
+
+    p {
+      margin: 0 0 24px;
+      font-size: 18px;
+      color: #334155;
+    }
+
+    .brand {
+      margin-top: 24px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .brand a {
+      color: #0f62fe;
+      text-decoration: none;
+    }
+
+    .mermaid {
+      background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="card">
+      <h1>Washroom Status USA - Component Relationships</h1>
+      <p>Key presentation, business logic, data access, and infrastructure interactions for the MVP platform.</p>
+      <pre class="mermaid">
+flowchart LR
+    subgraph PresentationLayer2["Presentation"]
+        cPublicApp["Public Map App"]
+        cOwnerPortal["Owner Portal"]
+        cAdminPortal["Admin Portal"]
+    end
+    subgraph BusinessLayer2["Business Logic"]
+        cGatewayRouter["Gateway Router"]
+        cSearchService["Restroom Search Service"]
+        cReviewService["Review and Rating Service"]
+        cOwnerService["Owner Response Service"]
+        cAdminService["Moderation Service"]
+        cAccountRoutes["Account Routes"]
+        cAccountController["Account Controller"]
+    end
+    subgraph DataAccessLayer2["Data Access"]
+        cRestroomRepo["Restroom Repository"]
+        cReviewRepo["Review Repository"]
+        cAccountRepo["Account Repository"]
+        cResetRepo["Reset Token Repository"]
+        cTokenRepo["JWT Token Repository"]
+    end
+    subgraph InfraLayer2["Infrastructure"]
+        cInboundGuard["Origin Whitelist Middleware"]
+        cJwtCreator["JWT Creator Function"]
+        cJwtValidator["JWT Validator Function"]
+    end
+
+    cPublicApp -->|"finder and reports"| cGatewayRouter
+    cOwnerPortal -->|"complaints and updates"| cGatewayRouter
+    cAdminPortal -->|"moderation actions"| cGatewayRouter
+    cGatewayRouter -->|"search routes"| cSearchService
+    cGatewayRouter -->|"review routes"| cReviewService
+    cGatewayRouter -->|"owner routes"| cOwnerService
+    cGatewayRouter -->|"admin routes"| cAdminService
+    cGatewayRouter -->|"account routes"| cAccountRoutes
+    cGatewayRouter -->|"session token issue"| cJwtCreator
+    cGatewayRouter -->|"bearer token check"| cJwtValidator
+    cAccountRoutes -->|"delegates"| cAccountController
+    cSearchService -->|"reads geospatial data"| cRestroomRepo
+    cReviewService -->|"reads and writes reviews"| cReviewRepo
+    cOwnerService -->|"updates listing state"| cRestroomRepo
+    cAdminService -->|"reviews flagged content"| cReviewRepo
+    cAccountController -->|"reads and writes accounts"| cAccountRepo
+    cAccountController -->|"manages reset flow"| cResetRepo
+    cJwtCreator -->|"saves token state"| cTokenRepo
+    cJwtValidator -->|"checks token state"| cTokenRepo
+    cInboundGuard -.->|"filters browser traffic"| cAccountRoutes
+      </pre>
+      <div class="brand">Powered by <a href="https://codyza.com">Codyza.com</a></div>
+    </div>
+  </div>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "default",
+      securityLevel: "loose",
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+      }
+    });
+  </script>
+</body>
+</html>

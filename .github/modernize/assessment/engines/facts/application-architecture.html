@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Washroom Status USA - Application Architecture</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      color: #0f172a;
+    }
+
+    .frame {
+      width: 1700px;
+      margin: 0 auto;
+      padding: 40px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #dbe2f0;
+      border-radius: 20px;
+      padding: 32px;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 38px;
+    }
+
+    p {
+      margin: 0 0 24px;
+      font-size: 18px;
+      color: #334155;
+    }
+
+    .brand {
+      margin-top: 24px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .brand a {
+      color: #0f62fe;
+      text-decoration: none;
+    }
+
+    .mermaid {
+      background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="card">
+      <h1>Washroom Status USA - Application Architecture</h1>
+      <p>Current gateway and account foundation extended to the MVP public restroom discovery and accountability platform.</p>
+      <pre class="mermaid">
+flowchart TD
+    subgraph ClientLayer1["Client Layer"]
+        PublicWeb1["Next.js Public App"]
+        OwnerWeb1["Next.js Owner Dashboard"]
+        AdminWeb1["Next.js Admin Dashboard"]
+    end
+    subgraph EdgeApiLayer1["Edge and API Layer"]
+        Gateway1["Supabase Edge Gateway"]
+        JwtFns1["JWT Edge Functions"]
+        ProductApi1["FastAPI Product API"]
+        AccountsApi1["FastAPI Account API"]
+    end
+    subgraph DataLayer1["Data and Storage Layer"]
+        Postgres1[("Supabase Postgres PostGIS")]
+        Storage1[("Supabase Storage")]
+        Tokens1[("JWT Tokens Table")]
+    end
+    subgraph ExternalLayer1["External Services"]
+        Osm1["OpenStreetMap Data"]
+        MapTiles1["MapLibre Map Tiles"]
+        Email1["Email Delivery"]
+    end
+
+    PublicWeb1 -->|"search and submit reviews"| Gateway1
+    OwnerWeb1 -->|"manage responses"| Gateway1
+    AdminWeb1 -->|"moderate reports"| Gateway1
+    PublicWeb1 -->|"render basemap"| MapTiles1
+    Gateway1 -->|"proxy public and owner routes"| ProductApi1
+    Gateway1 -->|"proxy account routes"| AccountsApi1
+    Gateway1 -->|"issue and verify tokens"| JwtFns1
+    ProductApi1 -->|"geospatial queries and reviews"| Postgres1
+    ProductApi1 -->|"photo upload metadata"| Storage1
+    AccountsApi1 -->|"accounts and reset tokens"| Postgres1
+    JwtFns1 -->|"persist active and revoked tokens"| Tokens1
+    ProductApi1 -->|"import restroom seed data"| Osm1
+    AccountsApi1 -->|"send reset email"| Email1
+      </pre>
+      <div class="brand">Powered by <a href="https://codyza.com">Codyza.com</a></div>
+    </div>
+  </div>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "default",
+      securityLevel: "loose",
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+      }
+    });
+  </script>
+</body>
+</html>
