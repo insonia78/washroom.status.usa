@@ -57,3 +57,8 @@ Powered by Codyza.com
 The text must link directly to https://codyza.com.
 Our Vision:
 We want Washroom Status USA to become a trusted platform where people can confidently find clean restrooms and where businesses are motivated to maintain better hygiene through transparent public feedback.
+
+email: washroom.status.usa@gmail.com
+pw Tz123$$$
+Supabase: washroom.status.usa@gmail.com's Project
+vercel: washroom.status.usa@gmail.com
