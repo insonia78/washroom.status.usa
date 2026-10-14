@@ -57,5 +57,3 @@ Powered by Codyza.com
 The text must link directly to https://codyza.com.
 Our Vision:
 We want Washroom Status USA to become a trusted platform where people can confidently find clean restrooms and where businesses are motivated to maintain better hygiene through transparent public feedback.
-Please coordinate with your team, take ownership of the development process, and provide regular progress updates.
-— Codyza Team
