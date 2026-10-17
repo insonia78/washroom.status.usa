@@ -1,0 +1,644 @@
+{
+  "success": true,
+  "mode": "all",
+  "searchOrigin": {
+    "latitude": 40.7484,
+    "longitude": -73.9967,
+    "source": "zip",
+    "zipCode": "10001",
+    "countryCode": "us"
+  },
+  "searchRadiusMeters": 1500,
+  "count": 37,
+  "data": [
+    {
+      "id": 1915655233,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "yes",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.743513,
+        "longitude": -74.006871
+      }
+    },
+    {
+      "id": 2555136010,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Paragon Sports",
+      "category": "sports",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7376777,
+        "longitude": -73.9903329
+      }
+    },
+    {
+      "id": 3146474829,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.739739,
+        "longitude": -74.008335
+      }
+    },
+    {
+      "id": 3493357015,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7612138,
+        "longitude": -73.9928717
+      }
+    },
+    {
+      "id": 3821172935,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Bryant Park Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7540507,
+        "longitude": -73.9826414
+      }
+    },
+    {
+      "id": 3876362257,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7485097,
+        "longitude": -74.0084177
+      }
+    },
+    {
+      "id": 4396410027,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Chelsea Park Toilets",
+      "category": "toilets",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7498584,
+        "longitude": -74.000837
+      }
+    },
+    {
+      "id": 4746777521,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Eataly",
+      "category": "supermarket",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.742213,
+        "longitude": -73.9895802
+      }
+    },
+    {
+      "id": 5067188222,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Muji",
+      "category": "department_store",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7524534,
+        "longitude": -73.9814036
+      }
+    },
+    {
+      "id": 5397303473,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Sunrise Mart",
+      "category": "supermarket",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7524184,
+        "longitude": -73.9807341
+      }
+    },
+    {
+      "id": 5590877676,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Paradise Hair Salon",
+      "category": "hairdresser",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7453113,
+        "longitude": -73.9845464
+      }
+    },
+    {
+      "id": 5599511725,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Nordstrom Rack",
+      "category": "clothes",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7478596,
+        "longitude": -73.9894889
+      }
+    },
+    {
+      "id": 6256567177,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Whole Foods Market",
+      "category": "supermarket",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7450411,
+        "longitude": -73.9952796
+      }
+    },
+    {
+      "id": 6575692630,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "permissive",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7606114,
+        "longitude": -74.0032183
+      }
+    },
+    {
+      "id": 7674767841,
+      "osmType": "node",
+      "placeType": "shop-with-bathroom",
+      "name": "Whole Foods Market",
+      "category": "supermarket",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.7527404,
+        "longitude": -73.999786
+      }
+    },
+    {
+      "id": 9026893654,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "yes",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7416802,
+        "longitude": -74.0106745
+      }
+    },
+    {
+      "id": 9333113617,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7509157,
+        "longitude": -73.9897782
+      }
+    },
+    {
+      "id": 9423683685,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7522651,
+        "longitude": -74.0010791
+      }
+    },
+    {
+      "id": 9686821929,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7434208,
+        "longitude": -74.0097331
+      }
+    },
+    {
+      "id": 10793746842,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "yes",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7513442,
+        "longitude": -73.9962677
+      }
+    },
+    {
+      "id": 11048744578,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.743538,
+        "longitude": -74.0112551
+      }
+    },
+    {
+      "id": 11971148597,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7570829,
+        "longitude": -73.9913067
+      }
+    },
+    {
+      "id": 12117376827,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "no",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7434756,
+        "longitude": -74.011005
+      }
+    },
+    {
+      "id": 12117376864,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "no",
+      "unisex": "no",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7434803,
+        "longitude": -74.0110581
+      }
+    },
+    {
+      "id": 13730194950,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "customers",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.745592,
+        "longitude": -73.9870501
+      }
+    },
+    {
+      "id": 13734832715,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "limited",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7493527,
+        "longitude": -74.007543
+      }
+    },
+    {
+      "id": 13740052377,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "customers",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "yes",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7540109,
+        "longitude": -74.0006646
+      }
+    },
+    {
+      "id": 13740052386,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "customers",
+      "fee": "no",
+      "wheelchair": "unknown",
+      "changingTable": "yes",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7540361,
+        "longitude": -74.0006425
+      }
+    },
+    {
+      "id": 13740286729,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7417222,
+        "longitude": -74.0106544
+      }
+    },
+    {
+      "id": 13740320264,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "yes",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7430059,
+        "longitude": -74.006868
+      }
+    },
+    {
+      "id": 13763544694,
+      "osmType": "node",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7516135,
+        "longitude": -73.9848552
+      }
+    },
+    {
+      "id": 248773597,
+      "osmType": "way",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "yes",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7363087,
+        "longitude": -73.9895845
+      }
+    },
+    {
+      "id": 265302051,
+      "osmType": "way",
+      "placeType": "shop-with-bathroom",
+      "name": "PRIMARK",
+      "category": "clothes",
+      "access": "public",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "unknown",
+      "toilets": "yes",
+      "coordinates": {
+        "latitude": 40.750288,
+        "longitude": -73.9901325
+      }
+    },
+    {
+      "id": 414018267,
+      "osmType": "way",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "yes",
+      "unisex": "unknown",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7563236,
+        "longitude": -73.9997284
+      }
+    },
+    {
+      "id": 1112808839,
+      "osmType": "way",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "yes",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "yes",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7413031,
+        "longitude": -73.9878401
+      }
+    },
+    {
+      "id": 1121582606,
+      "osmType": "way",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "yes",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7504592,
+        "longitude": -73.9875114
+      }
+    },
+    {
+      "id": 1121932388,
+      "osmType": "way",
+      "placeType": "bathroom",
+      "name": "Public Restroom",
+      "category": "toilets",
+      "access": "yes",
+      "fee": "no",
+      "wheelchair": "yes",
+      "changingTable": "no",
+      "unisex": "yes",
+      "toilets": "unknown",
+      "coordinates": {
+        "latitude": 40.7485279,
+        "longitude": -73.988453
+      }
+    }
+  ]
+}

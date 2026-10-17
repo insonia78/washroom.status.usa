@@ -1,0 +1,33 @@
+import type { PlacesApiRequestInput } from "../models/types.ts"
+import { resolveSearchOrigin } from "../services/geocoding.ts"
+import { buildOverpassQuery, fetchOverpassData, formatOverpassElement } from "../services/overpass.ts"
+import { RequestError } from "../utils/errors.ts"
+import { jsonResponse } from "../utils/http.ts"
+import { parseFiniteNumber } from "../utils/request.ts"
+
+export async function handleOverpassRequest(input: PlacesApiRequestInput) {
+  const radiusValue = input.radius ?? "1000"
+  const modeValue = (input.mode ?? "all").toLowerCase()
+
+  if (!["bathrooms", "shops", "all"].includes(modeValue)) {
+    throw new RequestError(400, "Invalid 'mode' value. Use one of: bathrooms, shops, all.")
+  }
+
+  const searchOrigin = await resolveSearchOrigin(input)
+  const overpassQuery = buildOverpassQuery(
+    searchOrigin.latitude,
+    searchOrigin.longitude,
+    radiusValue,
+    modeValue
+  )
+  const elements = await fetchOverpassData(overpassQuery)
+
+  return jsonResponse(200, {
+    success: true,
+    mode: modeValue,
+    searchOrigin,
+    searchRadiusMeters: parseFiniteNumber(radiusValue, "radius"),
+    count: elements.length,
+    data: elements.map(formatOverpassElement)
+  })
+}
