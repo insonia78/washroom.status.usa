@@ -48,7 +48,7 @@ Required environment variables:
 - `POSTGRES_POOL_RECYCLE_SECONDS`: maximum connection age before recycling, defaults to `1800`
 - `JWT_SECRET_KEY`: Secret used to validate incoming bearer tokens
 - `JWT_ALGORITHM`: JWT signing algorithm, defaults to `HS256`
-- `WEATHER_GATEWAY_INTERNAL_SECRET`: shared secret used to trust requests proxied by the Supabase `weather-gateway` edge function
+- `GATEWAY_INTERNAL_SECRET`: shared secret used to trust requests proxied by the Supabase `gateway` edge function
 - `ALLOWED_INBOUND_ORIGINS`: comma-separated list of allowed frontend origins, for example `https://app.example.com,https://admin.example.com`
 
 Example shape:
@@ -62,7 +62,7 @@ POSTGRES_POOL_TIMEOUT_SECONDS=30
 POSTGRES_POOL_RECYCLE_SECONDS=1800
 JWT_SECRET_KEY=replace-with-a-secure-secret
 JWT_ALGORITHM=HS256
-WEATHER_GATEWAY_INTERNAL_SECRET=replace-with-the-shared-gateway-secret
+GATEWAY_INTERNAL_SECRET=replace-with-the-shared-gateway-secret
 ALLOWED_INBOUND_ORIGINS=https://app.example.com,https://admin.example.com
 ```
 
@@ -122,15 +122,15 @@ Public routes:
 - `/openapi.json`
 - `/redoc`
 
-When `WEATHER_GATEWAY_INTERNAL_SECRET` is configured, account routes only accept requests forwarded by the Supabase `weather-gateway` edge function. Matching requests must send:
+When `GATEWAY_INTERNAL_SECRET` is configured, account routes only accept requests forwarded by the Supabase `gateway` edge function. Matching requests must send:
 
 ```http
-X-Weather-Gateway-Caller: weather-gateway
-X-Weather-Gateway-Secret: <shared-secret>
+X-Washroom-Gateway-Caller: washroom-gateway
+X-Washroom-Gateway-Secret: <shared-secret>
 ```
 
 If either header is missing or invalid, the API returns `403 Forbidden`.
-If `WEATHER_GATEWAY_INTERNAL_SECRET` is unset, the middleware allows requests through without enforcing gateway headers.
+If `GATEWAY_INTERNAL_SECRET` is unset, the middleware allows requests through without enforcing gateway headers.
 
 ## Inbound traffic allowlist
 

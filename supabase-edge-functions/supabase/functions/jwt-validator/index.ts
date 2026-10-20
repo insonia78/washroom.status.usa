@@ -9,11 +9,11 @@ import {
   isJwtTokenDatabaseConfigured,
   jwtTokenDatabaseUrlEnvVar,
 } from "../_shared/jwt-token-store.ts";
-import { authorizeWeatherGatewayRequest, weatherGatewayCallerHeader, weatherGatewaySecretHeader } from "../_shared/weather-gateway-auth.ts";
+import { authorizeGatewayRequest, gatewayCallerHeader, gatewaySecretHeader } from "../_shared/gateway-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": `authorization, x-client-info, apikey, content-type, ${weatherGatewayCallerHeader}, ${weatherGatewaySecretHeader}`,
+  "Access-Control-Allow-Headers": `authorization, x-client-info, apikey, content-type, ${gatewayCallerHeader}, ${gatewaySecretHeader}`,
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
@@ -162,7 +162,7 @@ export default {
         method: req.method
       });
     }
-    const gatewayAuthorizationError = authorizeWeatherGatewayRequest(req, jsonResponse, "jwt-validator");
+    const gatewayAuthorizationError = authorizeGatewayRequest(req, jsonResponse, "jwt-validator");
     if (gatewayAuthorizationError) {
       return gatewayAuthorizationError;
     }
@@ -205,6 +205,6 @@ export default {
 }; /* To invoke locally:
 
   1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Call this function through weather-gateway with WEATHER_GATEWAY_INTERNAL_SECRET configured.
+  2. Call this function through gateway with GATEWAY_INTERNAL_SECRET configured.
 
 */ 

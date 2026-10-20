@@ -7,7 +7,7 @@ from middleware.inbound_traffic import (
     InboundTrafficWhitelistMiddleware,
     parse_allowed_inbound_origins,
 )
-from middleware.weather_gateway_auth import WeatherGatewayAuthMiddleware
+from middleware.gateway_auth import GatewayAuthMiddleware
 from routes.accounts import accounts_router
 
 
@@ -32,9 +32,9 @@ app.add_middleware(
 )
 
 # app.add_middleware(
-#     WeatherGatewayAuthMiddleware,
+#     GatewayAuthMiddleware,
 #     public_paths={"/health", "/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"},
-#     protected_path_prefixes={"https://ywdslwhykwgegkdnhvvi.supabase.co/functions/v1/weather-gateway/*"},
+#     protected_path_prefixes={"/accounts"},
 # )
 
 app.include_router(accounts_router)

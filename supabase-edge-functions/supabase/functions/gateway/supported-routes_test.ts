@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "jsr:@std/assert";
+﻿import { assert, assertEquals, assertFalse } from "jsr:@std/assert";
 
 import { supportedRoutes } from "./supported-routes.ts";
 
@@ -6,28 +6,35 @@ function findRoute(pathname: string) {
   return supportedRoutes.find((route) => route.pattern.test(pathname));
 }
 
-Deno.test("supportedRoutes allow weather profile and search history operations", () => {
-  const profileRoute = findRoute("/weather/profile");
-  const searchHistoryRoute = findRoute("/weather/search-history");
+Deno.test("supportedRoutes allow washroom places lookups and account deactivation", () => {
+  const bathroomsRoute = findRoute("/places/bathrooms");
+  const overpassRoute = findRoute("/places/overpass");
   const deactivateRoute = findRoute("/accounts/deactivate");
 
-  assert(profileRoute);
-  assert(searchHistoryRoute);
+  assert(bathroomsRoute);
+  assert(overpassRoute);
   assert(deactivateRoute);
-  assertEquals(profileRoute.methods.sort(), ["DELETE", "GET", "PUT"]);
-  assertEquals(searchHistoryRoute.methods.sort(), ["DELETE", "GET", "POST"]);
+  assertEquals(bathroomsRoute.methods.sort(), ["GET", "POST"]);
+  assertEquals(overpassRoute.methods.sort(), ["GET", "POST"]);
   assertEquals(deactivateRoute.methods, ["POST"]);
 });
 
-Deno.test("supportedRoutes allow administrator authentication and dashboard routes", () => {
+Deno.test("supportedRoutes allow administrator authentication routes", () => {
   const accessRoute = findRoute("/admin/access");
   const loginRoute = findRoute("/admin/login");
-  const dashboardRoute = findRoute("/admin/dashboard");
+  const createPasswordRoute = findRoute("/admin/create-password");
 
   assert(accessRoute);
   assert(loginRoute);
-  assert(dashboardRoute);
+  assert(createPasswordRoute);
   assertEquals(accessRoute.methods, ["POST"]);
   assertEquals(loginRoute.methods, ["POST"]);
-  assertEquals(dashboardRoute.methods, ["POST"]);
+  assertEquals(createPasswordRoute.methods, ["POST"]);
+});
+
+Deno.test("supportedRoutes no longer expose legacy weather or admin dashboard routes", () => {
+  assertFalse(findRoute("/weather/profile"));
+  assertFalse(findRoute("/weather/search"));
+  assertFalse(findRoute("/admin/dashboard"));
+  assertFalse(findRoute("/admin/dashboard/stream"));
 });

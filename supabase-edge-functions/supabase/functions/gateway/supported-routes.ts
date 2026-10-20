@@ -1,4 +1,4 @@
-export const supportedRoutes = [
+﻿export const supportedRoutes = [
   {
     pattern: /^\/health\/?$/,
     methods: [
@@ -62,45 +62,17 @@ export const supportedRoutes = [
     ]
   },
   {
-    pattern: /^\/weather\/status\/?$/,
+    pattern: /^\/places\/bathrooms\/?$/,
     methods: [
-      "GET"
-    ]
-  },
-  {
-    pattern: /^\/weather\/search\/?$/,
-    methods: [
-      "GET"
-    ]
-  },
-  {
-    pattern: /^\/weather\/reverse\/?$/,
-    methods: [
-      "GET"
-    ]
-  },
-  {
-    pattern: /^\/weather\/dashboard\/?$/,
-    methods: [
+      "GET",
       "POST"
     ]
   },
   {
-    pattern: /^\/weather\/map-layers\/(clouds_new|precipitation_new|temp_new|wind_new)\/\d+\/\d+\/\d+\/?$/,
+    pattern: /^\/places\/overpass\/?$/,
     methods: [
-      "GET"
-    ]
-  },
-  {
-    pattern: /^\/admin\/dashboard\/?$/,
-    methods: [
+      "GET",
       "POST"
-    ]
-  },
-  {
-    pattern: /^\/admin\/dashboard\/stream\/?$/,
-    methods: [
-      "GET"
     ]
   },
   {
@@ -119,22 +91,6 @@ export const supportedRoutes = [
     pattern: /^\/admin\/create-password\/?$/,
     methods: [
       "POST"
-    ]
-  },
-  {
-    pattern: /^\/weather\/search-history\/?$/,
-    methods: [
-      "GET",
-      "POST",
-      "DELETE"
-    ]
-  },
-  {
-    pattern: /^\/weather\/profile\/?$/,
-    methods: [
-      "GET",
-      "PUT",
-      "DELETE"
     ]
   }
 ];

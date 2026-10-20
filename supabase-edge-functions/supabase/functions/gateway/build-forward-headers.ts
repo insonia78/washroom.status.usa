@@ -14,13 +14,13 @@ export function buildForwardHeaders(
 
   headers.set("X-User-Type", tokenType);
   headers.set("X-User-Payload", JSON.stringify(payload));
-  const gatewayCaller = req.headers.get("x-weather-gateway-caller");
-  const gatewaySecret = req.headers.get("x-weather-gateway-secret");
+  const gatewayCaller = req.headers.get("x-washroom-gateway-caller");
+  const gatewaySecret = req.headers.get("x-washroom-gateway-secret");
   if (gatewayCaller) {
-    headers.set("x-weather-gateway-caller", gatewayCaller);
+    headers.set("x-washroom-gateway-caller", gatewayCaller);
   }
   if (gatewaySecret) {
-    headers.set("x-weather-gateway-secret", gatewaySecret);
+    headers.set("x-washroom-gateway-secret", gatewaySecret);
   }
   return headers;
 }

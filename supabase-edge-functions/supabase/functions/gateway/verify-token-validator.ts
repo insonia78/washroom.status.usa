@@ -1,8 +1,8 @@
-import { buildWeatherGatewayHeaders } from "../_shared/weather-gateway-auth.ts";
+import { buildGatewayHeaders } from "../_shared/gateway-auth.ts";
 import type { VerifiedToken } from "./utils.ts";
 import { isRecord, isVerifiedToken } from "./utils.ts";
 
-const gatewayInternalSecret = Deno.env.get("WEATHER_GATEWAY_INTERNAL_SECRET");
+const gatewayInternalSecret = Deno.env.get("GATEWAY_INTERNAL_SECRET");
 const jwtValidatorUrl = Deno.env.get("JWT_VALIDATOR_URL");
 
 type JsonResponse = (status: number, body: unknown, req?: Request) => Response;
@@ -26,7 +26,7 @@ export async function verifyTokenWithValidator(
     return {
       verifiedToken: null,
       errorResponse: jsonResponse(401, {
-        error: "Missing Authorization header required for weather routes",
+        error: "Missing Authorization header required for protected routes",
       }, req),
     };
   }
@@ -44,7 +44,7 @@ export async function verifyTokenWithValidator(
     return {
       verifiedToken: null,
       errorResponse: jsonResponse(500, {
-        error: "Missing WEATHER_GATEWAY_INTERNAL_SECRET environment variable",
+        error: "Missing GATEWAY_INTERNAL_SECRET environment variable",
       }, req),
     };
   }
@@ -56,7 +56,7 @@ export async function verifyTokenWithValidator(
       headers: {
         apikey: apiKey,
         Authorization: authorization,
-        ...buildWeatherGatewayHeaders(gatewayInternalSecret),
+        ...buildGatewayHeaders(gatewayInternalSecret),
       },
     });
   } catch (error) {

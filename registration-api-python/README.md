@@ -2,7 +2,7 @@
 
 This repository contains the Python registration API for the Codyza Weather Project.
 
-At the moment, the repository is focused on the `api/v1` service, which exposes a small FastAPI application for managing accounts, checking service health, and accepting trusted inbound traffic from the Supabase `weather-gateway` edge function.
+At the moment, the repository is focused on the `api/v1` service, which exposes a small FastAPI application for managing accounts, checking service health, and accepting trusted inbound traffic from the Supabase `gateway` edge function.
 
 ## Repository contents
 
@@ -25,12 +25,12 @@ api/
 - Health endpoint
 - Account CRUD endpoints
 - Password reset request + confirmation endpoints
-- Weather-gateway caller authentication for account routes
+- Gateway caller authentication for account routes
 - Automatic database and table creation on startup
 - Explicit SQLAlchemy connection pooling for the main PostgreSQL engine
 - SQLModel-based database models
 
-When `WEATHER_GATEWAY_INTERNAL_SECRET` is configured, the account routes only accept trusted requests forwarded by the Supabase `weather-gateway` edge function.
+When `GATEWAY_INTERNAL_SECRET` is configured, the account routes only accept trusted requests forwarded by the Supabase `gateway` edge function.
 
 ## Tech stack
 
@@ -59,7 +59,7 @@ When `WEATHER_GATEWAY_INTERNAL_SECRET` is configured, the account routes only ac
    - `POSTGRES_POOL_RECYCLE_SECONDS` (optional, defaults to `1800`)
    - `JWT_SECRET_KEY`
    - `JWT_ALGORITHM` (optional, defaults to `HS256`)
-   - `WEATHER_GATEWAY_INTERNAL_SECRET` (shared with the `weather-gateway` edge function)
+   - `GATEWAY_INTERNAL_SECRET` (shared with the `gateway` edge function)
 
 3. Install dependencies:
 

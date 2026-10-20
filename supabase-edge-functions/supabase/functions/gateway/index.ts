@@ -5,20 +5,20 @@
 // import "@supabase/functions-js/edge-runtime.d.ts";
 
 import {
-  buildWeatherGatewayHeaders,
-  weatherGatewayAuthorizationHeader,
-} from "../_shared/weather-gateway-auth.ts";
+  buildGatewayHeaders,
+  gatewayAuthorizationHeader,
+} from "../_shared/gateway-auth.ts";
 import {
   isJwtTokenDatabaseConfigured,
   revokeJwtTokenRecordsForUser,
 } from "../_shared/jwt-token-store.ts";
-import { buildForwardHeaders as buildWeatherForwardHeaders } from "./build-forward-headers.ts";
+import { buildForwardHeaders as buildUserForwardHeaders } from "./build-forward-headers.ts";
 import { SERVICES } from "./models.ts";
 import { supportedRoutes } from "./supported-routes.ts";
 import type { VerifiedToken } from "./utils.ts";
 import { verifyTokenWithValidator } from "./verify-token-validator.ts";
 
-console.log("Weather Gateway init");
+console.log("Washroom Gateway init");
 
 const defaultCorsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,30 +29,24 @@ const defaultCorsHeaders = {
     "content-type",
     "accept",
     "origin",
-    "x-weather-gateway-caller",
-    "x-weather-gateway-secret",
-    weatherGatewayAuthorizationHeader,
+    "x-washroom-gateway-caller",
+    "x-washroom-gateway-secret",
+    gatewayAuthorizationHeader,
   ].join(", "),
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
 };
 
-const FUNCTION_NAME = "weather-gateway";
+const FUNCTION_NAME = "gateway";
 const FUNCTION_BASE_PATH = `/functions/v1/${FUNCTION_NAME}`;
 const FUNCTION_PATH_PREFIXES = [FUNCTION_BASE_PATH, `/${FUNCTION_NAME}`];
-const registrationApiUrl =
-  Deno.env.get("WEATHER_REGISTRATION_API_URL") ??
-  Deno.env.get("REGISTRATION_API_URL");
-const weatherApiUrl =
-  Deno.env.get("WEATHER_API_URL") ??
-  Deno.env.get("NEST_WEATHER_API_URL") ??
-  Deno.env.get("BACKEND_URL");
+const registrationApiUrl = Deno.env.get("REGISTRATION_API_URL");
 const turnstileProtectionEnabled = false;
 const turnstileSecretKey = Deno.env.get("TURNSTILE_SECRET_KEY");
 const turnstileVerifyUrl = Deno.env.get("TURNSTILE_VERIFY_URL") ??
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const jwtCreatorUrl = Deno.env.get("JWT_CREATOR_URL");
 const jwtValidatorUrl = Deno.env.get("JWT_VALIDATOR_URL");
-const gatewayInternalSecret = Deno.env.get("WEATHER_GATEWAY_INTERNAL_SECRET");
+const gatewayInternalSecret = Deno.env.get("GATEWAY_INTERNAL_SECRET");
 const CONTAINER_HOSTNAME = "host.docker.internal";
 const adminRole = "admin";
 const defaultRetryDelayMs = 250;
@@ -79,6 +73,10 @@ const jwtRevokeUrl =
   Deno.env.get("JWT_REVOKE_URL") ??
   deriveSiblingFunctionUrl(jwtCreatorUrl, "jwt-revoke") ??
   deriveSiblingFunctionUrl(jwtValidatorUrl, "jwt-revoke");
+const placesApiUrl =
+  Deno.env.get("PLACES_API_URL") ??
+  deriveSiblingFunctionUrl(jwtCreatorUrl, "places-api") ??
+  deriveSiblingFunctionUrl(jwtValidatorUrl, "places-api");
 
 function logGatewayEvent(level: LogLevel, event: string, details: Record<string, unknown> = {}) {
   const payload = {
@@ -86,7 +84,7 @@ function logGatewayEvent(level: LogLevel, event: string, details: Record<string,
     functionName: FUNCTION_NAME,
     ...details,
   };
-  const message = `[weather-gateway] ${JSON.stringify(payload)}`;
+  const message = `[${FUNCTION_NAME}] ${JSON.stringify(payload)}`;
 
   if (level === "error") {
     console.error(message);
@@ -109,9 +107,9 @@ function getHeaderPresence(req: Request) {
   return {
     hasApiKey: Boolean(req.headers.get("apikey")),
     hasAuthorization: Boolean(req.headers.get("authorization") ?? req.headers.get("Authorization")),
-    hasGatewayAuthorization: Boolean(req.headers.get(weatherGatewayAuthorizationHeader)),
-    hasGatewayCaller: Boolean(req.headers.get("x-weather-gateway-caller")),
-    hasGatewaySecret: Boolean(req.headers.get("x-weather-gateway-secret")),
+    hasGatewayAuthorization: Boolean(req.headers.get(gatewayAuthorizationHeader)),
+    hasGatewayCaller: Boolean(req.headers.get("x-washroom-gateway-caller")),
+    hasGatewaySecret: Boolean(req.headers.get("x-washroom-gateway-secret")),
   };
 }
 
@@ -144,12 +142,12 @@ function getErrorMessage(error: unknown) {
 function getConfiguredBackendsSummary() {
   return {
     hasRegistrationApiUrl: Boolean(registrationApiUrl),
-    hasWeatherApiUrl: Boolean(weatherApiUrl),
+    hasPlacesApiUrl: Boolean(placesApiUrl),
     hasJwtCreatorUrl: Boolean(jwtCreatorUrl),
     hasJwtRevokeUrl: Boolean(jwtRevokeUrl),
     hasGatewayInternalSecret: Boolean(gatewayInternalSecret),
     registrationBackend: registrationApiUrl ? summarizeBackendUrl(registrationApiUrl) : null,
-    weatherBackend: weatherApiUrl ? summarizeBackendUrl(weatherApiUrl) : null,
+    placesBackend: placesApiUrl ? summarizeBackendUrl(placesApiUrl) : null,
     jwtRevokeBackend: jwtRevokeUrl ? summarizeBackendUrl(jwtRevokeUrl) : null,
   };
 }
@@ -205,12 +203,12 @@ function summarizeForwardHeaders(headers: Headers) {
   return {
     hasApiKey: headers.has("apikey"),
     hasAuthorization: headers.has("authorization") || headers.has("Authorization"),
-    hasGatewayAuthorization: headers.has(weatherGatewayAuthorizationHeader),
+    hasGatewayAuthorization: headers.has(gatewayAuthorizationHeader),
     hasUserId: headers.has("X-User-Id"),
     hasUserType: headers.has("X-User-Type"),
     hasUserPayload: headers.has("X-User-Payload"),
-    hasGatewayCaller: headers.has("x-weather-gateway-caller"),
-    hasGatewaySecret: headers.has("x-weather-gateway-secret"),
+    hasGatewayCaller: headers.has("x-washroom-gateway-caller"),
+    hasGatewaySecret: headers.has("x-washroom-gateway-secret"),
     contentType: headers.get("content-type"),
   };
 }
@@ -263,8 +261,8 @@ function inferService(proxyPath: string): SERVICES | null {
     return SERVICES.ADMIN;
   }
 
-  if (proxyPath.startsWith(`/${SERVICES.WEATHER}`)) {
-    return SERVICES.WEATHER;
+  if (proxyPath.startsWith(`/${SERVICES.PLACES}`)) {
+    return SERVICES.PLACES;
   }
 
   if (proxyPath.startsWith(`/${SERVICES.AUTH}`)) {
@@ -275,23 +273,19 @@ function inferService(proxyPath: string): SERVICES | null {
 }
 
 function resolveBackendUrl(service: SERVICES | null): string | null {
-  if (service === SERVICES.ACCOUNTS) {
+  if (service === SERVICES.ACCOUNTS || service === SERVICES.ADMIN) {
     return registrationApiUrl ?? null;
   }
 
-  if (service === SERVICES.ADMIN) {
-    return weatherApiUrl ?? null;
-  }
-
-  if (service === SERVICES.WEATHER) {
-    return weatherApiUrl ?? null;
+  if (service === SERVICES.PLACES) {
+    return placesApiUrl ?? null;
   }
 
   if (service === SERVICES.AUTH) {
     return jwtRevokeUrl ?? null;
   }
 
-  return registrationApiUrl ?? weatherApiUrl ?? null;
+  return registrationApiUrl ?? null;
 }
 
 async function buildForwardBody(req: Request) {
@@ -309,10 +303,15 @@ function buildTargetUrl(baseUrl: string, proxyPath: string, search: string, serv
     return targetUrl;
   }
 
-  const normalizedBaseUrl = normalizeBackendBaseUrl(baseUrl, service);
+  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const parsedBaseUrl = new URL(normalizedBaseUrl);
   const baseSegments = parsedBaseUrl.pathname.split("/").filter(Boolean);
   const proxySegments = proxyPath.split("/").filter(Boolean);
+
+  // places-api serves /bathrooms and /overpass at its root, so drop the gateway's /places prefix.
+  if (service === SERVICES.PLACES && proxySegments[0] === SERVICES.PLACES) {
+    proxySegments.shift();
+  }
 
   const normalizedProxyPath = baseSegments.length > 0 &&
       proxySegments.length > 0 &&
@@ -323,23 +322,6 @@ function buildTargetUrl(baseUrl: string, proxyPath: string, search: string, serv
   const targetUrl = new URL(normalizedProxyPath, normalizedBaseUrl);
   targetUrl.search = search;
   return targetUrl;
-}
-
-function normalizeBackendBaseUrl(baseUrl: string, service: SERVICES | null) {
-  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  if (service !== SERVICES.ADMIN) {
-    return normalizedBaseUrl;
-  }
-
-  const parsedBaseUrl = new URL(normalizedBaseUrl);
-  const baseSegments = parsedBaseUrl.pathname.split("/").filter(Boolean);
-  if (baseSegments[baseSegments.length - 1] !== SERVICES.WEATHER) {
-    return normalizedBaseUrl;
-  }
-
-  baseSegments.pop();
-  parsedBaseUrl.pathname = baseSegments.length > 0 ? `/${baseSegments.join("/")}/` : "/";
-  return parsedBaseUrl.toString();
 }
 
 function buildContainerReachableBackendUrl(baseUrl: string) {
@@ -357,8 +339,8 @@ function buildProxyHeaders(
   service: SERVICES | null,
   verifiedToken: VerifiedToken | null,
 ) {
-  const headers = (service === SERVICES.WEATHER || service === SERVICES.ADMIN) && verifiedToken
-    ? buildWeatherForwardHeaders(req, verifiedToken.payload, verifiedToken.tokenType)
+  const headers = service === SERVICES.PLACES && verifiedToken
+    ? buildUserForwardHeaders(req, verifiedToken.payload, verifiedToken.tokenType)
     : new Headers(req.headers);
 
   headers.delete("host");
@@ -367,7 +349,7 @@ function buildProxyHeaders(
   if (service === SERVICES.AUTH) {
     const clientAuthorization = headers.get("authorization") ?? headers.get("Authorization");
     if (clientAuthorization) {
-      headers.set(weatherGatewayAuthorizationHeader, clientAuthorization);
+      headers.set(gatewayAuthorizationHeader, clientAuthorization);
       headers.delete("authorization");
       headers.delete("Authorization");
     }
@@ -378,11 +360,11 @@ function buildProxyHeaders(
       service === SERVICES.ACCOUNTS ||
       service === SERVICES.AUTH ||
       service === SERVICES.ADMIN ||
-      service === SERVICES.WEATHER
+      service === SERVICES.PLACES
     ) &&
     gatewayInternalSecret
   ) {
-    const gatewayHeaders = buildWeatherGatewayHeaders(gatewayInternalSecret);
+    const gatewayHeaders = buildGatewayHeaders(gatewayInternalSecret);
     Object.entries(gatewayHeaders).forEach(([key, value]) => {
       headers.set(key, value);
     });
@@ -500,18 +482,6 @@ async function verifyTurnstileChallenge(
   return null;
 }
 
-function isAdminDashboardPath(proxyPath: string) {
-  return proxyPath === "/admin/dashboard";
-}
-
-function isAdminDashboardStreamPath(proxyPath: string) {
-  return proxyPath === "/admin/dashboard/stream";
-}
-
-function isPublicWeatherMapLayerPath(proxyPath: string) {
-  return /^\/weather\/map-layers\/(clouds_new|precipitation_new|temp_new|wind_new)\/\d+\/\d+\/\d+\/?$/.test(proxyPath);
-}
-
 function getRecordStringValue(record: Record<string, unknown>, key: string) {
   const value = record[key];
   return typeof value === "string" ? value.trim() : "";
@@ -574,7 +544,7 @@ async function createJwtForIdentity(
   }
 
   if (!gatewayInternalSecret) {
-    throw new Error("Missing WEATHER_GATEWAY_INTERNAL_SECRET required for JWT creator forwarding.");
+    throw new Error("Missing GATEWAY_INTERNAL_SECRET required for JWT creator forwarding.");
   }
 
   const jwtCreatorHeaders = new Headers({
@@ -585,7 +555,7 @@ async function createJwtForIdentity(
     jwtCreatorHeaders.set("apikey", apiKey);
   }
 
-  const gatewayHeaders = buildWeatherGatewayHeaders(gatewayInternalSecret);
+  const gatewayHeaders = buildGatewayHeaders(gatewayInternalSecret);
   Object.entries(gatewayHeaders).forEach(([key, value]) => {
     jwtCreatorHeaders.set(key, value);
   });
@@ -615,7 +585,7 @@ async function createJwtForIdentity(
 
 function getAccountApiUrl(pathname: string) {
   if (!registrationApiUrl) {
-    throw new Error("Missing WEATHER_REGISTRATION_API_URL environment variable.");
+    throw new Error("Missing REGISTRATION_API_URL environment variable.");
   }
 
   return new URL(pathname, registrationApiUrl.endsWith("/") ? registrationApiUrl : `${registrationApiUrl}/`);
@@ -633,7 +603,7 @@ async function fetchAccountApiResponse(
     "Content-Type": "application/json",
   });
   if (gatewayInternalSecret) {
-    const gatewayHeaders = buildWeatherGatewayHeaders(gatewayInternalSecret);
+    const gatewayHeaders = buildGatewayHeaders(gatewayInternalSecret);
     Object.entries(gatewayHeaders).forEach(([key, value]) => {
       headers.set(key, value);
     });
@@ -949,52 +919,9 @@ async function buildAdminCreatePasswordResponse(
   }, req);
 }
 
-async function cleanupWeatherAccountData(
-  req: Request,
-  verifiedToken: VerifiedToken,
-  requestId: string,
-) {
-  if (!weatherApiUrl) {
-    throw new Error("Missing WEATHER_API_URL environment variable.");
-  }
-
-  const targetUrl = buildTargetUrl(weatherApiUrl, "/weather/profile", "", SERVICES.WEATHER);
-  const response = await fetchBackendResponse(
-    req,
-    SERVICES.WEATHER,
-    verifiedToken,
-    targetUrl,
-    null,
-    weatherApiUrl,
-    requestId,
-    {
-      methodOverride: "DELETE",
-      proxyPathOverride: "/weather/profile",
-    },
-  );
-
-  if (!response.ok) {
-    const body = await parseBackendBody(response);
-    return {
-      ok: false,
-      errorResponse: jsonResponse(
-        response.status,
-        body ?? { error: "Failed to delete persisted weather account data" },
-        req,
-      ),
-    };
-  }
-
-  return {
-    ok: true,
-    errorResponse: null,
-  };
-}
-
 async function buildAccountDeactivateResponse(
   req: Request,
   verifiedToken: VerifiedToken | null,
-  requestId: string,
 ) {
   if (!verifiedToken) {
     return jsonResponse(401, {
@@ -1010,11 +937,6 @@ async function buildAccountDeactivateResponse(
     return jsonResponse(401, {
       error: "Authenticated account email is required for account deactivation",
     }, req);
-  }
-
-  const weatherCleanup = await cleanupWeatherAccountData(req, verifiedToken, requestId);
-  if (!weatherCleanup.ok) {
-    return weatherCleanup.errorResponse;
   }
 
   if (!isJwtTokenDatabaseConfigured()) {
@@ -1036,23 +958,6 @@ async function buildAccountDeactivateResponse(
     deleted: true,
     email: accountEmail,
   }, req);
-}
-
-function authorizeAdminToken(
-  req: Request,
-  verifiedToken: VerifiedToken | null,
-) {
-  const role = verifiedToken?.payload && typeof verifiedToken.payload.role === "string"
-    ? verifiedToken.payload.role.trim()
-    : "";
-
-  if (role !== adminRole) {
-    return jsonResponse(403, {
-      error: "Admin role is required for this route",
-    }, req);
-  }
-
-  return null;
 }
 
 async function fetchBackendResponse(
@@ -1104,6 +1009,7 @@ async function fetchBackendResponse(
       containerReachableBackendUrl,
       proxyPath,
       targetUrl.search,
+      service,
     );
 
     logGatewayEvent("warn", "proxy.forwarding.retrying-with-container-host", {
@@ -1214,7 +1120,7 @@ async function appendTokenForAccountRoutes(
   };
 }
 
-console.log("Weather Gateway initialized");
+console.log("Washroom Gateway initialized");
 logGatewayEvent("info", "function.initialized", getConfiguredBackendsSummary());
 
 export default {
@@ -1242,7 +1148,7 @@ export default {
         method: req.method,
       });
       return jsonResponse(404, {
-        error: "Endpoint not exposed by weather-gateway",
+        error: `Endpoint not exposed by ${FUNCTION_NAME}`,
         path: proxyPath,
       }, req);
     }
@@ -1323,10 +1229,9 @@ export default {
 
       if (
         (service === SERVICES.ACCOUNTS && isAccountDeactivatePath(proxyPath)) ||
-        (service === SERVICES.WEATHER && !isPublicWeatherMapLayerPath(proxyPath)) ||
-        (service === SERVICES.ADMIN && (isAdminDashboardPath(proxyPath) || isAdminDashboardStreamPath(proxyPath)))
+        service === SERVICES.PLACES
       ) {
-        logGatewayEvent("info", "weather.validation.started", {
+        logGatewayEvent("info", "token.validation.started", {
           requestId,
           proxyPath,
           ...getHeaderPresence(req),
@@ -1335,7 +1240,7 @@ export default {
         const validationResult = await verifyTokenWithValidator(req, jsonResponse);
         const { errorResponse } = validationResult;
         if (errorResponse) {
-          logGatewayEvent("warn", "weather.validation.failed", {
+          logGatewayEvent("warn", "token.validation.failed", {
             requestId,
             proxyPath,
           });
@@ -1343,7 +1248,7 @@ export default {
         }
 
         verifiedToken = validationResult.verifiedToken;
-        logGatewayEvent("info", "weather.validation.succeeded", {
+        logGatewayEvent("info", "token.validation.succeeded", {
           requestId,
           proxyPath,
           tokenType: verifiedToken?.tokenType ?? null,
@@ -1353,21 +1258,10 @@ export default {
               verifiedToken.payload.sub.length > 0,
           ),
         });
-
-        if (service === SERVICES.ADMIN) {
-          const adminRoleError = authorizeAdminToken(req, verifiedToken);
-          if (adminRoleError) {
-            logGatewayEvent("warn", "admin.validation.failed", {
-              requestId,
-              proxyPath,
-            });
-            return adminRoleError;
-          }
-        }
       }
 
       if (service === SERVICES.ACCOUNTS && isAccountDeactivatePath(proxyPath)) {
-        return await buildAccountDeactivateResponse(req, verifiedToken, requestId);
+        return await buildAccountDeactivateResponse(req, verifiedToken);
       }
 
       const backendResponse = await fetchBackendResponse(

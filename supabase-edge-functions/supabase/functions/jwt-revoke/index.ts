@@ -6,16 +6,16 @@ import {
   revokeJwtTokenRecord,
 } from "../_shared/jwt-token-store.ts";
 import {
-  authorizeWeatherGatewayRequest,
-  weatherGatewayAuthorizationHeader,
-  weatherGatewayCallerHeader,
-  weatherGatewaySecretHeader,
-} from "../_shared/weather-gateway-auth.ts";
+  authorizeGatewayRequest,
+  gatewayAuthorizationHeader,
+  gatewayCallerHeader,
+  gatewaySecretHeader,
+} from "../_shared/gateway-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    `authorization, x-client-info, apikey, content-type, ${weatherGatewayCallerHeader}, ${weatherGatewaySecretHeader}, ${weatherGatewayAuthorizationHeader}`,
+    `authorization, x-client-info, apikey, content-type, ${gatewayCallerHeader}, ${gatewaySecretHeader}, ${gatewayAuthorizationHeader}`,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -54,11 +54,11 @@ function isRevokeTokenRequestBody(value: unknown): value is RevokeTokenRequestBo
 }
 
 function getBearerAuthorization(req: Request) {
-  const gatewayAuthorization = req.headers.get(weatherGatewayAuthorizationHeader);
+  const gatewayAuthorization = req.headers.get(gatewayAuthorizationHeader);
   if (gatewayAuthorization?.startsWith("Bearer ")) {
     return {
       value: gatewayAuthorization,
-      source: weatherGatewayAuthorizationHeader,
+      source: gatewayAuthorizationHeader,
     };
   }
 
@@ -77,7 +77,7 @@ async function getTokenIdFromBearerToken(req: Request): Promise<string | null> {
   const bearerAuthorization = getBearerAuthorization(req);
   if (!bearerAuthorization) {
     logRevokeEvent("authorization.missing-bearer", {
-      checkedHeaders: [weatherGatewayAuthorizationHeader, "authorization"],
+      checkedHeaders: [gatewayAuthorizationHeader, "authorization"],
     });
     return null;
   }
@@ -112,7 +112,7 @@ export default {
       });
     }
 
-    const gatewayAuthorizationError = authorizeWeatherGatewayRequest(req, jsonResponse, "jwt-revoke");
+    const gatewayAuthorizationError = authorizeGatewayRequest(req, jsonResponse, "jwt-revoke");
     if (gatewayAuthorizationError) {
       logRevokeEvent("gateway.authorization.failed");
       return gatewayAuthorizationError;
@@ -144,7 +144,7 @@ export default {
 
       if (!tokenId) {
         return jsonResponse(400, {
-          error: "Provide tokenId in the request body or a valid bearer token forwarded by weather-gateway.",
+          error: "Provide tokenId in the request body or a valid bearer token forwarded by gateway.",
         });
       }
 
@@ -179,6 +179,6 @@ export default {
 }; /* To invoke locally:
 
   1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Call this function through weather-gateway with WEATHER_GATEWAY_INTERNAL_SECRET configured.
+  2. Call this function through gateway with GATEWAY_INTERNAL_SECRET configured.
 
 */
