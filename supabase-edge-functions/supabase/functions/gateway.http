@@ -1,0 +1,90 @@
+# Live tests for the deployed `gateway` edge function.
+# Requires the VS Code "REST Client" extension (humao.rest-client).
+#
+# Values are read from ./.env (gitignored). Add these keys there:
+#   SUPABASE_ANON_KEY=<project anon/publishable key>
+#   TEST_EMAIL=<an existing account email>
+#   TEST_PASSWORD=<that account's password>
+#
+# Run "Login" first; later requests reuse its token.
+
+@baseUrl = https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/gateway
+@anonKey = sb_publishable_iVdkOvyOuuPJMmq9KW2zUw_deHttJaa
+@email = test@example.com
+@password = testpassword
+@token = {{login.response.body.token}}
+
+### Health check
+GET {{baseUrl}}/health
+apikey: {{anonKey}}
+Authorization: Bearer {{anonKey}}
+
+### Account access state
+POST {{baseUrl}}/accounts/access
+apikey: {{anonKey}}
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### Login (returns a gateway JWT in `token`)
+# @name login
+POST {{baseUrl}}/accounts/login
+apikey: {{anonKey}}
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Bathrooms by ZIP (POST)
+POST {{baseUrl}}/places/bathrooms
+apikey: {{anonKey}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "zip": "10001",
+  "radius": "1500"
+}
+
+### Bathrooms by coordinates (GET)
+GET {{baseUrl}}/places/bathrooms?lat=40.7506&lon=-73.9972&radius=1500
+apikey: {{anonKey}}
+Authorization: Bearer {{token}}
+
+### Overpass raw results
+POST {{baseUrl}}/places/overpass
+apikey: {{anonKey}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "zip": "10001",
+  "radius": "1500",
+  "mode": "all"
+}
+
+### Expect 401 - places without a user token
+POST {{baseUrl}}/places/bathrooms
+apikey: {{anonKey}}
+Content-Type: application/json
+
+{
+  "zip": "10001",
+  "radius": "1500"
+}
+
+### Expect 404 - legacy weather route is no longer exposed
+GET {{baseUrl}}/weather/status
+apikey: {{anonKey}}
+Authorization: Bearer {{anonKey}}
+
+### Logout (revokes the token)
+POST {{baseUrl}}/auth/logout
+apikey: {{anonKey}}
+Authorization: Bearer {{token}}

@@ -39,7 +39,7 @@ const defaultCorsHeaders = {
 const FUNCTION_NAME = "gateway";
 const FUNCTION_BASE_PATH = `/functions/v1/${FUNCTION_NAME}`;
 const FUNCTION_PATH_PREFIXES = [FUNCTION_BASE_PATH, `/${FUNCTION_NAME}`];
-const registrationApiUrl = Deno.env.get("REGISTRATION_API_URL");
+const registrationApiUrl = Deno.env.get("WASHROOM_REGISTRATION_API_URL");
 const turnstileProtectionEnabled = false;
 const turnstileSecretKey = Deno.env.get("TURNSTILE_SECRET_KEY");
 const turnstileVerifyUrl = Deno.env.get("TURNSTILE_VERIFY_URL") ??
@@ -585,7 +585,7 @@ async function createJwtForIdentity(
 
 function getAccountApiUrl(pathname: string) {
   if (!registrationApiUrl) {
-    throw new Error("Missing REGISTRATION_API_URL environment variable.");
+    throw new Error("Missing WASHROOM_REGISTRATION_API_URL environment variable.");
   }
 
   return new URL(pathname, registrationApiUrl.endsWith("/") ? registrationApiUrl : `${registrationApiUrl}/`);
