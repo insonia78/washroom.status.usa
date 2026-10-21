@@ -105,9 +105,11 @@ With Node.js 22.18+ or 24+, run `npm test` for the HTTP adapter and gateway-only
 
 ## Map and location reliability update
 
+- On mobile and tablet widths below 1024px, available restroom results appear in a swipeable, scroll-snapping carousel above the map, showing the filtered result count and previous/next buttons. Select a card to open its details. The carousel resets when the search center or filter changes. The map remains above the search controls. Loading, errors, and empty results remain visible below search controls. Desktop retains search controls above the side-by-side map and vertical results list.
+
 - MapLibre uses OpenStreetMap public street tiles without an API key. CARTO returned "API KEY REQUIRED" placeholder images even though tile requests succeeded. Public OSM tiles are for light development use: follow the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/), retain attribution, and use a suitable hosted provider or self-hosted tiles before scaling. Do not bulk-download or prefetch public tiles.
 - Map view is constrained to a US-focused bounding rectangle; this is **not a geographic US-only mask** and may show adjacent Canada/Mexico or ocean. For strict US-only cartography, use a clipped US boundary layer and tiles, including Alaska/Hawaii.
-- Philadelphia remains the initial center. City search is restricted to US via Photon's country filter and response validation.
+- On opening the site, the browser requests location permission. A successful US location lookup centers the map at zoom 15, adds a blue current-location point, and loads nearby restrooms. Location requires HTTPS (or localhost). Denied, unavailable, timed-out, or unsupported location displays a message and keeps the Philadelphia fallback and manual search usable. **Use my location** retries the lookup. A manual search takes precedence over a pending location lookup. City search is restricted to US via Photon's country filter and response validation.
 - Restroom API queries genuine OSM features via multiple Overpass endpoints, with timeouts and graceful error messages. It does not invent fallback restroom data. Public Overpass services can still be unavailable/rate limited.
 - For production reliability, periodically ingest OSM extracts into Supabase PostGIS and serve local indexed location queries rather than depending on public Overpass at request time. Observe ODbL attribution and share-alike requirements where applicable.
 
