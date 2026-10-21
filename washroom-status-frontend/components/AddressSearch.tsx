@@ -86,6 +86,7 @@ export default function AddressSearch({value,onChange,onSelect,searching}:Props)
         </ul>
       </div>}
     </div>
+    <button type="submit" disabled={searching} className="rounded-xl bg-teal-700 px-6 py-3 font-bold text-white disabled:opacity-50">Search</button>
     <button type="button" aria-label="Clear search" className="rounded-xl border border-slate-300 bg-white px-6 py-3 font-bold text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-700"
       onClick={()=>{onChange('');setSuggestions([]);setError('');setActive(-1);input.current?.focus()}}>Clear</button>
   </>;
