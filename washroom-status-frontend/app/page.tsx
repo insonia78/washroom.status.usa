@@ -7,6 +7,19 @@ import AddressSearch from '@/components/AddressSearch';
 
 export default function Home(){const [city,setCity]=useState('Philadelphia, PA');const [items,setItems]=useState<Restroom[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [filter,setFilter]=useState('all');const [center,setCenter]=useState<[number,number]>([-75.1652,39.9526]);const [selected,setSelected]=useState<Restroom|null>(null);const [mapReady,setMapReady]=useState(false);
 const [searching,setSearching]=useState(false);
+const mapArea=useRef<HTMLDivElement>(null);
+const focusAfterSearch=useRef(false);
+const returnToMap=useCallback(()=>{
+  if(!focusAfterSearch.current)return;
+  focusAfterSearch.current=false;
+  requestAnimationFrame(()=>{
+    const map=(window as any).__washroomMap as MapType|undefined;
+    map?.getCanvas().focus({preventScroll:true});
+    if(window.matchMedia('(max-width: 1023px)').matches){
+      mapArea.current?.scrollIntoView({block:'start',behavior:'instant'});
+    }
+  });
+},[]);
 const resultsList=useRef<HTMLDivElement>(null);
 useEffect(()=>{if(resultsList.current)resultsList.current.scrollLeft=0},[center,filter]);
 const [location,setLocation]=useState<[number,number]|null>(null);
@@ -68,11 +81,12 @@ useEffect(()=>{
   })();
   return()=>{cancelled=true;marker?.remove()};
 },[location,mapReady]);
-useEffect(()=>{let cancelled=false;setBusy(true);setError('');setItems([]);setSelected(null);const controller=new AbortController();fetch(`/api/restrooms?lat=${center[1]}&lon=${center[0]}`,{signal:controller.signal}).then(r=>{if(!r.ok)return r.json().then(d=>{throw new Error(d.error||'Restroom source is unavailable. Please retry.')});return r.json()}).then(d=>{if(!cancelled)setItems(d.restrooms||[])}).catch(e=>{if(!cancelled&&e.name!=='AbortError')setError(e.message)}).finally(()=>{if(!cancelled)setBusy(false)});return()=>{cancelled=true;controller.abort()}},[center]);
+useEffect(()=>{let cancelled=false;setBusy(true);setError('');setItems([]);setSelected(null);const controller=new AbortController();fetch(`/api/restrooms?lat=${center[1]}&lon=${center[0]}`,{signal:controller.signal}).then(r=>{if(!r.ok)return r.json().then(d=>{throw new Error(d.error||'Restroom source is unavailable. Please retry.')});return r.json()}).then(d=>{if(!cancelled)setItems(d.restrooms||[])}).catch(e=>{if(!cancelled&&e.name!=='AbortError')setError(e.message)}).finally(()=>{if(!cancelled){setBusy(false);returnToMap()}});return()=>{cancelled=true;controller.abort()}},[center,returnToMap]);
 useEffect(()=>{let markers:any[]=[];let cancelled=false;(async()=>{const lib=await import('maplibre-gl');const map=(window as any).__washroomMap as MapType|undefined;if(!map||cancelled||!mapReady)return;items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7')).forEach(x=>{const el=document.createElement('button');el.textContent='🚻';el.setAttribute('aria-label',`View ${x.name}`);el.style.cssText='background:white;border:2px solid #0d9488;border-radius:50%;width:36px;height:36px;cursor:pointer';el.onclick=()=>setSelected(x);markers.push(new lib.Marker({element:el}).setLngLat([x.lon,x.lat]).addTo(map))})})();return()=>{cancelled=true;markers.forEach(m=>m.remove())}},[items,filter,mapReady]);
 async function search(e:React.FormEvent){
   e.preventDefault();
   if(searching)return;
+  focusAfterSearch.current=false;
   locationRequest.current++;
   setLocationError('');
   setZoom(12);
@@ -87,6 +101,7 @@ async function search(e:React.FormEvent){
       if(!response.ok)throw new Error(result.error||'ZIP code lookup failed.');
       const origin=result;
       if(!origin||!Number.isFinite(origin.latitude)||!Number.isFinite(origin.longitude))throw new Error('ZIP code lookup returned invalid coordinates.');
+      focusAfterSearch.current=true;
       setCenter([origin.longitude,origin.latitude]);
       return;
     }
@@ -94,16 +109,18 @@ async function search(e:React.FormEvent){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'City or address lookup failed. Please retry.');
     if(!Number.isFinite(d.latitude)||!Number.isFinite(d.longitude))throw new Error('City or address lookup returned invalid coordinates.');
+    focusAfterSearch.current=true;
     setCenter([d.longitude,d.latitude]);
-  }catch(e){setError(e instanceof Error?e.message:'Search failed')}
+  }catch(e){setError(e instanceof Error?e.message:'Search failed');focusAfterSearch.current=true;returnToMap()}
   finally{setSearching(false)}
 }
 const shown=items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7'));
 const hasResults=!busy&&!error&&shown.length>0;
 return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-700 p-3 text-2xl text-white">🚻</span><div><h1 className="text-2xl font-black tracking-tight">Washroom Status USA</h1><p className="text-sm text-slate-500">Find clean restrooms. Travel confidently.</p></div></div><a className="rounded-full bg-teal-700 px-5 py-3 font-bold text-white" href="mailto:washroom.status.usa@gmail.com">Contact us</a></header>
-<div className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+<div ref={mapArea} className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+{locationError&&<p role="alert" className="order-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 lg:order-4 lg:col-span-2">{locationError}</p>}
 <section className="panel relative z-20 order-2 lg:order-1 lg:col-span-2"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2">
-<AddressSearch value={city} onChange={setCity} searching={searching} onSelect={suggestion=>{locationRequest.current++;setLocationError('');setError('');setZoom(12);setCenter([suggestion.longitude,suggestion.latitude])}}/>
+<AddressSearch value={city} onChange={setCity} searching={searching} onSelect={suggestion=>{focusAfterSearch.current=true;locationRequest.current++;setLocationError('');setError('');setZoom(12);setCenter([suggestion.longitude,suggestion.latitude])}}/>
 <button type="button" onClick={locate} className="pill" aria-label="Use my location"><LocateFixed/></button></form><div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section>
 <div className="order-1 min-w-0 lg:order-2">
 <div className="relative isolate" aria-busy={searching||busy}>
@@ -115,9 +132,8 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
     </div>
   </div>}
 </div>
-{locationError&&<p role="alert" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{locationError}</p>}
 <p className="mt-2 text-xs text-slate-500">Map data and tiles © OpenStreetMap contributors. Availability and cleanliness are not verified live.</p></div>
-<section className={`panel min-w-0 lg:order-3 ${hasResults?'order-0':'order-3'}`}>
+<section className={`panel min-w-0 lg:order-3 ${hasResults||error?'order-0':'order-3'}`}>
 <div className="flex items-center justify-between gap-2">
 <h2 className="text-xl font-bold">Nearby restrooms{hasResults&&<span className="lg:hidden"> ({shown.length})</span>}</h2>
 {hasResults&&shown.length>1&&<div className="flex gap-1 lg:hidden">
