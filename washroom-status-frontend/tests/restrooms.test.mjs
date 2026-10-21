@@ -43,7 +43,7 @@ test('restroom HTTP calls use the gateway and map Places API fields for the UI',
     assert.equal(url.pathname, '/functions/v1/gateway/places/bathrooms');
     assert.equal(url.searchParams.get('lat'), '39.9526');
     assert.equal(url.searchParams.get('lon'), '-75.1652');
-    assert.equal(url.searchParams.get('radius'), '1000');
+    assert.equal(url.searchParams.get('radius'), '1609.344');
     const headers = new Headers(init.headers);
     assert.equal(headers.get('apikey'), 'sb_publishable_test');
     assert.equal(headers.get('x-washroom-gateway-secret'), null);
@@ -96,6 +96,7 @@ test('ZIP lookups preserve leading zeros and return resolved coordinates', async
     const url = new URL(input);
     assert.equal(url.pathname, '/functions/v1/gateway/places/bathrooms');
     assert.equal(url.searchParams.get('zip'), '02108');
+    assert.equal(url.searchParams.get('radius'), '1609.344');
     assert.equal(url.searchParams.get('countryCode'), 'us');
     assert.equal(url.searchParams.has('lat'), false);
     assert.equal(url.searchParams.has('lon'), false);

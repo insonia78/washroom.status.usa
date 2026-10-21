@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       url.searchParams.set('lat', String(lat));
       url.searchParams.set('lon', String(lon));
     }
-    url.searchParams.set('radius', '1000');
+    url.searchParams.set('radius', '1609.344');
     const response = await gatewayFetch(url.pathname + url.search, { headers: { Accept: 'application/json' } });
     if (!response.ok) {
       console.error('Restroom gateway returned an error:', response.status);

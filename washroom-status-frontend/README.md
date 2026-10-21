@@ -18,7 +18,7 @@ npm run dev
    The server derives the gateway URL from the Supabase project URL. Optionally set server-only `WASHROOM_GATEWAY_URL` to a different gateway base URL, such as `http://127.0.0.1:55321/functions/v1/gateway`.
    Public restroom searches do not require an API key when gateway JWT verification is disabled; an API key is forwarded when configured. Supabase sign-in and reviews still require the public key.
    Deploy `gateway`, `places-api`, and `frontend-api`. Set `PLACES_API_URL` and `FRONTEND_API_URL` to the respective function base URLs, and the same `GATEWAY_INTERNAL_SECRET` for all three functions. Never send that internal secret from the frontend. All three use `verify_jwt = false` in the checked-in Supabase config; backend functions enforce the internal gateway headers.
-   Searches use a 1,000-meter radius. Places API searches stored restrooms first, then Overpass when there are no stored matches, so searches are no longer blocked outside Philadelphia.
+   Searches use a 1-mile radius (1,609.344 meters). Places API searches stored restrooms first, then Overpass when there are no stored matches, so searches are no longer blocked outside Philadelphia.
 4. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` in the edge-function environment. Next.js does not need database credentials or a service-role key. Never put service-role keys in browser code, Git, or any `NEXT_PUBLIC_` variable.
 5. Visit localhost:3000, select a real restroom, sign in with a magic link, submit a review. It will be saved as **pending**. In Supabase Table Editor, manually change `status` to `approved` after moderation. Only approved reviews are displayed.
 
