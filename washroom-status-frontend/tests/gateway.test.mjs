@@ -74,6 +74,24 @@ test('city geocoding and boundary data follow the gateway; arbitrary backend pat
   }
 });
 
+test('address and ZIP suggestions preserve query parameters through the gateway', async () => {
+  for (const query of ['suggest=1&q=1600%20Pennsylvania%20Washington', 'suggest=1&zip=02108']) {
+    const body = { suggestions: [{ label: 'Test address, USA', latitude: 38.9, longitude: -77.03 }] };
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.pathname, '/functions/v1/gateway/frontend/geocode');
+      assert.equal(url.searchParams.get('suggest'), '1');
+      assert.deepEqual([...url.searchParams], [...new URLSearchParams(query)]);
+      return Response.json(body);
+    };
+    const response = await backendGet(new Request(`http://localhost/api/backend/geocode?${query}`), {
+      params: Promise.resolve({ path: ['geocode'] }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), body);
+  }
+});
+
 test('Supabase SDK HTTP calls are rewritten to same-origin gateway-backed auth routes', async () => {
   for (const endpoint of ['otp', 'verify', 'token', 'logout', 'user']) {
     globalThis.fetch = async (input, init) => {

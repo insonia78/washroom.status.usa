@@ -143,16 +143,20 @@ export default {
       if (path.startsWith("/auth/")) return await auth(req, path);
       if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
       if (path === "/geocode") {
+        const suggest = new URL(req.url).searchParams.get("suggest") === "1";
         const zip = new URL(req.url).searchParams.get("zip");
         if (zip !== null) {
           const origin = await geocodeZipCode(zip.trim());
           if (!origin) throw new ApiError(404, "No matching US ZIP code found.");
+          if (suggest) return json(200, { suggestions: [{
+            label: `ZIP ${origin.zipCode}, USA`, latitude: origin.latitude, longitude: origin.longitude,
+          }] });
           return json(200, { latitude: origin.latitude, longitude: origin.longitude, zipCode: origin.zipCode });
         }
         const query = new URL(req.url).searchParams.get("q")?.trim();
         if (!query || query.length > 200) throw new ApiError(400, "Provide a US city or address (up to 200 characters).");
         const url = new URL("https://photon.komoot.io/api/");
-        url.search = new URLSearchParams({ limit: "1", countrycode: "US", lang: "en", q: query }).toString();
+        url.search = new URLSearchParams({ limit: suggest ? "5" : "1", countrycode: "US", lang: "en", q: query }).toString();
         const response = await upstream(url, { headers: { "User-Agent": "WashroomStatusUSA/1.0" } });
         if (!response.ok) {
           console.error("City geocoder failed", { status: response.status });
@@ -160,17 +164,27 @@ export default {
         }
         const results: unknown = await response.json();
         if (!isRecord(results) || !Array.isArray(results.features)) throw new ApiError(502, "Invalid geocoding response");
-        if (!results.features.length) throw new ApiError(404, "No matching US city or address found.");
-        const first: unknown = results.features[0];
-        if (!isRecord(first) || !isRecord(first.geometry) ||
-          first.geometry.type !== "Point" || !Array.isArray(first.geometry.coordinates) ||
-          !isRecord(first.properties) || String(first.properties.countrycode).toUpperCase() !== "US") {
-          throw new ApiError(502, "Invalid US geocoding result");
-        }
-        const [longitude, latitude] = first.geometry.coordinates;
-        if (typeof latitude !== "number" || typeof longitude !== "number" ||
-          !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
-          Math.abs(latitude) > 90 || Math.abs(longitude) > 180) throw new ApiError(502, "Invalid geocoding coordinates");
+        if (!results.features.length && !suggest) throw new ApiError(404, "No matching US city or address found.");
+        const suggestions = results.features.slice(0, suggest ? 5 : 1).map((first: unknown) => {
+          if (!isRecord(first) || !isRecord(first.geometry) ||
+            first.geometry.type !== "Point" || !Array.isArray(first.geometry.coordinates) ||
+            !isRecord(first.properties) || String(first.properties.countrycode).toUpperCase() !== "US") {
+            throw new ApiError(502, "Invalid US geocoding result");
+          }
+          const [longitude, latitude] = first.geometry.coordinates;
+          if (typeof latitude !== "number" || typeof longitude !== "number" ||
+            !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+            Math.abs(latitude) > 90 || Math.abs(longitude) > 180) throw new ApiError(502, "Invalid geocoding coordinates");
+          const properties = first.properties;
+          const street = [properties.housenumber, properties.street]
+            .filter(value => typeof value === "string" && value.trim()).join(" ");
+          const parts = [properties.name, street, properties.city || properties.town || properties.village,
+            properties.state, properties.postcode, "USA"]
+            .filter((value): value is string => typeof value === "string" && !!value.trim());
+          return { latitude, longitude, label: [...new Set(parts)].join(", ") };
+        });
+        if (suggest) return json(200, { suggestions });
+        const { latitude, longitude } = suggestions[0];
         return json(200, { latitude, longitude });
       }
       if (path === "/map-boundary") {

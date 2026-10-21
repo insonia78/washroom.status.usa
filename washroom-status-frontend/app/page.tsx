@@ -1,10 +1,12 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {MapPin,Search,Accessibility,Clock3,ShieldCheck,LocateFixed} from 'lucide-react';
+import {MapPin,Accessibility,Clock3,ShieldCheck,LocateFixed} from 'lucide-react';
 import type {Map as MapType} from 'maplibre-gl';
 import RestroomDetails, {type Restroom} from '@/components/RestroomDetails';
+import AddressSearch from '@/components/AddressSearch';
 
 export default function Home(){const [city,setCity]=useState('Philadelphia, PA');const [items,setItems]=useState<Restroom[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [filter,setFilter]=useState('all');const [center,setCenter]=useState<[number,number]>([-75.1652,39.9526]);const [selected,setSelected]=useState<Restroom|null>(null);const [mapReady,setMapReady]=useState(false);
+const [searching,setSearching]=useState(false);
 useEffect(()=>{let map:MapType|undefined;let markers:any[]=[];let alive=true;(async()=>{const lib=await import('maplibre-gl');if(!alive)return;map=new lib.Map({container:'restroom-map',style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'}},layers:[{id:'osm',type:'raster',source:'osm'}]},center,zoom:12,minZoom:3,maxZoom:19});map.addControl(new lib.NavigationControl(),'top-right');map.on('load',()=>{if(alive)setMapReady(true)});map.on('error',e=>console.error('MapLibre error:',e.error));// Shade every area outside the US. The mask is derived from actual US
 // boundaries, including Alaska and Hawaii, instead of rectangular bounds.
 // If the boundary service fails, the map remains usable without the mask.
@@ -30,6 +32,8 @@ useEffect(()=>{let cancelled=false;setBusy(true);setError('');setItems([]);setSe
 useEffect(()=>{let markers:any[]=[];let cancelled=false;(async()=>{const lib=await import('maplibre-gl');const map=(window as any).__washroomMap as MapType|undefined;if(!map||cancelled||!mapReady)return;items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7')).forEach(x=>{const el=document.createElement('button');el.textContent='🚻';el.setAttribute('aria-label',`View ${x.name}`);el.style.cssText='background:white;border:2px solid #0d9488;border-radius:50%;width:36px;height:36px;cursor:pointer';el.onclick=()=>setSelected(x);markers.push(new lib.Marker({element:el}).setLngLat([x.lon,x.lat]).addTo(map))})})();return()=>{cancelled=true;markers.forEach(m=>m.remove())}},[items,filter,mapReady]);
 async function search(e:React.FormEvent){
   e.preventDefault();
+  if(searching)return;
+  setSearching(true);
   setError('');
   const query=city.trim();
   try{
@@ -49,10 +53,23 @@ async function search(e:React.FormEvent){
     if(!Number.isFinite(d.latitude)||!Number.isFinite(d.longitude))throw new Error('City or address lookup returned invalid coordinates.');
     setCenter([d.longitude,d.latitude]);
   }catch(e){setError(e instanceof Error?e.message:'Search failed')}
+  finally{setSearching(false)}
 }
 function locate(){navigator.geolocation?.getCurrentPosition(p=>{const {longitude,latitude}=p.coords;if(longitude < -179||longitude > -65||latitude < 17||latitude > 72){setError('Your location is outside the US map. Search for a US city instead.');return}setCenter([longitude,latitude])},()=>setError('Location permission denied. Search a US city instead.'))}
 const shown=items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7'));
-return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-700 p-3 text-2xl text-white">🚻</span><div><h1 className="text-2xl font-black tracking-tight">Washroom Status USA</h1><p className="text-sm text-slate-500">Find clean restrooms. Travel confidently.</p></div></div><a className="rounded-full bg-teal-700 px-5 py-3 font-bold text-white" href="mailto:washroom.status.usa@gmail.com">Contact us</a></header><section className="panel mb-5"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2"><label className="flex min-w-52 flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3"><Search size={19}/><input className="w-full py-3 outline-none" aria-label="US city or address" value={city} onChange={e=>setCity(e.target.value)}/></label><button className="rounded-xl bg-teal-700 px-6 py-3 font-bold text-white">Search</button><button type="button" onClick={locate} className="pill" aria-label="Use my location"><LocateFixed/></button></form><div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section><div className="grid gap-5 lg:grid-cols-[1.45fr_1fr]"><div><div id="restroom-map" className="h-[420px] w-full rounded-2xl border border-slate-200 bg-slate-100" aria-label="Interactive restroom map"/><p className="mt-2 text-xs text-slate-500">Map data and tiles © OpenStreetMap contributors. Availability and cleanliness are not verified live.</p></div><section className="panel"><h2 className="text-xl font-bold">Nearby restrooms</h2><p className="mb-4 text-sm text-slate-500">OpenStreetMap locations · no fabricated ratings</p>
+return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-700 p-3 text-2xl text-white">🚻</span><div><h1 className="text-2xl font-black tracking-tight">Washroom Status USA</h1><p className="text-sm text-slate-500">Find clean restrooms. Travel confidently.</p></div></div><a className="rounded-full bg-teal-700 px-5 py-3 font-bold text-white" href="mailto:washroom.status.usa@gmail.com">Contact us</a></header><section className="panel mb-5"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2">
+<AddressSearch value={city} onChange={setCity} searching={searching} onSelect={suggestion=>{setError('');setCenter([suggestion.longitude,suggestion.latitude])}}/>
+<button disabled={searching} className="rounded-xl bg-teal-700 px-6 py-3 font-bold text-white disabled:opacity-50">Search</button><button type="button" onClick={locate} className="pill" aria-label="Use my location"><LocateFixed/></button></form><div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section><div className="grid gap-5 lg:grid-cols-[1.45fr_1fr]"><div>
+<div className="relative isolate" aria-busy={searching||busy}>
+  <div id="restroom-map" className="h-[420px] w-full rounded-2xl border border-slate-200 bg-slate-100" aria-label="Interactive restroom map"/>
+  {(searching||busy)&&<div role="status" aria-live="polite" aria-label="Map search progress" className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/40">
+    <div className="flex max-w-[85%] items-center gap-3 rounded-xl bg-white p-4 text-sm font-semibold text-teal-900 shadow-lg">
+      <span aria-hidden="true" className="h-8 w-8 shrink-0 animate-spin rounded-full border-4 border-teal-200 border-t-teal-700 motion-reduce:animate-none"/>
+      <p>{searching?'Finding your location...':'Retrieving restroom locations...'}</p>
+    </div>
+  </div>}
+</div>
+<p className="mt-2 text-xs text-slate-500">Map data and tiles © OpenStreetMap contributors. Availability and cleanliness are not verified live.</p></div><section className="panel"><h2 className="text-xl font-bold">Nearby restrooms</h2><p className="mb-4 text-sm text-slate-500">OpenStreetMap locations · no fabricated ratings</p>
 {busy&&<div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl bg-teal-50 p-4 text-sm text-teal-900">
   <span aria-hidden="true" className="h-6 w-6 shrink-0 animate-spin rounded-full border-[3px] border-teal-200 border-t-teal-700 motion-reduce:animate-none"/>
   <p>Retrieving restroom locations. Checking OpenStreetMap / Overpass may take a few seconds.</p>

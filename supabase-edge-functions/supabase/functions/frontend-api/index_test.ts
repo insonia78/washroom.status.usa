@@ -130,6 +130,35 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       assert((await api.fetch(request("/geocode?q=Unknown"))).status === 502, "Non-US results must fail");
     });
 
+    await t.step("address suggestions provide bounded labeled US results and explicit failures", async () => {
+      globalThis.fetch = async input => {
+        const url = new URL(String(input));
+        assert(url.hostname === "photon.komoot.io" && url.searchParams.get("limit") === "5", "Suggestion provider and limit");
+        assert(url.searchParams.get("countrycode") === "US" && url.searchParams.get("q") === "123 Main Boston", "US address query");
+        return Response.json({ features: [
+          { geometry: { type: "Point", coordinates: [-71.06, 42.36] },
+            properties: { countrycode: "US", housenumber: "123", street: "Main Street", city: "Boston", state: "Massachusetts", postcode: "02108" } },
+          { geometry: { type: "Point", coordinates: [-71.07, 42.37] },
+            properties: { countrycode: "US", name: "Boston", city: "Boston", state: "Massachusetts" } },
+        ] });
+      };
+      const response = await api.fetch(request("/geocode?q=123%20Main%20Boston&suggest=1"));
+      const body = await response.json();
+      assert(response.status === 200 && body.suggestions.length === 2, "Multiple address suggestions");
+      assert(body.suggestions[0].label === "123 Main Street, Boston, Massachusetts, 02108, USA", "Complete address label");
+      assert(body.suggestions[0].latitude === 42.36 && body.suggestions[1].longitude === -71.07, "Selectable coordinates");
+      assert(body.suggestions[1].label === "Boston, Massachusetts, USA", "Deduplicate label parts");
+      globalThis.fetch = async () => Response.json({ features: [] });
+      const empty = await api.fetch(request("/geocode?q=Unknown&suggest=1"));
+      assert(empty.status === 200 && (await empty.json()).suggestions.length === 0, "Confirmed no suggestions");
+      globalThis.fetch = async () => new Response("Unavailable", { status: 503 });
+      assert((await api.fetch(request("/geocode?q=Boston&suggest=1"))).status === 502, "Provider failure is not an empty success");
+      globalThis.fetch = async () => Response.json({ features: [
+        { geometry: { type: "Point", coordinates: [-71, 42] }, properties: { countrycode: "CA" } },
+      ] });
+      assert((await api.fetch(request("/geocode?q=Boston&suggest=1"))).status === 502, "Reject non-US suggestions");
+    });
+
     await t.step("ZIP 43085 resolves without database or Overpass requests", async () => {
       let calls = 0;
       globalThis.fetch = async input => {
@@ -142,6 +171,10 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       const result = await response.json();
       assert(response.status === 200 && result.latitude === 40.0999 && result.longitude === -83.0157, "ZIP coordinates");
       assert(calls === 1, "ZIP resolution must not wait for restroom discovery");
+      const suggestions = await api.fetch(request("/geocode?zip=43085&suggest=1"));
+      const suggestionBody = await suggestions.json();
+      assert(suggestions.status === 200 && suggestionBody.suggestions[0].label === "ZIP 43085, USA" &&
+        suggestionBody.suggestions[0].latitude === 40.0999, "ZIP suggestions reuse cached ZIP origin");
       const invalid = await api.fetch(request("/geocode?zip=1234"));
       assert(invalid.status === 400 && calls === 1, "Reject malformed ZIP before upstream calls");
       globalThis.fetch = async () => new Response(null, { status: 404 });

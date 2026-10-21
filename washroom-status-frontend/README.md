@@ -34,10 +34,21 @@ npm run dev
 ## ZIP code searches
 
 Enter a five-digit US ZIP code in the search box to recenter the map.
+Address suggestions appear after typing at least three characters (or a complete
+five-digit ZIP), with a 400 ms debounce. Select a suggestion with the mouse or
+Arrow Up/Down and Enter; Escape closes the list. Selection recenters the map and
+loads nearby restrooms without a second geocoding request. Suggestions and their
+errors use `/api/backend/geocode?suggest=1` through the gateway; no browser calls
+go directly to the geocoder. The frontend-api function must be deployed for this
+response format. The Search button still supports ordinary city/address/ZIP queries.
+Use the **Clear** button next to **Search** to erase the field's text and return
+focus to the input. Clearing does not submit a search or change the current map
+and restroom results.
 The search box resolves `/api/backend/geocode?zip=43085` through
 `gateway/frontend/geocode` before loading restrooms separately by coordinates.
 This moves the map even if the restroom database/Overpass lookup is slow or fails.
-While restroom results load, the nearby-results panel displays a circular spinner
+While a search resolves and restroom results load, a circular spinner is centered
+over the map without blocking map controls. The nearby-results panel also displays a circular spinner
 and a screen-reader status message. The spinner stops on completion; unsuccessful
 requests display an error with a **Retry loading** button instead of a no-results
 message. Spinner animation respects reduced-motion preferences.

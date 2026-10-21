@@ -21,7 +21,7 @@ Deno.test("Overpass bounds stalled requests, retries, and caches only complete r
   try {
     await t.step("43085 retries a stalled primary and caches a confirmed empty result", async () => {
       const query = buildOverpassQuery(40.0999, -83.0157, "1000", "bathrooms")
-      assert(query.includes("[timeout:10]"), "Server query must fit the client deadline")
+      assert(query.includes("[timeout:15]"), "Server query must allow 15 seconds within the 18 second client deadline")
       let calls = 0
       globalThis.fetch = (input, init) => {
         assert(init?.signal instanceof AbortSignal, "Every attempt needs an abort signal")
@@ -34,8 +34,9 @@ Deno.test("Overpass bounds stalled requests, retries, and caches only complete r
       }
       assert((await fetchOverpassData(query)).length === 0, "Confirmed no matches is a valid result")
       assert((await fetchOverpassData(query)).length === 0 && calls === 2, "Cache successful empty results")
-      assert(deadlines.length === 2 && deadlines.every(value => value === OVERPASS_REQUEST_TIMEOUT_MS),
-        "Each endpoint must use the configured 12 second deadline")
+      assert(OVERPASS_REQUEST_TIMEOUT_MS === 18_000 &&
+        deadlines.length === 2 && deadlines.every(value => value === 18_000),
+        "Each endpoint must use an 18 second deadline")
     })
 
     await t.step("the deadline also covers a stalled response body", async () => {

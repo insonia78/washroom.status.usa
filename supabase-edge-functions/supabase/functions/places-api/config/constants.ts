@@ -5,8 +5,8 @@ export const OVERPASS_URLS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.private.coffee/api/interpreter"
 ] as const
-export const OVERPASS_REQUEST_TIMEOUT_MS = 12_000
-export const OVERPASS_QUERY_TIMEOUT_SECONDS = 10
+export const OVERPASS_REQUEST_TIMEOUT_MS = 18_000
+export const OVERPASS_QUERY_TIMEOUT_SECONDS = 15
 export const ZIPPOTAM_URL = "https://api.zippopotam.us"
 export const OVERPASS_HEADERS = {
   "User-Agent": "WashroomStatusUSA/1.0 (washroom.status.usa@gmail.com)"
