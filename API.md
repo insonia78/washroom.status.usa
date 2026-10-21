@@ -1,6 +1,24 @@
 # Places API
 
-Frontend integration guide for the Supabase Edge Function [places-api](<C:/Users/default.LAPTOP-J5GV1TT8/OneDrive/Documenti/a_csc training/codyza/washroom.status.usa/supabase-edge-functions/supabase/functions/places-api>).
+## Application gateway boundary
+
+Next.js proxies all application API calls through `gateway`; database queries
+run only in edge backends. `/places/*` routes forward to `places-api`.
+The gateway also exposes `/frontend/reviews` (GET/POST), `/frontend/geocode`
+(GET, `q` query), `/frontend/map-boundary` (GET), and allowlisted
+`/frontend/auth/v1/*` routes for magic-link Supabase Auth. These forward to the
+internal `frontend-api` function using `GATEWAY_INTERNAL_SECRET`.
+Configure `FRONTEND_API_URL` or let the gateway derive it from `PLACES_API_URL`.
+Deploy both the updated gateway and `frontend-api` before using these routes.
+OpenStreetMap tile requests are the only permitted direct external browser
+connections; map boundaries and city geocoding are gateway-backed.
+
+Frontend integration guide for Places API through the Supabase gateway.
+
+Request flow: `frontend -> gateway -> places-api`. The Next.js frontend uses
+`/api/restrooms` as a server-side adapter to `/gateway/places/bathrooms`; it does
+not read the restrooms table directly. The gateway removes the `/places` prefix
+and adds internal authorization headers before forwarding to Places API.
 
 This documentation is intentionally limited to the **POST** endpoints a frontend should call.
 
@@ -9,18 +27,27 @@ This documentation is intentionally limited to the **POST** endpoints a frontend
 ### Hosted
 
 ```text
-https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/places-api/
+https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/gateway/places/
 ```
 
 ### Local
 
 ```text
-http://127.0.0.1:55321/functions/v1/places-api/
+http://127.0.0.1:55321/functions/v1/gateway/places/
 ```
 
 ## Authentication
 
-Hosted Supabase function requests should include:
+The bathroom and overpass gateway routes are public; an application JWT is not
+required. The frontend adapter sends the project publishable/anon key in `apikey`.
+When using a publishable (`sb_publishable_...`) key, do not use it as a Bearer JWT.
+Direct Places API calls are internal-only: the gateway supplies the shared
+`GATEWAY_INTERNAL_SECRET` headers. Never expose that secret to the browser.
+Configure `PLACES_API_URL` on the gateway to the Places API function base URL.
+
+For hosted gateway requests, send `apikey`, `Content-Type`, and `Accept`.
+If using a JWT anon key or a valid access token, the optional Authorization header
+can also be included:
 
 ```http
 apikey: <supabase publishable key>
@@ -29,7 +56,7 @@ Content-Type: application/json
 Accept: application/json
 ```
 
-Local requests typically only need:
+Local gateway requests use the same API key header in addition to:
 
 ```http
 Content-Type: application/json
@@ -63,14 +90,14 @@ Send **either**:
 |---|---|---:|---|
 | `lat` | string \| number | with `lon` | Latitude |
 | `lon` | string \| number | with `lat` | Longitude |
-| `zip` | string | alternative | US ZIP or other postal code |
-| `countryCode` | string | no | Defaults to `us` |
+| `zip` | string | alternative | Five-digit US ZIP code; preserve leading zeros |
+| `countryCode` | string | no | Only `us` (case-insensitive); defaults to `us`. Other values return HTTP 400 |
 | `radius` | string \| number | no | Search radius in meters, default `1000` |
 
 ### Example: coordinates
 
 ```http
-POST /functions/v1/places-api/bathrooms
+POST /functions/v1/gateway/places/bathrooms
 Content-Type: application/json
 ```
 
@@ -107,15 +134,15 @@ Searches for:
 |---|---|---:|---|
 | `lat` | string \| number | with `lon` | Latitude |
 | `lon` | string \| number | with `lat` | Longitude |
-| `zip` | string | alternative | US ZIP or other postal code |
-| `countryCode` | string | no | Defaults to `us` |
+| `zip` | string | alternative | Five-digit US ZIP code; preserve leading zeros |
+| `countryCode` | string | no | Only `us` (case-insensitive); defaults to `us`. Other values return HTTP 400 |
 | `radius` | string \| number | no | Search radius in meters, default `1000` |
 | `mode` | string | no | `bathrooms`, `shops`, or `all`; default `all` |
 
 ### Example: bathrooms + shops
 
 ```http
-POST /functions/v1/places-api/overpass
+POST /functions/v1/gateway/places/overpass
 Content-Type: application/json
 ```
 
@@ -306,11 +333,43 @@ Content-Type: application/json
 
 - Use `POST /bathrooms` when you want restroom-only results.
 - Use `POST /overpass` when you want mixed results or shops-only results.
+- Restroom searches check `public.restrooms` in Supabase first; if no nearby rows match, the API searches Overpass. Database errors are returned instead of being treated as cache misses.
+- Overpass tries the main service, then the independent `overpass.private.coffee` service. Each request (including response-body reading) has a 12-second network deadline and a 10-second server query timeout, for at most 24 seconds of Overpass attempts. Provider errors and partial results are not cached or reported as no matches; exhausted timeouts return HTTP 504, other exhausted failures HTTP 502. A complete successful empty result means no mapped restrooms within the requested radius (1 km in the frontend).
+- Queries use form-encoded POST requests with an application-specific User-Agent. The public fallback remains enabled, but availability is not guaranteed: an outage displays a retryable error, not an empty list or stale results from the previous location.
+- Database matches are returned as the source result without an Overpass request. For `/overpass` with `mode: "all"`, a database match contains restroom rows only; shops are searched from Overpass when there are no nearby database restrooms. `mode: "shops"` goes directly to Overpass because `public.restrooms` stores restrooms, not shops.
+- The Edge Function uses Supabase's server-side `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables to read `public.restrooms`; do not expose the service-role key to clients.
 - Use `searchOrigin` as the map center after ZIP-based searches.
 - Use `placeType` to switch markers/icons in the UI.
 - Treat `wheelchair`, `changingTable`, `unisex`, and `toilets` as best-effort metadata.
-- For US ZIP codes, the function tries a US ZIP geocoder before falling back to Nominatim.
+- ZIP lookup supports only five-digit US ZIP codes and uses Zippopotam (`https://api.zippopotam.us/us/{zip}`), with no API key or geocoder environment variables required. Non-US `countryCode` values and invalid ZIP formats return HTTP 400 before any upstream lookup. Geocoding results are cached in memory for up to 24 hours per function instance; upstream errors are returned explicitly. Coordinate searches retain their existing behavior and do not enforce geographic boundaries.
 - The Supabase function supports both `GET` and `POST`, but this contract is intentionally documented as **POST-only** for frontend consistency.
+
+## ZIP geocoder configuration
+
+Keep sending a single ZIP code as a string:
+
+```json
+{
+  "zip": "10001",
+  "countryCode": "us",
+  "radius": "1500"
+}
+```
+
+For US ZIP searches (`countryCode` omitted or `us`), deploy the updated function from the `supabase-edge-functions` directory:
+
+```sh
+supabase functions deploy gateway
+supabase functions deploy places-api
+```
+
+No geocoder secrets are required for US ZIP searches. Restroom database searches still require the existing Supabase environment variables.
+
+Set `PLACES_API_URL` on the gateway and configure the same `GATEWAY_INTERNAL_SECRET`
+for both edge functions. Use the checked-in `verify_jwt = false` configuration;
+Places API still requires the internal gateway authorization headers.
+
+Non-US postal codes are not supported. Nominatim is no longer used, and any previously configured `NOMINATIM_URL` is ignored.
 
 ## Suggested frontend TypeScript types
 
@@ -332,6 +391,7 @@ type PlaceResult = {
   access: string;
   fee: string;
   wheelchair: string;
+  openingHours?: string;
   changingTable: string;
   unisex: string;
   toilets: string;

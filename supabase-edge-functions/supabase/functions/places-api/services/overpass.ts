@@ -1,4 +1,4 @@
-import { ANSI_COLORS, OVERPASS_CACHE_TTL_MS, OVERPASS_HEADERS, OVERPASS_URLS } from "../config/constants.ts"
+import { ANSI_COLORS, OVERPASS_CACHE_TTL_MS, OVERPASS_HEADERS, OVERPASS_QUERY_TIMEOUT_SECONDS, OVERPASS_REQUEST_TIMEOUT_MS, OVERPASS_URLS } from "../config/constants.ts"
 import type { OverpassElement } from "../models/types.ts"
 import { getCachedValue, setCachedValue } from "../utils/cache.ts"
 import { RequestError } from "../utils/errors.ts"
@@ -12,17 +12,21 @@ export async function fetchOverpassData(query: string): Promise<OverpassElement[
   }
 
   let lastErrorMessage = "Unknown Overpass error"
+  let lastRequestTimedOut = false
 
   for (const overpassBaseUrl of OVERPASS_URLS) {
     const overpassUrl = new URL(overpassBaseUrl)
-    overpassUrl.searchParams.set("data", query)
+    lastRequestTimedOut = false
+    const signal = AbortSignal.timeout(OVERPASS_REQUEST_TIMEOUT_MS)
 
     try {
       logWithColor("overpass", ANSI_COLORS.cyan, `Trying endpoint: ${overpassBaseUrl}`)
       logWithColor("overpass", ANSI_COLORS.cyan, `Query: ${query}`)
       const response = await fetch(overpassUrl, {
-        method: "GET",
-        headers: OVERPASS_HEADERS
+        method: "POST",
+        headers: OVERPASS_HEADERS,
+        body: new URLSearchParams({ data: query }),
+        signal
       })
 
       logWithColor("overpass", ANSI_COLORS.cyan, `Response status: ${response.status}`)
@@ -34,12 +38,17 @@ export async function fetchOverpassData(query: string): Promise<OverpassElement[
         continue
       }
 
-      const data = await response.json() as { elements?: OverpassElement[] }
-      logWithColor("overpass", ANSI_COLORS.cyan, `Elements returned: ${data.elements?.length || 0}`)
-      const elements = data.elements || []
+      const data: unknown = await response.json()
+      if (typeof data !== "object" || data === null ||
+        !("elements" in data) || !Array.isArray(data.elements) || "remark" in data) {
+        throw new Error("Overpass returned an incomplete or invalid result.")
+      }
+      const elements = data.elements as OverpassElement[]
+      logWithColor("overpass", ANSI_COLORS.cyan, `Elements returned: ${elements.length}`)
       setCachedValue("overpass", query, elements, OVERPASS_CACHE_TTL_MS)
       return elements
     } catch (error) {
+      lastRequestTimedOut = signal.aborted
       lastErrorMessage = error instanceof Error ? error.message : "Unknown Overpass fetch error"
       logError("overpass", `Endpoint request failed: ${overpassBaseUrl}`, {
         query,
@@ -48,7 +57,10 @@ export async function fetchOverpassData(query: string): Promise<OverpassElement[
     }
   }
 
-  throw new RequestError(502, `All Overpass endpoints failed. Last error: ${lastErrorMessage}`)
+  throw new RequestError(
+    lastRequestTimedOut ? 504 : 502,
+    `All Overpass endpoints failed. Last error: ${lastErrorMessage}`,
+  )
 }
 
 export function buildOverpassQuery(latitude: number, longitude: number, radiusValue: string, modeValue: string) {
@@ -62,7 +74,7 @@ export function buildOverpassQuery(latitude: number, longitude: number, radiusVa
     querySegments.push(`nwr["shop"]["toilets"="yes"](around:${radiusValue}, ${latitude}, ${longitude});`)
   }
 
-  return `[out:json][timeout:30];(${querySegments.join("")});out center tags;`
+  return `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_SECONDS}];(${querySegments.join("")});out center tags;`
 }
 
 export function formatOverpassElement(element: OverpassElement) {
@@ -78,6 +90,7 @@ export function formatOverpassElement(element: OverpassElement) {
     access: tags.access || "public",
     fee: tags.fee || "no",
     wheelchair: tags.wheelchair || tags["toilets:wheelchair"] || "unknown",
+    openingHours: tags.opening_hours || undefined,
     changingTable: tags.changing_table || "no",
     unisex: tags.unisex || "unknown",
     toilets: tags.toilets || (hasShopTag ? "yes" : "unknown"),

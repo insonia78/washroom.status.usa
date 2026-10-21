@@ -1,4 +1,8 @@
 ﻿export const supportedRoutes = [
+  { pattern: /^\/frontend\/reviews\/?$/, methods: ["GET", "POST"] },
+  { pattern: /^\/frontend\/(geocode|map-boundary)\/?$/, methods: ["GET"] },
+  { pattern: /^\/frontend\/auth\/v1\/(otp|verify|token|logout)\/?$/, methods: ["POST"] },
+  { pattern: /^\/frontend\/auth\/v1\/user\/?$/, methods: ["GET", "PUT"] },
   {
     pattern: /^\/health\/?$/,
     methods: [

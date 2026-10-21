@@ -77,6 +77,8 @@ const placesApiUrl =
   Deno.env.get("PLACES_API_URL") ??
   deriveSiblingFunctionUrl(jwtCreatorUrl, "places-api") ??
   deriveSiblingFunctionUrl(jwtValidatorUrl, "places-api");
+const frontendApiUrl = Deno.env.get("FRONTEND_API_URL") ??
+  deriveSiblingFunctionUrl(placesApiUrl ?? undefined, "frontend-api");
 
 function logGatewayEvent(level: LogLevel, event: string, details: Record<string, unknown> = {}) {
   const payload = {
@@ -143,6 +145,7 @@ function getConfiguredBackendsSummary() {
   return {
     hasRegistrationApiUrl: Boolean(registrationApiUrl),
     hasPlacesApiUrl: Boolean(placesApiUrl),
+    hasFrontendApiUrl: Boolean(frontendApiUrl),
     hasJwtCreatorUrl: Boolean(jwtCreatorUrl),
     hasJwtRevokeUrl: Boolean(jwtRevokeUrl),
     hasGatewayInternalSecret: Boolean(gatewayInternalSecret),
@@ -253,6 +256,9 @@ function matchRoute(pathname: string) {
 }
 
 function inferService(proxyPath: string): SERVICES | null {
+  if (proxyPath.startsWith(`/${SERVICES.FRONTEND}/`)) {
+    return SERVICES.FRONTEND;
+  }
   if (proxyPath.startsWith(`/${SERVICES.ACCOUNTS}`)) {
     return SERVICES.ACCOUNTS;
   }
@@ -273,6 +279,9 @@ function inferService(proxyPath: string): SERVICES | null {
 }
 
 function resolveBackendUrl(service: SERVICES | null): string | null {
+  if (service === SERVICES.FRONTEND) {
+    return frontendApiUrl ?? null;
+  }
   if (service === SERVICES.ACCOUNTS || service === SERVICES.ADMIN) {
     return registrationApiUrl ?? null;
   }
@@ -308,8 +317,8 @@ function buildTargetUrl(baseUrl: string, proxyPath: string, search: string, serv
   const baseSegments = parsedBaseUrl.pathname.split("/").filter(Boolean);
   const proxySegments = proxyPath.split("/").filter(Boolean);
 
-  // places-api serves /bathrooms and /overpass at its root, so drop the gateway's /places prefix.
-  if (service === SERVICES.PLACES && proxySegments[0] === SERVICES.PLACES) {
+  // Edge APIs serve routes at their root, without the gateway service prefix.
+  if ((service === SERVICES.PLACES || service === SERVICES.FRONTEND) && proxySegments[0] === service) {
     proxySegments.shift();
   }
 
@@ -360,6 +369,7 @@ function buildProxyHeaders(
       service === SERVICES.ACCOUNTS ||
       service === SERVICES.AUTH ||
       service === SERVICES.ADMIN ||
+      service === SERVICES.FRONTEND ||
       service === SERVICES.PLACES
     ) &&
     gatewayInternalSecret
@@ -387,6 +397,10 @@ function isAdminCreatePasswordPath(proxyPath: string) {
 
 function isAccountDeactivatePath(proxyPath: string) {
   return proxyPath === "/accounts/deactivate";
+}
+
+function isPublicPlacesPath(proxyPath: string) {
+  return /^\/places\/(bathrooms|overpass)\/?$/.test(proxyPath);
 }
 
 function getRequestIpAddress(req: Request) {
@@ -1229,7 +1243,7 @@ export default {
 
       if (
         (service === SERVICES.ACCOUNTS && isAccountDeactivatePath(proxyPath)) ||
-        service === SERVICES.PLACES
+        (service === SERVICES.PLACES && !isPublicPlacesPath(proxyPath))
       ) {
         logGatewayEvent("info", "token.validation.started", {
           requestId,

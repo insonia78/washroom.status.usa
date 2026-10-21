@@ -3,16 +3,13 @@ export const FUNCTION_BASE_PATH = `/functions/v1/${FUNCTION_NAME}`
 export const FUNCTION_PATH_PREFIXES = [FUNCTION_BASE_PATH, `/${FUNCTION_NAME}`]
 export const OVERPASS_URLS = [
   "https://overpass-api.de/api/interpreter",
-  "https://lz4.overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter"
+  "https://overpass.private.coffee/api/interpreter"
 ] as const
-export const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+export const OVERPASS_REQUEST_TIMEOUT_MS = 12_000
+export const OVERPASS_QUERY_TIMEOUT_SECONDS = 10
 export const ZIPPOTAM_URL = "https://api.zippopotam.us"
 export const OVERPASS_HEADERS = {
-  "User-Agent": "NodeJSExpressRestroomFinder/1.0 (washroom.status.usa@gmail.com)"
-}
-export const NOMINATIM_HEADERS = {
-  "User-Agent": "NodeJSExpressRestroomFinder/1.0 (washroom.status.usa@gmail.com)"
+  "User-Agent": "WashroomStatusUSA/1.0 (washroom.status.usa@gmail.com)"
 }
 export const OVERPASS_CACHE_TTL_MS = 5 * 60 * 1000
 export const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000

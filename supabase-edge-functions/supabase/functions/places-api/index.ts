@@ -6,6 +6,7 @@
 
 import { handleBathroomsRequest } from "./handlers/bathrooms.ts"
 import { handleOverpassRequest } from "./handlers/overpass.ts"
+import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts"
 import { ANSI_COLORS, corsHeaders } from "./config/constants.ts"
 import { RequestError } from "./utils/errors.ts"
 import { jsonResponse } from "./utils/http.ts"
@@ -20,6 +21,15 @@ export default {
   fetch: async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders })
+    }
+
+    const gatewayAuthorizationError = authorizeGatewayRequest(
+      req,
+      jsonResponse,
+      "places-api",
+    )
+    if (gatewayAuthorizationError) {
+      return gatewayAuthorizationError
     }
 
     if (!["GET", "POST"].includes(req.method)) {

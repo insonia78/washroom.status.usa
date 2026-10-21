@@ -1,4 +1,4 @@
-# Live tests for the deployed `gateway` edge function.
+﻿# Live tests for the deployed `gateway` edge function.
 # Requires the VS Code "REST Client" extension (humao.rest-client).
 #
 # Values are read from ./.env (gitignored). Add these keys there:
@@ -6,18 +6,42 @@
 #   TEST_EMAIL=<an existing account email>
 #   TEST_PASSWORD=<that account's password>
 #
-# Run "Login" first; later requests reuse its token.
+# /places/bathrooms is public (anon key only).
+# Run "Login" before overpass / logout; they reuse its token.
 
 @baseUrl = https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/gateway
-@anonKey = sb_publishable_iVdkOvyOuuPJMmq9KW2zUw_deHttJaa
-@email = test@example.com
-@password = testpassword
+@anonKey = {{$dotenv SUPABASE_ANON_KEY}}
+@email = {{$dotenv TEST_EMAIL}}
+@password = {{$dotenv TEST_PASSWORD}}
 @token = {{login.response.body.token}}
 
-### Health check
+### Health check (GET only - the route rejects POST with 405)
 GET {{baseUrl}}/health
 apikey: {{anonKey}}
 Authorization: Bearer {{anonKey}}
+
+### Bathrooms by ZIP - public
+POST {{baseUrl}}/places/bathrooms
+apikey: {{anonKey}}
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{
+  "zip": "40385",
+  "radius": "1500"
+}
+
+### Bathrooms by coordinates - public
+POST {{baseUrl}}/places/bathrooms
+apikey: {{anonKey}}
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{
+  "lat": "50.7506",
+  "lon": "-73.9972",
+  "radius": "1500"
+}
 
 ### Account access state
 POST {{baseUrl}}/accounts/access
@@ -41,26 +65,10 @@ Content-Type: application/json
   "password": "{{password}}"
 }
 
-### Bathrooms by ZIP (POST)
-POST {{baseUrl}}/places/bathrooms
-apikey: {{anonKey}}
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "zip": "10001",
-  "radius": "1500"
-}
-
-### Bathrooms by coordinates (GET)
-GET {{baseUrl}}/places/bathrooms?lat=40.7506&lon=-73.9972&radius=1500
-apikey: {{anonKey}}
-Authorization: Bearer {{token}}
-
-### Overpass raw results
+### Overpass raw results - public, anon key only
 POST {{baseUrl}}/places/overpass
 apikey: {{anonKey}}
-Authorization: Bearer {{token}}
+Authorization: Bearer {{anonKey}}
 Content-Type: application/json
 
 {
@@ -69,20 +77,13 @@ Content-Type: application/json
   "mode": "all"
 }
 
-### Expect 401 - places without a user token
-POST {{baseUrl}}/places/bathrooms
-apikey: {{anonKey}}
-Content-Type: application/json
-
-{
-  "zip": "10001",
-  "radius": "1500"
-}
-
 ### Expect 404 - legacy weather route is no longer exposed
-GET {{baseUrl}}/weather/status
+POST {{baseUrl}}/weather/dashboard
 apikey: {{anonKey}}
 Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{}
 
 ### Logout (revokes the token)
 POST {{baseUrl}}/auth/logout

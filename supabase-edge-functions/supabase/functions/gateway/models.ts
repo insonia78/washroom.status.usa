@@ -2,5 +2,6 @@
   ACCOUNTS = "accounts",
   PLACES = "places",
   AUTH = "auth",
-  ADMIN = "admin"
+  ADMIN = "admin",
+  FRONTEND = "frontend"
 }

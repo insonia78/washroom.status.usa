@@ -1,0 +1,2 @@
+@import "tailwindcss";
+:root{font-family:Arial,sans-serif;color:#12243b;background:#f6fafb}body{margin:0}button,input{font:inherit}button{cursor:pointer}a{color:inherit}footer{text-align:center;padding:22px;background:#e9f5f5;font-size:14px}footer a{font-weight:800;color:#087f82} .panel{background:white;border:1px solid #dce9eb;border-radius:18px;padding:20px;box-shadow:0 8px 24px #1233 5%} .pill{border:1px solid #d1e4e5;border-radius:100px;padding:8px 12px;background:white} .pill[aria-pressed=true]{background:#d4f4ee;border-color:#159b90} .maplibregl-map{border-radius:16px}

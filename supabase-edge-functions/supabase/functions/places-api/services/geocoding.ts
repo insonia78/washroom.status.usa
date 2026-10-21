@@ -1,104 +1,82 @@
-import { ANSI_COLORS, GEOCODE_CACHE_TTL_MS, NOMINATIM_HEADERS, NOMINATIM_URL, ZIPPOTAM_URL } from "../config/constants.ts"
+import { ANSI_COLORS, GEOCODE_CACHE_TTL_MS, ZIPPOTAM_URL } from "../config/constants.ts"
 import type { PlacesApiRequestInput, SearchOrigin } from "../models/types.ts"
 import { getCachedValue, setCachedValue } from "../utils/cache.ts"
 import { RequestError } from "../utils/errors.ts"
-import { logError, logWithColor } from "../utils/logger.ts"
+import { logWithColor } from "../utils/logger.ts"
 import { parseFiniteNumber } from "../utils/request.ts"
 
-async function geocodeUsZipCode(zipCode: string): Promise<SearchOrigin | null> {
-  const response = await fetch(`${ZIPPOTAM_URL}/us/${encodeURIComponent(zipCode)}`)
+function validateCountryCode(countryCode: string): void {
+  if (countryCode.toLowerCase() !== "us") {
+    throw new RequestError(400, "Only US searches are supported. Use countryCode 'us' or omit it.")
+  }
+}
 
+async function geocodeUsZipCode(url: URL, zipCode: string): Promise<SearchOrigin | null> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
   logWithColor("geocode", ANSI_COLORS.magenta, `Zippopotam response status: ${response.status}`)
 
   if (response.status === 404) {
     return null
   }
-
   if (!response.ok) {
     const errorText = await response.text()
     throw new RequestError(502, `Zippopotam geocoding error ${response.status}: ${errorText}`)
   }
 
-  const result = await response.json() as {
-    places?: Array<{ latitude: string; longitude: string }>
+  const result: unknown = await response.json()
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("places" in result) ||
+    !Array.isArray(result.places)
+  ) {
+    throw new RequestError(502, "Zippopotam geocoding returned an invalid response.")
   }
 
-  const firstPlace = result.places?.[0]
-  if (!firstPlace) {
+  if (result.places.length === 0) {
     return null
   }
-
-  return {
-    latitude: Number.parseFloat(firstPlace.latitude),
-    longitude: Number.parseFloat(firstPlace.longitude),
-    source: "zip",
-    zipCode,
-    countryCode: "us"
+  const place: unknown = result.places[0]
+  if (
+    typeof place !== "object" ||
+    place === null ||
+    !("latitude" in place) ||
+    !("longitude" in place) ||
+    typeof place.latitude !== "string" ||
+    typeof place.longitude !== "string"
+  ) {
+    throw new RequestError(502, "Zippopotam geocoding returned invalid coordinates.")
   }
+
+  const latitude = Number(place.latitude)
+  const longitude = Number(place.longitude)
+  if (
+    !place.latitude.trim() ||
+    !place.longitude.trim() ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    Math.abs(latitude) > 90 ||
+    Math.abs(longitude) > 180
+  ) {
+    throw new RequestError(502, "Zippopotam geocoding returned invalid coordinates.")
+  }
+
+  return { latitude, longitude, source: "zip", zipCode, countryCode: "us" }
 }
 
-async function geocodeZipCodeWithNominatim(zipCode: string, countryCode: string): Promise<SearchOrigin | null> {
-  const params = new URLSearchParams({
-    format: "jsonv2",
-    limit: "1",
-    postalcode: zipCode,
-    countrycodes: countryCode,
-    email: "washroom.status.usa@gmail.com"
-  })
-
-  logWithColor("geocode", ANSI_COLORS.magenta, `Looking up ZIP ${zipCode} (${countryCode})`)
-
-  const response = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
-    headers: NOMINATIM_HEADERS
-  })
-
-  logWithColor("geocode", ANSI_COLORS.magenta, `Response status: ${response.status}`)
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new RequestError(502, `Nominatim geocoding error ${response.status}: ${errorText}`)
+export async function geocodeZipCode(zipCode: string, countryCode = "us"): Promise<SearchOrigin | null> {
+  validateCountryCode(countryCode)
+  if (!/^[0-9]{5}$/.test(zipCode)) {
+    throw new RequestError(400, "Invalid 'zip' value. Expected a five-digit US ZIP code.")
   }
-
-  const results = await response.json() as Array<{ lat: string; lon: string }>
-  logWithColor("geocode", ANSI_COLORS.magenta, `Results returned: ${results.length}`)
-
-  if (!results.length) {
-    return null
-  }
-
-  const origin: SearchOrigin = {
-    latitude: Number.parseFloat(results[0].lat),
-    longitude: Number.parseFloat(results[0].lon),
-    source: "zip",
-    zipCode,
-    countryCode
-  }
-
-  return origin
-}
-
-export async function geocodeZipCode(zipCode: string, countryCode: string): Promise<SearchOrigin | null> {
-  const cacheKey = `${countryCode}:${zipCode}`
+  const url = new URL(`${ZIPPOTAM_URL}/us/${zipCode}`)
+  const cacheKey = `${url.href}:us:${zipCode}`
   const cachedOrigin = getCachedValue<SearchOrigin | null>("geocode", cacheKey)
   if (cachedOrigin.found) {
     return cachedOrigin.value
   }
 
-  let origin: SearchOrigin | null = null
-
-  if (countryCode === "us") {
-    logWithColor("geocode", ANSI_COLORS.magenta, `Trying US ZIP geocoder for ${zipCode}`)
-    try {
-      origin = await geocodeUsZipCode(zipCode)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logError("geocode", "US ZIP geocoder failed", { zipCode, error: message })
-    }
-  }
-
-  if (!origin) {
-    origin = await geocodeZipCodeWithNominatim(zipCode, countryCode)
-  }
+  const origin = await geocodeUsZipCode(url, zipCode)
 
   setCachedValue("geocode", cacheKey, origin, GEOCODE_CACHE_TTL_MS)
   return origin
@@ -109,6 +87,7 @@ export async function resolveSearchOrigin(input: PlacesApiRequestInput): Promise
   const lonValue = input.lon
   const zipValue = input.zip
   const countryCodeValue = (input.countryCode ?? "us").toLowerCase()
+  validateCountryCode(countryCodeValue)
 
   if (zipValue) {
     const origin = await geocodeZipCode(zipValue, countryCodeValue)

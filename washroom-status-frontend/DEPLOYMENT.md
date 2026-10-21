@@ -1,0 +1,11 @@
+# Washroom Status USA — deployment checklist
+
+1. Run `npm ci` and `npm run build`.
+2. In Vercel, import this Next.js project. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` using your existing Supabase project. Do not configure `SUPABASE_SERVICE_ROLE_KEY` in Next.js: database access now belongs to the edge backend only.
+3. Do not upload `.env.local` to GitHub or the ZIP. For local testing, create your own `.env.local` from `.env.example`.
+4. Deploy `frontend-api`, `places-api`, then the updated `gateway` using the checked-in Supabase config. Set `PLACES_API_URL` to `https://<project>.supabase.co/functions/v1/places-api`, `FRONTEND_API_URL` to `https://<project>.supabase.co/functions/v1/frontend-api`, and configure the same `GATEWAY_INTERNAL_SECRET` for all three functions. Backend functions need `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in their edge-function environment. Keep internal/database secrets out of Next.js. `FRONTEND_API_URL` can also be derived as a sibling of the configured Places API URL.
+5. Restroom requests follow `browser -> /api/restrooms -> gateway/places/bathrooms -> places-api/bathrooms`. The gateway URL defaults to `NEXT_PUBLIC_SUPABASE_URL/functions/v1/gateway`; set server-only `WASHROOM_GATEWAY_URL` to override it. Confirm `/api/restrooms?lat=39.9526&lon=-75.1652` returns locations and that map pins, accessible/free filters and opening hours work. Searches use a 1,000-meter radius; areas without stored matches fall back to Overpass through Places API.
+6. Verify reviews, city searches, boundary overlays and magic-link sign-in through `/gateway/frontend/*`. No direct-provider fallback exists. A missing deployment returns 404. Check browser network requests: application calls must stay same-origin; only OSM map tiles may go directly to an external host. The frontend CSP enforces this connection boundary.
+7. Production launch blockers: verify tile-provider traffic terms and switch providers at scale; cache/rate-limit gateway-backed Photon searches and replace its public demo at scale; implement review rate limiting and moderation controls; add privacy/terms and operational monitoring.
+
+This package contains source code only. It does not include any credentials or imported database records.
