@@ -4,6 +4,12 @@ Next.js 15 + TypeScript + Tailwind 4 + MapLibre + genuine OpenStreetMap/Overpass
 
 ## Run locally
 
+Result cards and details show straight-line distance in miles from the active
+search origin (browser location or selected city/address/ZIP). Distances use the
+Haversine formula, update with each search, and are not walking or driving routes.
+On mobile, the search-radius selector sits immediately above the map; on desktop
+it remains alongside the address search. Both use the same radius state.
+
 ```bash
 npm install
 cp .env.example .env.local
@@ -18,7 +24,7 @@ npm run dev
    The server derives the gateway URL from the Supabase project URL. Optionally set server-only `WASHROOM_GATEWAY_URL` to a different gateway base URL, such as `http://127.0.0.1:55321/functions/v1/gateway`.
    Public restroom searches do not require an API key when gateway JWT verification is disabled; an API key is forwarded when configured. Supabase sign-in and reviews still require the public key.
    Deploy `gateway`, `places-api`, and `frontend-api`. Set `PLACES_API_URL` and `FRONTEND_API_URL` to the respective function base URLs, and the same `GATEWAY_INTERNAL_SECRET` for all three functions. Never send that internal secret from the frontend. All three use `verify_jwt = false` in the checked-in Supabase config; backend functions enforce the internal gateway headers.
-   Searches use a 1-mile radius (1,609.344 meters). Places API searches stored restrooms first, then Overpass when there are no stored matches, so searches are no longer blocked outside Philadelphia.
+   Searches default to a 1-mile radius (1,609.344 meters). The Search radius selector offers 1, 2, 5, and 10 miles and immediately reloads all place types through the gateway without requiring Search. Changing radius retains the current origin and cancels obsolete frontend requests; it does not geocode again. Places API searches stored restrooms and imported gas stations in `public.export_fuel`, supplementing them with Overpass gas stations and supermarkets (and restrooms when none are stored). Before deploying Places API, apply `supabase-edge-functions/supabase/migrations/20261022153000_search_fuel_locations.sql` to enable the server-only spatial search RPC. Fuel rows are normalized into the existing place format, including parsed OSM IDs, geometry coordinates, trimmed names and restroom-specific metadata. Cards and details mark restroom availability unconfirmed unless explicitly tagged; `toilets=no` remains visible. Business presence and opening hours do not confirm restroom access. Stored and upstream results are deduplicated by OSM type and ID. When Overpass fails, stored restrooms and gas stations remain visible with a warning about incomplete coverage and a retry button. Partial responses are not cached. Without stored results, upstream failures remain explicit errors.
 4. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` in the edge-function environment. Next.js does not need database credentials or a service-role key. Never put service-role keys in browser code, Git, or any `NEXT_PUBLIC_` variable.
 5. Visit localhost:3000, select a real restroom, sign in with a magic link, submit a review. It will be saved as **pending**. In Supabase Table Editor, manually change `status` to `approved` after moderation. Only approved reviews are displayed.
 

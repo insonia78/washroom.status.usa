@@ -1,10 +1,30 @@
 import { OVERPASS_REQUEST_TIMEOUT_MS, OVERPASS_URLS } from "../config/constants.ts"
 import { RequestError } from "../utils/errors.ts"
-import { buildOverpassQuery, fetchOverpassData } from "./overpass.ts"
+import { buildOverpassQuery, fetchOverpassData, formatOverpassElement } from "./overpass.ts"
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message)
 }
+
+Deno.test("business queries and metadata never imply untagged restroom facilities", () => {
+  for (const mode of ["bathrooms", "shops", "all", "businesses"]) {
+    const query = buildOverpassQuery(35.9631, -78.9315, "1609.344", mode)
+    assert(query.includes('nwr["amenity"="fuel"](around:1609.344, 35.9631, -78.9315);'), "Include all gas stations")
+    assert(query.includes('nwr["shop"="supermarket"](around:1609.344, 35.9631, -78.9315);'), "Include all supermarkets")
+  }
+  const businessTags: Record<string, string>[] = [{ amenity: "fuel" }, { shop: "supermarket" }]
+  for (const tags of businessTags) {
+    const place = formatOverpassElement({ id: 1, type: "node", lat: 0, lon: 0, tags: { ...tags, fee: "no", wheelchair: "yes" } })
+    assert(place.toilets === "unknown" && place.access === "unknown", "Business presence does not confirm a restroom")
+    assert(place.fee === "unknown" && place.wheelchair === "unknown", "Business facilities do not confirm restroom facilities")
+    assert(place.coordinates.latitude === 0 && place.coordinates.longitude === 0, "Keep zero coordinates")
+    assert(place.placeType === (tags.amenity === "fuel" ? "gas-station" : "supermarket"), "Distinguish business categories")
+  }
+  for (const toilets of ["yes", "no", "customers"]) {
+    const place = formatOverpassElement({ id: 2, tags: { amenity: "fuel", toilets, "toilets:fee": "no", "toilets:wheelchair": "yes" } })
+    assert(place.toilets === toilets && place.fee === "no" && place.wheelchair === "yes", "Preserve explicit restroom tags")
+  }
+})
 
 Deno.test("Overpass bounds stalled requests, retries, and caches only complete results", async (t) => {
   const originalFetch = globalThis.fetch

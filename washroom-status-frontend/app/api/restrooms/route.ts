@@ -30,10 +30,17 @@ function toRestroom(value: unknown): Restroom {
     wheelchair: typeof value.wheelchair === 'string' ? value.wheelchair : undefined,
     fee: typeof value.fee === 'string' ? value.fee : undefined,
     opening_hours: typeof value.openingHours === 'string' ? value.openingHours : undefined,
+    category: typeof value.category === 'string' ? value.category : undefined,
+    toilets: typeof value.toilets === 'string' ? value.toilets : undefined,
   };
 }
 
 export async function GET(req: NextRequest) {
+  const radiusMiles = req.nextUrl.searchParams.get('radiusMiles') ?? '1';
+  const radiusMeters: Record<string, string> = { '1': '1609.344', '2': '3218.688', '5': '8046.72', '10': '16093.44' };
+  if (!Object.hasOwn(radiusMeters, radiusMiles)) {
+    return NextResponse.json({ error: 'Choose a search radius of 1, 2, 5, or 10 miles.' }, { status: 400 });
+  }
   const zipParam = req.nextUrl.searchParams.get('zip');
   const zip = zipParam?.trim();
   const latParam = req.nextUrl.searchParams.get('lat');
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest) {
       url.searchParams.set('lat', String(lat));
       url.searchParams.set('lon', String(lon));
     }
-    url.searchParams.set('radius', '1609.344');
+    url.searchParams.set('radius', radiusMeters[radiusMiles]);
     const response = await gatewayFetch(url.pathname + url.search, { headers: { Accept: 'application/json' } });
     if (!response.ok) {
       console.error('Restroom gateway returned an error:', response.status);
@@ -72,6 +79,11 @@ export async function GET(req: NextRequest) {
       throw new Error('Invalid restroom gateway response.');
     }
     const restrooms = payload.data.map(toRestroom);
+    if (payload.warning !== undefined &&
+        (typeof payload.warning !== 'string' || !payload.warning.trim() || !restrooms.length)) {
+      throw new Error('Invalid partial restroom response.');
+    }
+    const warning = payload.warning;
     let searchOrigin: { latitude: number; longitude: number; zipCode: string } | undefined;
     if (zip) {
       const origin = payload.searchOrigin;
@@ -83,8 +95,8 @@ export async function GET(req: NextRequest) {
       }
       searchOrigin = { latitude: origin.latitude, longitude: origin.longitude, zipCode: zip };
     }
-    return NextResponse.json({ restrooms, source: 'Gateway · Places API · OpenStreetMap', count: restrooms.length, ...(searchOrigin ? { searchOrigin } : {}) },
-      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } });
+    return NextResponse.json({ restrooms, source: 'Gateway · Places API · OpenStreetMap', count: restrooms.length, ...(searchOrigin ? { searchOrigin } : {}), ...(warning ? { warning } : {}) },
+      { headers: { 'Cache-Control': warning ? 'no-store' : 'public, s-maxage=60, stale-while-revalidate=300' } });
   } catch (err) {
     console.error('Restroom gateway lookup failed:', err);
     if (err instanceof GatewayConfigurationError) {

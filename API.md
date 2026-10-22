@@ -75,7 +75,10 @@ All documented endpoints below are:
 
 ## 1) POST /bathrooms
 
-Searches for **public bathrooms only** near coordinates or a ZIP code.
+Searches for mapped bathrooms, gas stations, and supermarkets near coordinates or a ZIP code.
+All gas stations (`amenity=fuel`) and supermarkets (`shop=supermarket`) are included,
+even without a toilets tag. Their `toilets` value is `unknown` unless explicitly
+tagged; `no` is preserved. Business presence is not confirmation of restroom access.
 
 ### Request body
 
@@ -124,9 +127,8 @@ Content-Type: application/json
 
 Searches for:
 
-- bathrooms only
-- shops with bathrooms only
-- or both
+- bathrooms, shops with bathrooms, or both (selected by `mode`)
+- gas stations and supermarkets in every mode, regardless of toilets tags
 
 ### Body fields
 
@@ -169,9 +171,9 @@ Content-Type: application/json
 
 | Value | Meaning |
 |---|---|
-| `bathrooms` | Returns public bathrooms only |
-| `shops` | Returns shops that offer bathrooms |
-| `all` | Returns both bathrooms and shops with bathrooms |
+| `bathrooms` | Returns mapped bathrooms, gas stations, and supermarkets |
+| `shops` | Returns shops tagged with toilets, plus all gas stations and supermarkets |
+| `all` | Returns bathrooms, shops tagged with toilets, gas stations, and supermarkets |
 
 ## Response shape
 
@@ -262,6 +264,7 @@ Content-Type: application/json
 | `searchRadiusMeters` | number | Effective search radius |
 | `count` | number | Number of results returned |
 | `data` | array | Places returned by the search |
+| `warning` | string | Present only for partial results: stored restrooms and/or imported gas stations returned while upstream coverage is unavailable |
 
 ### searchOrigin
 
@@ -279,7 +282,7 @@ Content-Type: application/json
 |---|---|---|
 | `id` | number | OpenStreetMap element id |
 | `osmType` | string | Usually `node`, `way`, or `relation` |
-| `placeType` | `bathroom` \| `shop-with-bathroom` | Safe frontend discriminator |
+| `placeType` | `bathroom` \| `shop-with-bathroom` \| `gas-station` \| `supermarket` | Safe frontend discriminator |
 | `name` | string | Display name with fallback |
 | `category` | string | OSM category |
 | `access` | string | OSM access value |
@@ -331,12 +334,36 @@ Content-Type: application/json
 
 ## Frontend integration notes
 
-- Use `POST /bathrooms` when you want restroom-only results.
-- Use `POST /overpass` when you want mixed results or shops-only results.
-- Restroom searches check `public.restrooms` in Supabase first; if no nearby rows match, the API searches Overpass. Database errors are returned instead of being treated as cache misses.
-- Overpass tries the main service, then the independent `overpass.private.coffee` service. Each request (including response-body reading) has an 18-second network deadline and a 15-second server query timeout, for at most 36 seconds of Overpass attempts. Provider errors and partial results are not cached or reported as no matches; exhausted timeouts return HTTP 504, other exhausted failures HTTP 502. A complete successful empty result means no mapped restrooms within the requested radius (1 mile / 1,609.344 meters in the frontend). Direct Places API callers retain the default 1,000-meter radius unless they specify `radius`.
-- Queries use form-encoded POST requests with an application-specific User-Agent. The public fallback remains enabled, but availability is not guaranteed: an outage displays a retryable error, not an empty list or stale results from the previous location.
-- Database matches are returned as the source result without an Overpass request. For `/overpass` with `mode: "all"`, a database match contains restroom rows only; shops are searched from Overpass when there are no nearby database restrooms. `mode: "shops"` goes directly to Overpass because `public.restrooms` stores restrooms, not shops.
+- The Next.js `/api/restrooms` adapter accepts `radiusMiles=1|2|5|10` (default
+  `1`) for both coordinate and ZIP searches. It forwards exact meter radii
+  `1609.344`, `3218.688`, `8046.72`, and `16093.44` to the gateway. Unsupported
+  choices return HTTP 400 before an upstream call. The website refetches on
+  selection without bypassing the gateway; the radius applies to every source
+  and category, including imported fuel. Larger radii may increase provider latency.
+- Imported gas stations are read from `public.export_fuel` through the server-only
+  `find_nearby_fuel` PostGIS RPC. Apply
+  `supabase-edge-functions/supabase/migrations/20261022153000_search_fuel_locations.sql`
+  before deploying this version of Places API. The function uses a geography
+  GiST index and exact meter-radius filtering, not a full-table download.
+- Fuel results normalize `node/123`, `way/123`, or `relation/123` into the same
+  numeric `id` and `osmType` shape as Overpass. Coordinates come from the point
+  geometry; names use trimmed name, brand, operator, then `Gas Station`.
+  Restroom tags are trimmed and categorical values lowercased; boolean aliases
+  `true`/`1` and `false`/`0` normalize to `yes` and `no`. Missing toilets remain
+  `unknown`, explicit `no` is preserved, and restroom-specific hours take priority.
+- Stored fuel is included in every search mode, including `shops`, with complete
+  pagination and OSM-identity deduplication. Stored restroom rows take precedence
+  over stored fuel, which takes precedence over duplicate Overpass rows.
+  When Overpass fails, stored fuel can be returned even if no standalone
+  restrooms match, with a warning explaining that additional coverage is missing.
+  Failure of the fuel RPC is a database error, not an empty-match fallback.
+- Use `POST /bathrooms` for bathrooms plus nearby gas stations and supermarkets.
+- Use `POST /overpass` to also include shops tagged with toilets (`all`) or exclude standalone bathrooms (`shops`).
+- Restroom searches check `public.restrooms` and `public.export_fuel` in Supabase; Overpass supplies bathrooms only when there are no stored restroom matches. Additional businesses are searched in Overpass. Database errors are returned instead of being treated as cache misses.
+- Overpass tries the main service, then the independent `overpass.private.coffee` service. Each request (including response-body reading) has an 18-second network deadline and a 15-second server query timeout, for at most 36 seconds of Overpass attempts. Provider errors and partial results are not cached or reported as no matches; without stored results, exhausted timeouts return HTTP 504, other exhausted failures HTTP 502. A complete successful empty result means no matching mapped restrooms or businesses within the requested radius (1 mile / 1,609.344 meters in the frontend). Direct Places API callers retain the default 1,000-meter radius unless they specify `radius`.
+- Queries use form-encoded POST requests with an application-specific User-Agent. The public fallback remains enabled, but availability is not guaranteed: an outage displays a retryable warning with stored results when available, otherwise a retryable error, never an empty list or stale results from the previous location.
+- Stored and upstream results are merged by OSM type and ID, with stored rows taking precedence. `mode: "all"` always supplements stored restrooms with shops and businesses; `mode: "shops"` skips the restroom database. If Overpass fails with a provider error or timeout and stored restrooms or imported gas stations exist, the response is HTTP 200 with those rows and a `warning` identifying missing upstream coverage. The frontend displays the warning with a retry button and does not cache partial responses. Without stored rows, provider failures remain HTTP 502/504, not empty success. Database failures always remain errors.
+- Gas stations and supermarkets use `toilets=unknown` when untagged. Their restroom access, fee, and wheelchair values use explicit `toilets:*` tags or `unknown`, not general business facilities.
 - The Edge Function uses Supabase's server-side `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables to read `public.restrooms`; do not expose the service-role key to clients.
 - Use `searchOrigin` as the map center after ZIP-based searches.
 - Use `placeType` to switch markers/icons in the UI.
@@ -385,7 +412,7 @@ type SearchOrigin = {
 type PlaceResult = {
   id: number;
   osmType: string;
-  placeType: "bathroom" | "shop-with-bathroom";
+  placeType: "bathroom" | "shop-with-bathroom" | "gas-station" | "supermarket";
   name: string;
   category: string;
   access: string;
@@ -403,6 +430,7 @@ type PlaceResult = {
 
 type BathroomsResponse = {
   success: true;
+  warning?: string;
   searchOrigin: SearchOrigin;
   searchRadiusMeters: number;
   count: number;
@@ -411,6 +439,7 @@ type BathroomsResponse = {
 
 type OverpassResponse = {
   success: true;
+  warning?: string;
   mode: "bathrooms" | "shops" | "all";
   searchOrigin: SearchOrigin;
   searchRadiusMeters: number;

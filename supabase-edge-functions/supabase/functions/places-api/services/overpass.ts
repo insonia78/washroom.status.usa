@@ -74,29 +74,36 @@ export function buildOverpassQuery(latitude: number, longitude: number, radiusVa
     querySegments.push(`nwr["shop"]["toilets"="yes"](around:${radiusValue}, ${latitude}, ${longitude});`)
   }
 
+  querySegments.push(`nwr["amenity"="fuel"](around:${radiusValue}, ${latitude}, ${longitude});`)
+  querySegments.push(`nwr["shop"="supermarket"](around:${radiusValue}, ${latitude}, ${longitude});`)
+
   return `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_SECONDS}];(${querySegments.join("")});out center tags;`
 }
 
 export function formatOverpassElement(element: OverpassElement) {
   const tags = element.tags || {}
   const hasShopTag = typeof tags.shop === "string" && tags.shop.length > 0
+  const isGasStation = tags.amenity === "fuel"
+  const isSupermarket = tags.shop === "supermarket"
+  const isBusiness = isGasStation || isSupermarket
+  const toilets = tags.toilets || (tags.amenity === "toilets" || hasShopTag && !isBusiness ? "yes" : "unknown")
 
   return {
     id: element.id,
     osmType: element.type || "unknown",
-    placeType: hasShopTag ? "shop-with-bathroom" : "bathroom",
-    name: tags.name || (hasShopTag ? "Shop With Bathroom" : "Public Restroom"),
+    placeType: isGasStation ? "gas-station" : isSupermarket ? "supermarket" : hasShopTag ? "shop-with-bathroom" : "bathroom",
+    name: tags.name || (isGasStation ? "Gas Station" : isSupermarket ? "Supermarket" : hasShopTag ? "Shop With Bathroom" : "Public Restroom"),
     category: hasShopTag ? tags.shop : tags.amenity || "toilets",
-    access: tags.access || "public",
-    fee: tags.fee || "no",
-    wheelchair: tags.wheelchair || tags["toilets:wheelchair"] || "unknown",
+    access: tags["toilets:access"] || (isBusiness ? "unknown" : tags.access || "public"),
+    fee: tags["toilets:fee"] || (isBusiness ? "unknown" : tags.fee || "no"),
+    wheelchair: tags["toilets:wheelchair"] || (isBusiness ? "unknown" : tags.wheelchair || "unknown"),
     openingHours: tags.opening_hours || undefined,
     changingTable: tags.changing_table || "no",
     unisex: tags.unisex || "unknown",
-    toilets: tags.toilets || (hasShopTag ? "yes" : "unknown"),
+    toilets,
     coordinates: {
-      latitude: element.lat || (element.center ? element.center.lat : null),
-      longitude: element.lon || (element.center ? element.center.lon : null)
+      latitude: element.lat ?? element.center?.lat ?? null,
+      longitude: element.lon ?? element.center?.lon ?? null
     }
   }
 }
