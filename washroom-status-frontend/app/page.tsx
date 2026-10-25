@@ -7,6 +7,7 @@ import AddressSearch from '@/components/AddressSearch';
 import {distanceMiles,formatDistance,sortByDistance} from '@/lib/distance';
 import {LOCATION_RESULTS_ERROR,apiFailureMessage} from '@/lib/user-messages';
 import NavigationLinks from '@/components/NavigationLinks';
+import {requestCurrentPosition} from '@/lib/geolocation';
 
 export default function Home(){const [city,setCity]=useState('');const [items,setItems]=useState<Restroom[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [filter,setFilter]=useState('all');const [center,setCenter]=useState<[number,number]>([-98.5795,39.8283]);const [selected,setSelected]=useState<Restroom|null>(null);
 const [hasSearchOrigin,setHasSearchOrigin]=useState(false);
@@ -16,9 +17,7 @@ const [radiusMiles,setRadiusMiles]=useState('5');
 const mapArea=useRef<HTMLDivElement>(null);
 const mapRef=useRef<OpenFreeMapHandle>(null);
 const focusAfterSearch=useRef(false);
-const returnToMap=useCallback(()=>{
-  if(!focusAfterSearch.current)return;
-  focusAfterSearch.current=false;
+const focusMapArea=useCallback(()=>{
   requestAnimationFrame(()=>{
     mapRef.current?.focusMap();
     if(window.matchMedia('(max-width: 1023px)').matches){
@@ -26,30 +25,40 @@ const returnToMap=useCallback(()=>{
     }
   });
 },[]);
+const returnToMap=useCallback(()=>{
+  if(!focusAfterSearch.current)return;
+  focusAfterSearch.current=false;
+  focusMapArea();
+},[focusMapArea]);
 const resultsList=useRef<HTMLDivElement>(null);
 useEffect(()=>{if(resultsList.current)resultsList.current.scrollLeft=0},[center,filter,radiusMiles]);
 const [location,setLocation]=useState<[number,number]|null>(null);
 const [locationError,setLocationError]=useState('');
+const [locating,setLocating]=useState(false);
 const [zoom,setZoom]=useState(3);
 const locationRequest=useRef(0);
 const locate=useCallback(()=>{
   const request=++locationRequest.current;
   setLocationError('');
-  if(!navigator.geolocation){setLocationError('Your browser does not support location. Search a US city or ZIP code instead.');return}
-  navigator.geolocation.getCurrentPosition(position=>{
+  if(!window.isSecureContext){setLocating(false);setLocationError('Location requires HTTPS on mobile. Open the secure HTTPS site in Safari or Chrome, or search a US city or ZIP code.');return}
+  if(!navigator.geolocation){setLocating(false);setLocationError('Your browser does not support location. Open this site in Safari or Chrome, or search a US city or ZIP code.');return}
+  setLocating(true);
+  requestCurrentPosition(navigator.geolocation,()=>request===locationRequest.current).then(position=>{
     if(request!==locationRequest.current)return;
     const {longitude,latitude}=position.coords;
     if(!Number.isFinite(longitude)||!Number.isFinite(latitude)||longitude < -179||longitude > -65||latitude < 17||latitude > 72){
       setLocationError('Your location is outside the US map. Search for a US city instead.');return;
     }
+    focusAfterSearch.current=true;
+    focusMapArea();
     setLocation([longitude,latitude]);setZoom(15);setCity('');setHasSearchOrigin(true);setCenter([longitude,latitude]);
-  },error=>{
+  }).catch((error:GeolocationPositionError)=>{
     if(request!==locationRequest.current)return;
-    setLocationError(error.code===1?'Location permission denied. Search a US city or ZIP code instead.':
+    setLocationError(error.code===1?'Location access is blocked. Enable Location Services and allow location for this site in Safari or Chrome settings, then tap Use my location. If using an in-app browser, open the site in Safari or Chrome.':
       error.code===3?'Finding your location timed out. Use my location to retry or search a US city.':
-      'Your location is unavailable. Use my location to retry or search a US city.');
-  },{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
-},[]);
+      'Your location is unavailable. Turn on Location Services and allow browser location access, then tap Use my location or search a US city.');
+  }).finally(()=>{if(request===locationRequest.current)setLocating(false)});
+},[focusMapArea]);
 useEffect(()=>{locate();return()=>{locationRequest.current++}},[locate]);
 const handleSelect=useCallback((restroom:Restroom)=>setSelected(restroom),[]);
 useEffect(()=>{if(!hasSearchOrigin)return;let cancelled=false;setBusy(true);setError('');setWarning('');setItems([]);setSelected(null);const controller=new AbortController();fetch(`/api/restrooms?lat=${center[1]}&lon=${center[0]}&radiusMiles=${radiusMiles}`,{signal:controller.signal}).then(r=>{if(!r.ok)return r.json().then(d=>{throw new Error(d.error||LOCATION_RESULTS_ERROR)});return r.json()}).then(d=>{if(!cancelled){setItems((d.restrooms||[]).map((item:Restroom)=>({...item,distanceMiles:distanceMiles(center[1],center[0],item.lat,item.lon)})));setWarning(d.warning||'')}}).catch(e=>{if(!cancelled&&e.name!=='AbortError')setError(apiFailureMessage(e instanceof Error?e.message:null))}).finally(()=>{if(!cancelled){setBusy(false);returnToMap()}});return()=>{cancelled=true;controller.abort()}},[center,radiusMiles,returnToMap,hasSearchOrigin]);
@@ -57,8 +66,11 @@ async function search(e:React.FormEvent){
   e.preventDefault();
   if(searching)return;
   if(!city.trim()){setError('Enter a US city, address, or ZIP code.');return}
+  e.currentTarget.querySelector('input')?.blur();
+  focusMapArea();
   focusAfterSearch.current=false;
   locationRequest.current++;
+  setLocating(false);
   setLocationError('');
   setZoom(12);
   setSearching(true);
@@ -101,9 +113,9 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
 <div ref={mapArea} className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
 {locationError&&<p role="alert" className="order-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 lg:order-4 lg:col-span-2">{locationError}</p>}
 <section className="panel relative z-20 order-2 lg:order-1 lg:col-span-2"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2">
-<AddressSearch value={city} onChange={setCity} searching={searching} onSelect={suggestion=>{focusAfterSearch.current=true;locationRequest.current++;setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
+<AddressSearch value={city} onChange={setCity} searching={searching} onSelect={suggestion=>{focusAfterSearch.current=true;focusMapArea();locationRequest.current++;setLocating(false);setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
 <div className="hidden lg:block">{radiusControl}</div>
-<button type="button" onClick={locate} className="pill" aria-label="Use my location"><LocateFixed/></button></form><div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section>
+<button type="button" onClick={locate} disabled={locating} className="pill disabled:opacity-50" aria-label="Use my location" aria-busy={locating}><LocateFixed className={locating?'animate-pulse motion-reduce:animate-none':''}/></button></form>{locating&&<p role="status" className="mt-2 text-sm text-teal-800">Finding your location. Allow location access if prompted.</p>}<div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section>
 <div className="order-1 min-w-0 lg:order-2">
 <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3 lg:hidden">{radiusControl}</div>
 <p id="radius-search-help" className="mb-2 text-xs text-slate-500">{hasSearchOrigin?'Searching':'Search'} within {radiusMiles} {radiusMiles==='1'?'mile':'miles'}. {hasSearchOrigin?'Radius changes automatically reload toilets, gas stations, and supermarkets.':'Choose a location to find nearby toilets, gas stations, and supermarkets.'}</p>

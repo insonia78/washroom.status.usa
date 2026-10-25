@@ -10,6 +10,19 @@ Haversine formula, update with each search, and are not walking or driving route
 On mobile, the search-radius selector sits immediately above the map; on desktop
 it remains alongside the address search. Both use the same radius state.
 
+On mobile, choosing an address suggestion or submitting a search blurs the
+address input to dismiss the keyboard and immediately focuses the map/results
+area, without waiting for nearby results to finish loading. Focus returns there
+again when results finish loading.
+
+Automatic location lookup and **Use my location** require HTTPS (localhost is
+also allowed), enabled device Location Services, and browser/site permission.
+GPS lookup allows 15 seconds; timeout or unavailability retries once with lower
+accuracy for up to 15 seconds. Denied permission is not retried automatically.
+The UI shows progress and actionable permission/HTTPS errors. Manual searches
+take precedence over pending location callbacks. Mobile HTTP LAN URLs such as
+`http://192.168.x.x:3000` cannot use browser geolocation; use an HTTPS deployment.
+
 ```bash
 npm install
 cp .env.example .env.local

@@ -24,7 +24,7 @@ export default function AddressSearch({value,onChange,onSelect,searching}:Props)
   const query=value.trim();
   const eligible=query.length>=3&&query.length<=200&&(!/^\d+$/.test(query)||/^\d{5}$/.test(query));
 
-  useEffect(()=>{if(searching)setOpen(false)},[searching]);
+  useEffect(()=>{if(searching){setOpen(false);input.current?.blur()}},[searching]);
 
   useEffect(()=>{
     setSuggestions([]);setActive(-1);setError('');setLoading(false);
@@ -50,6 +50,7 @@ export default function AddressSearch({value,onChange,onSelect,searching}:Props)
 
   function select(suggestion:Suggestion){
     setOpen(false);setSuggestions([]);setActive(-1);
+    input.current?.blur();
     onChange(suggestion.label);
     onSelect(suggestion);
   }
