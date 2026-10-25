@@ -21,6 +21,7 @@ const supabaseJwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
 const customJwtSecret = Deno.env.get("MY_JWT_SECRET") ?? Deno.env.get("CUSTOM_JWT_SECRET");
 const encoder = new TextEncoder();
 
+// Creates a JSON response with the validator's CORS headers.
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -31,11 +32,13 @@ function jsonResponse(status: number, body: unknown) {
   });
 }
 
+// Reads a string claim from a decoded JWT payload.
 function getPayloadStringValue(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
   return typeof value === "string" ? value : "";
 }
 
+// Reads a finite numeric claim from a decoded JWT payload.
 function getPayloadNumberValue(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -50,6 +53,7 @@ type CustomTokenDatabaseValidationResult =
   | { valid: true }
   | { valid: false; status: number; error: string };
 
+// Tries the configured Supabase and custom signing secrets in order.
 async function verifyToken(token: string): Promise<VerifiedToken | null> {
   if (supabaseJwtSecret) {
     try {
@@ -76,6 +80,7 @@ async function verifyToken(token: string): Promise<VerifiedToken | null> {
   return null;
 }
 
+// Confirms a custom JWT matches an active, unexpired persisted token record.
 async function validateCustomTokenAgainstDatabase(
   payload: Record<string, unknown>,
 ): Promise<CustomTokenDatabaseValidationResult> {
@@ -150,6 +155,7 @@ async function validateCustomTokenAgainstDatabase(
 // Use publishable for client-facing, key-validated endpoints.
 // Use secret for server-to-server, internal calls.
 export default {
+  // Authorizes gateway calls, verifies the bearer token, and returns its identity claims.
   fetch: async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", {

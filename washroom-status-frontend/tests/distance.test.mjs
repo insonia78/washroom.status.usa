@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { distanceMiles, formatDistance } from '../lib/distance.ts';
+import { distanceMiles, formatDistance, sortByDistance } from '../lib/distance.ts';
 
 test('straight-line distances use miles and the current search origin', () => {
   assert.equal(distanceMiles(40, -83, 40, -83), 0);
@@ -18,4 +18,11 @@ test('distance labels distinguish very close places and retain two decimal place
   assert.equal(formatDistance(0.01), '0.01 mi');
   assert.equal(formatDistance(1), '1.00 mi');
   assert.equal(formatDistance(2.3456), '2.35 mi');
+});
+
+test('nearby places are displayed in ascending distance without mutating the source array', () => {
+  const places = [{ id: 'far', distanceMiles: 2 }, { id: 'near', distanceMiles: 0.25 }, { id: 'middle', distanceMiles: 1 }];
+  const sorted = sortByDistance(places);
+  assert.deepEqual(sorted.map(place => place.id), ['near', 'middle', 'far']);
+  assert.deepEqual(places.map(place => place.id), ['far', 'near', 'middle']);
 });

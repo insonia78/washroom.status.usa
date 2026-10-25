@@ -4,6 +4,7 @@ import { getCachedValue, setCachedValue } from "../utils/cache.ts"
 import { RequestError } from "../utils/errors.ts"
 import { logError, logWithColor } from "../utils/logger.ts"
 
+// Tries configured Overpass endpoints, using the cache when possible.
 export async function fetchOverpassData(query: string): Promise<OverpassElement[]> {
   logWithColor("overpass", ANSI_COLORS.cyan, "Requesting data from Overpass API")
   const cachedResponse = getCachedValue<OverpassElement[]>("overpass", query)
@@ -63,6 +64,7 @@ export async function fetchOverpassData(query: string): Promise<OverpassElement[
   )
 }
 
+// Builds the Overpass query clauses required by the requested place categories.
 export function buildOverpassQuery(latitude: number, longitude: number, radiusValue: string, modeValue: string) {
   const querySegments: string[] = []
 
@@ -80,6 +82,7 @@ export function buildOverpassQuery(latitude: number, longitude: number, radiusVa
   return `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_SECONDS}];(${querySegments.join("")});out center tags;`
 }
 
+// Converts an OpenStreetMap element into the API's normalized place representation.
 export function formatOverpassElement(element: OverpassElement) {
   const tags = element.tags || {}
   const hasShopTag = typeof tags.shop === "string" && tags.shop.length > 0

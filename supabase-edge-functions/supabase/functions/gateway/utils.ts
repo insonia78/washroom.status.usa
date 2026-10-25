@@ -3,6 +3,7 @@ export type VerifiedToken = {
   tokenType: "supabase" | "custom";
 };
 
+// Creates the gateway's JSON response with CORS headers.
 export function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -14,10 +15,13 @@ export function jsonResponse(status: number, body: unknown) {
     }
   });
 }
+
+// Checks whether a value is a non-null object record.
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+// Validates the payload shape returned by the JWT validator.
 export function isVerifiedToken(value: unknown): value is VerifiedToken {
   if (!isRecord(value)) {
     return false;

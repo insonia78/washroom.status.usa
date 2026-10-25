@@ -4,6 +4,7 @@ import { searchNearbyPlaces } from "../services/search.ts"
 import { jsonResponse } from "../utils/http.ts"
 import { parseFiniteNumber } from "../utils/request.ts"
 
+// Resolves the requested location and returns nearby restroom results.
 export async function handleBathroomsRequest(input: PlacesApiRequestInput) {
   const radiusValue = input.radius ?? "1000"
   const searchOrigin = await resolveSearchOrigin(input)

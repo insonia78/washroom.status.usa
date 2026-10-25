@@ -2,10 +2,12 @@ import { formatOverpassElement } from "./overpass.ts"
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
 
+// Narrows an unknown value to a plain object before reading database fields.
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+// Validates a stored fuel row and maps it into the shared place response shape.
 export function normalizeFuelPlace(value: unknown) {
   if (!isRecord(value) || typeof value.osm_identity !== "string" ||
     typeof value.latitude !== "number" || !Number.isFinite(value.latitude) || Math.abs(value.latitude) > 90 ||
@@ -40,6 +42,7 @@ export function normalizeFuelPlace(value: unknown) {
   }
 }
 
+// Pages through the nearby-fuel database RPC and deduplicates its results.
 export async function findNearbyFuel(latitude: number, longitude: number, radius: number) {
   if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
     !Number.isFinite(longitude) || Math.abs(longitude) > 180 ||

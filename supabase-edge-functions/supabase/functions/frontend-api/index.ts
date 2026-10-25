@@ -2,27 +2,34 @@ import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
 import { geocodeZipCode } from "../places-api/services/geocoding.ts";
 import { RequestError } from "../places-api/utils/errors.ts";
 
+// Carries an HTTP status alongside a frontend API error message.
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
   }
 }
 
+// Creates a no-store JSON response for frontend API routes.
 const json = (status: number, body: unknown) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+
+// Narrows unknown values to plain object records before field access.
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+// Reads a required environment variable or reports a configuration error.
 function config(name: string): string {
   const value = Deno.env.get(name);
   if (!value) throw new ApiError(503, `Missing ${name} in frontend-api.`);
   return value;
 }
 
+// Sends a bounded upstream request and avoids following redirects.
 async function upstream(url: URL | string, init: RequestInit = {}) {
   return await fetch(url, { ...init, signal: AbortSignal.timeout(20_000), redirect: "manual" });
 }
 
+// Makes an authenticated Supabase REST request and maps database failures to API errors.
 async function database(table: string, params: URLSearchParams, init: RequestInit = {}) {
   const key = config("SUPABASE_SERVICE_ROLE_KEY");
   const url = new URL(`/rest/v1/${table}`, config("SUPABASE_URL"));
@@ -45,11 +52,13 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
   return response;
 }
 
+// Ensures a review refers to a positive OpenStreetMap node, way, or relation ID.
 function validRestroom(type: unknown, id: unknown): boolean {
   return typeof type === "string" && ["node", "way", "relation"].includes(type) &&
     typeof id === "number" && Number.isSafeInteger(id) && id > 0;
 }
 
+// Lists approved reviews or validates and submits a new review for moderation.
 async function reviews(req: Request): Promise<Response> {
   if (req.method === "GET") {
     const query = new URL(req.url).searchParams;
@@ -109,6 +118,7 @@ async function reviews(req: Request): Promise<Response> {
   return json(201, { message: "Review submitted for moderation", status: "pending" });
 }
 
+// Proxies supported Supabase Auth routes while forwarding only required headers.
 async function auth(req: Request, path: string): Promise<Response> {
   const allowed = path === "/auth/v1/user" ? ["GET", "PUT"] :
     /^\/auth\/v1\/(otp|verify|token|logout)$/.test(path) ? ["POST"] : [];
@@ -134,6 +144,7 @@ async function auth(req: Request, path: string): Promise<Response> {
 }
 
 export default {
+  // Authorizes gateway traffic and dispatches review, auth, geocoding, and map requests.
   async fetch(req: Request): Promise<Response> {
     const denied = authorizeGatewayRequest(req, json, "frontend-api");
     if (denied) return denied;
@@ -142,6 +153,7 @@ export default {
       if (path === "/reviews") return await reviews(req);
       if (path.startsWith("/auth/")) return await auth(req, path);
       if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
+      // Resolves ZIP codes or geocodes a US address, returning coordinates or suggestions.
       if (path === "/geocode") {
         const suggest = new URL(req.url).searchParams.get("suggest") === "1";
         const zip = new URL(req.url).searchParams.get("zip");
@@ -187,6 +199,7 @@ export default {
         const { latitude, longitude } = suggestions[0];
         return json(200, { latitude, longitude });
       }
+      // Retrieves and validates the US boundary feature used to frame the map.
       if (path === "/map-boundary") {
         const response = await upstream("https://raw.githubusercontent.com/johan/world.geo.json/master/countries/USA.geo.json");
         if (!response.ok) throw new ApiError(502, "US boundary unavailable");

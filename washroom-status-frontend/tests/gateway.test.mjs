@@ -147,9 +147,9 @@ test('gateway failures and throttling remain explicit errors', async () => {
   assert.equal(response.status, 503);
 });
 
-test('browser connection policy permits only same-origin requests and approved map tiles', async () => {
+test('browser connection policy permits same-origin requests, OpenFreeMap resources, and MapLibre workers', async () => {
   const rules = await nextConfig.headers();
-  assert.equal(rules[0].headers[0].value, "connect-src 'self' https://tile.openstreetmap.org");
+  assert.equal(rules[0].headers[0].value, "connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'");
 });
 
 test('application source has no direct database queries or external fetches outside gateway transport', async () => {

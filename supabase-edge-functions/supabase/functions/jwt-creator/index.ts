@@ -92,6 +92,7 @@ const requiredDatabaseFields = [
   }
 ] as const;
 
+// Creates a JSON response with the function's CORS headers.
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -102,6 +103,7 @@ function jsonResponse(status: number, body: unknown) {
   });
 }
 
+// Applies safe defaults and trims user and role values from the request.
 function normalizeRequestBody(body: JwtCreatorRequestBody) {
   return {
     userId: typeof body.userId === "string" && body.userId.trim() ? body.userId.trim() : "anonymous",
@@ -109,6 +111,7 @@ function normalizeRequestBody(body: JwtCreatorRequestBody) {
   };
 }
 
+// Creates the SHA-256 fingerprint stored with a newly generated token.
 async function createTokenSha(input: {
   userId: string;
   role: string;
@@ -128,6 +131,7 @@ async function createTokenSha(input: {
   return Array.from(new Uint8Array(hashBuffer)).map((value: number)=>value.toString(16).padStart(2, "0")).join("");
 }
 
+// Builds the token claims and persistence record with a unique ID and lifetime.
 async function buildTokenRecord(body: JwtCreatorRequestBody): Promise<TokenRecordPayload> {
   const normalizedBody = normalizeRequestBody(body);
   const issuedAt = Math.floor(Date.now() / 1000);
@@ -152,6 +156,7 @@ async function buildTokenRecord(body: JwtCreatorRequestBody): Promise<TokenRecor
   };
 }
 
+// Persists a token when the database is configured and reports persistence status.
 async function persistTokenRecordIfConfigured(
   tokenRecord: TokenRecordPayload,
 ): Promise<TokenPersistenceResult> {
@@ -174,6 +179,7 @@ async function persistTokenRecordIfConfigured(
   };
 }
 
+// Checks that the request body contains only supported string fields.
 function isJwtCreatorRequestBody(value: unknown): value is JwtCreatorRequestBody {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -189,6 +195,7 @@ function isJwtCreatorRequestBody(value: unknown): value is JwtCreatorRequestBody
 
 console.log("JWT Creator function loaded.");
 export default {
+  // Authenticates the gateway, validates input, signs a JWT, and optionally persists it.
   fetch: async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", {

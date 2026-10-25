@@ -34,15 +34,18 @@ type PersistedJwtTokenRecordRow = {
 type SqlClient = ReturnType<typeof postgres>;
 let sharedSqlClient: SqlClient | null = null;
 
+// Reads the optional database connection URL used for persisted custom JWTs.
 export function getJwtTokenDatabaseUrl(): string | null {
   const databaseUrl = Deno.env.get(jwtTokenDatabaseUrlEnvVar)?.trim();
   return databaseUrl ? databaseUrl : null;
 }
 
+// Reports whether persistent JWT storage has been configured.
 export function isJwtTokenDatabaseConfigured(): boolean {
   return Boolean(getJwtTokenDatabaseUrl());
 }
 
+// Reads a positive integer setting or uses its supplied default.
 function readPositiveIntegerEnv(envVarName: string, fallback: number): number {
   const rawValue = Deno.env.get(envVarName)?.trim() ?? "";
   if (!rawValue) {
@@ -53,6 +56,7 @@ function readPositiveIntegerEnv(envVarName: string, fallback: number): number {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
 }
 
+// Lazily creates and reuses the PostgreSQL client for JWT persistence.
 function getJwtTokenDatabaseClient(): SqlClient {
   if (sharedSqlClient) {
     return sharedSqlClient;
@@ -79,12 +83,14 @@ function getJwtTokenDatabaseClient(): SqlClient {
   return sharedSqlClient;
 }
 
+// Runs a database operation using the shared PostgreSQL client.
 export async function withJwtTokenDatabase<T>(
   callback: (sql: SqlClient) => Promise<T>,
 ): Promise<T> {
   return await callback(getJwtTokenDatabaseClient());
 }
 
+// Inserts a newly issued JWT record for later validation and revocation.
 export async function saveJwtTokenRecord(record: PersistedJwtTokenRecord): Promise<void> {
   await withJwtTokenDatabase(async (sql) => {
     await sql`
@@ -111,6 +117,7 @@ export async function saveJwtTokenRecord(record: PersistedJwtTokenRecord): Promi
   });
 }
 
+// Converts a numeric database field and rejects malformed values.
 function parseDatabaseNumber(value: number | string, fieldName: string): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -126,6 +133,7 @@ function parseDatabaseNumber(value: number | string, fieldName: string): number 
   throw new Error(`Invalid numeric value returned for ${fieldName}`);
 }
 
+// Maps a database row into the typed JWT record used by the edge functions.
 function normalizeJwtTokenRecord(row: PersistedJwtTokenRecordRow): PersistedJwtTokenRecord {
   return {
     tokenId: row.tokenId,
@@ -139,6 +147,7 @@ function normalizeJwtTokenRecord(row: PersistedJwtTokenRecordRow): PersistedJwtT
   };
 }
 
+// Looks up a persisted token by its unique JWT ID.
 export async function findJwtTokenRecordById(tokenId: string): Promise<PersistedJwtTokenRecord | null> {
   return await withJwtTokenDatabase(async (sql) => {
     const rows = await sql<PersistedJwtTokenRecordRow[]>`
@@ -160,6 +169,7 @@ export async function findJwtTokenRecordById(tokenId: string): Promise<Persisted
   });
 }
 
+// Marks one active token as revoked and returns its updated record.
 export async function revokeJwtTokenRecord(
   tokenId: string,
   revokedAt = Math.floor(Date.now() / 1000),
@@ -185,6 +195,7 @@ export async function revokeJwtTokenRecord(
   });
 }
 
+// Revokes every currently active JWT associated with a user.
 export async function revokeJwtTokenRecordsForUser(
   userId: string,
   revokedAt = Math.floor(Date.now() / 1000),

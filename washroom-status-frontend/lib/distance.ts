@@ -9,3 +9,10 @@ export function distanceMiles(originLat: number, originLon: number, lat: number,
 export function formatDistance(miles: number): string {
   return miles < 0.01 ? 'Less than 0.01 mi' : `${miles.toFixed(2)} mi`;
 }
+
+export function sortByDistance<T extends { distanceMiles?: number }>(places: T[]): T[] {
+  return [...places].sort((first, second) =>
+    (first.distanceMiles ?? Number.POSITIVE_INFINITY) -
+    (second.distanceMiles ?? Number.POSITIVE_INFINITY)
+  );
+}

@@ -27,6 +27,10 @@ export type RestroomPlace = {
   changingTable: string
   unisex: string
   toilets: string
+  provider?: string
+  createdAt?: string
+  updatedAt?: string
+  directions?: string
   coordinates: {
     latitude: number
     longitude: number
@@ -36,6 +40,7 @@ export type RestroomPlace = {
 const EARTH_RADIUS_METERS = 6_371_000
 const PAGE_SIZE = 500
 
+// Loads the Supabase URL and service key required for database requests.
 function getRestroomsRequestConfig(): { baseUrl: string; apiKey: string } {
   const baseUrl = Deno.env.get("SUPABASE_URL")
   const apiKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -50,6 +55,7 @@ function getRestroomsRequestConfig(): { baseUrl: string; apiKey: string } {
   return { baseUrl, apiKey }
 }
 
+// Calculates a latitude/longitude bounding box around a search point.
 function buildBounds(
   latitude: number,
   longitude: number,
@@ -72,6 +78,7 @@ function buildBounds(
   }
 }
 
+// Creates a REST query for restroom rows within one longitude range.
 function buildRestroomsUrl(
   baseUrl: string,
   bounds: ReturnType<typeof buildBounds>,
@@ -100,6 +107,7 @@ function buildRestroomsUrl(
   return url
 }
 
+// Measures the great-circle distance between two coordinate pairs.
 function distanceMeters(
   latitudeA: number,
   longitudeA: number,
@@ -117,6 +125,7 @@ function distanceMeters(
   return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(haversine))
 }
 
+// Maps a database restroom row into the shared API response shape.
 function toRestroomPlace(row: RestroomRow): RestroomPlace {
   return {
     id: row.osm_id,
@@ -138,6 +147,7 @@ function toRestroomPlace(row: RestroomRow): RestroomPlace {
   }
 }
 
+// Fetches paginated restroom rows, handling longitude wrap and exact-radius filtering.
 async function fetchRestroomRows(
   baseUrl: string,
   apiKey: string,
@@ -196,6 +206,7 @@ async function fetchRestroomRows(
   )
 }
 
+// Validates the search radius and returns nearby database restrooms.
 export async function findNearbyRestrooms(
   latitude: number,
   longitude: number,

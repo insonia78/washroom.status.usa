@@ -26,6 +26,7 @@ type RevokeTokenRequestBody = {
   tokenId?: string;
 };
 
+// Serializes revocation responses with the required CORS headers.
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -36,6 +37,7 @@ function jsonResponse(status: number, body: unknown) {
   });
 }
 
+// Writes structured events for token-revocation requests.
 function logRevokeEvent(event: string, details: Record<string, unknown> = {}) {
   console.log(`[jwt-revoke] ${JSON.stringify({
     event,
@@ -44,6 +46,7 @@ function logRevokeEvent(event: string, details: Record<string, unknown> = {}) {
   })}`);
 }
 
+// Validates the optional token ID accepted in the revocation request.
 function isRevokeTokenRequestBody(value: unknown): value is RevokeTokenRequestBody {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -53,6 +56,7 @@ function isRevokeTokenRequestBody(value: unknown): value is RevokeTokenRequestBo
   return typeof candidate.tokenId === "undefined" || typeof candidate.tokenId === "string";
 }
 
+// Finds a bearer token in the gateway-forwarded or standard authorization header.
 function getBearerAuthorization(req: Request) {
   const gatewayAuthorization = req.headers.get(gatewayAuthorizationHeader);
   if (gatewayAuthorization?.startsWith("Bearer ")) {
@@ -73,6 +77,7 @@ function getBearerAuthorization(req: Request) {
   return null;
 }
 
+// Verifies the bearer JWT and extracts its token ID for revocation.
 async function getTokenIdFromBearerToken(req: Request): Promise<string | null> {
   const bearerAuthorization = getBearerAuthorization(req);
   if (!bearerAuthorization) {
@@ -98,6 +103,7 @@ async function getTokenIdFromBearerToken(req: Request): Promise<string | null> {
 }
 
 export default {
+  // Checks gateway access and revokes the specified token or the caller's token.
   fetch: async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", {

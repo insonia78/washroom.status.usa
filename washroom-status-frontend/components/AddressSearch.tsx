@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {Search} from 'lucide-react';
+import {apiFailureMessage} from '@/lib/user-messages';
 
 type Suggestion = {label:string;latitude:number;longitude:number};
 type Props = {value:string;onChange:(value:string)=>void;onSelect:(suggestion:Suggestion)=>void;searching:boolean};
@@ -35,11 +36,11 @@ export default function AddressSearch({value,onChange,onSelect,searching}:Props)
         const params=new URLSearchParams({suggest:'1',...(/^\d{5}$/.test(query)?{zip:query}:{q:query})});
         const response=await fetch(`/api/backend/geocode?${params}`,{signal:controller.signal});
         const data=await response.json();
-        if(!response.ok)throw new Error(data.error||'Address suggestions are unavailable. You can still use Search.');
-        if(!Array.isArray(data.suggestions)||!data.suggestions.every(isSuggestion))throw new Error('Invalid address suggestions response.');
+        if(!response.ok)throw new Error(apiFailureMessage(data.error, /^\d{5}$/.test(query)?'ZIP Geocoding API':'Photon Geocoding API'));
+        if(!Array.isArray(data.suggestions)||!data.suggestions.every(isSuggestion))throw new Error(apiFailureMessage(null, 'Geocoding API'));
         if(!controller.signal.aborted)setSuggestions(data.suggestions);
       }catch(error){
-        if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Address suggestions failed.');
+        if(!controller.signal.aborted)setError(apiFailureMessage(error instanceof Error?error.message:null, /^\d{5}$/.test(query)?'ZIP Geocoding API':'Photon Geocoding API'));
       }finally{
         if(!controller.signal.aborted)setLoading(false);
       }

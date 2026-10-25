@@ -43,7 +43,7 @@ test('restroom HTTP calls use the gateway and map Places API fields for the UI',
     assert.equal(url.pathname, '/functions/v1/gateway/places/bathrooms');
     assert.equal(url.searchParams.get('lat'), '39.9526');
     assert.equal(url.searchParams.get('lon'), '-75.1652');
-    assert.equal(url.searchParams.get('radius'), '1609.344');
+    assert.equal(url.searchParams.get('radius'), '8046.72');
     const headers = new Headers(init.headers);
     assert.equal(headers.get('apikey'), 'sb_publishable_test');
     assert.equal(headers.get('x-washroom-gateway-secret'), null);
@@ -91,6 +91,29 @@ test('business categories and explicit or unknown restroom availability reach th
   }
 });
 
+test('Refuge Restrooms records preserve their provider identity and creation date', async () => {
+  const createdAt = '2024-01-02T03:04:05.000Z';
+  globalThis.fetch = async () => Response.json({
+    success: true,
+    data: [{
+      id: 45333,
+      osmType: 'refuge',
+      provider: 'refuge-restrooms',
+      createdAt,
+      directions: 'Ask the staff for access.',
+      name: 'Example restroom',
+      coordinates: { latitude: 39.9526, longitude: -75.1652 },
+    }],
+  });
+  const response = await GET(request());
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.restrooms[0].osm_type, 'refuge');
+  assert.equal(body.restrooms[0].source, 'refuge-restrooms');
+  assert.equal(body.restrooms[0].created_at, createdAt);
+  assert.equal(body.restrooms[0].directions, 'Ask the staff for access.');
+});
+
 test('invalid or missing coordinates are rejected before making HTTP calls', async () => {
   for (const query of ['', 'lat=&lon=0', 'lat=0&lon=%20', 'lat=NaN&lon=0', 'lat=91&lon=0', 'lat=0&lon=-181']) {
     assert.equal((await GET(request(query))).status, 400, query);
@@ -126,8 +149,12 @@ test('unsupported manual radii are rejected without upstream requests', async ()
 });
 
 test('partial results preserve stored restrooms and the warning without caching', async () => {
-  const warning = 'Showing stored restrooms only. Gas stations and supermarkets could not be loaded.';
-  globalThis.fetch = async () => Response.json({ success: true, data: [place], warning });
+  const warning = "Refuge Restrooms API and OpenStreetMap Overpass API request failed. Please try again. Results may be incomplete.";
+  globalThis.fetch = async () => Response.json({
+    success: true,
+    data: [place],
+    warning: 'Refuge Restrooms and OpenStreetMap data could not be checked.',
+  });
   const response = await GET(request());
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -144,6 +171,16 @@ test('invalid partial-result warnings do not become successful empty results', a
   }
 });
 
+test('failed upstream API names reach the client without internal error details', async () => {
+  globalThis.fetch = async () => Response.json({
+    error: 'All Overpass endpoints failed. Internal URL: private.example',
+  }, {status: 502});
+  const response = await GET(request());
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error,
+    'OpenStreetMap Overpass API request failed. Please try again.');
+});
+
 test('missing gateway configuration returns an explicit service error', async () => {
   delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   assert.equal((await GET(request())).status, 503);
@@ -154,7 +191,7 @@ test('ZIP lookups preserve leading zeros and return resolved coordinates', async
     const url = new URL(input);
     assert.equal(url.pathname, '/functions/v1/gateway/places/bathrooms');
     assert.equal(url.searchParams.get('zip'), '02108');
-    assert.equal(url.searchParams.get('radius'), '1609.344');
+    assert.equal(url.searchParams.get('radius'), '8046.72');
     assert.equal(url.searchParams.get('countryCode'), 'us');
     assert.equal(url.searchParams.has('lat'), false);
     assert.equal(url.searchParams.has('lon'), false);
@@ -199,8 +236,8 @@ test('gateway HTTP errors preserve status and do not become empty successful res
     assert.equal(response.status, status);
     const body = await response.json();
     assert.equal(typeof body.error, 'string');
+    assert.equal(body.error, "Places API request failed. Please try again.");
     assert.equal(body.restrooms, undefined);
-    if (status === 504) assert.match(body.error, /data source timed out/);
   }
 });
 

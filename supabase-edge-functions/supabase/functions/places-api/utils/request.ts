@@ -2,6 +2,7 @@ import { FUNCTION_PATH_PREFIXES } from "../config/constants.ts"
 import type { PlacesApiRequestInput } from "../models/types.ts"
 import { RequestError } from "./errors.ts"
 
+// Returns the first non-empty value for a query parameter.
 export function getSearchParamValue(searchParams: URLSearchParams, key: string): string | undefined {
   const values = searchParams.getAll(key)
   if (!values.length) {
@@ -12,6 +13,7 @@ export function getSearchParamValue(searchParams: URLSearchParams, key: string):
   return value ? value : undefined
 }
 
+// Trims a JSON input value and ignores values that are not non-empty strings.
 function normalizeStringValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined
@@ -21,6 +23,7 @@ function normalizeStringValue(value: unknown): string | undefined {
   return trimmedValue ? trimmedValue : undefined
 }
 
+// Reads and validates supported fields from a GET query or JSON POST body.
 export async function readRequestInput(req: Request): Promise<PlacesApiRequestInput> {
   if (req.method === "GET") {
     const searchParams = new URL(req.url).searchParams
@@ -64,6 +67,7 @@ export async function readRequestInput(req: Request): Promise<PlacesApiRequestIn
   }
 }
 
+// Parses a finite numeric request value or raises a client input error.
 export function parseFiniteNumber(value: string, fieldName: string): number {
   const parsedValue = Number.parseFloat(value)
 
@@ -74,6 +78,7 @@ export function parseFiniteNumber(value: string, fieldName: string): number {
   return parsedValue
 }
 
+// Removes the Supabase function prefix so routing can use the local path.
 export function getRoutePath(req: Request): string {
   const pathname = new URL(req.url).pathname
 
@@ -90,6 +95,7 @@ export function getRoutePath(req: Request): string {
   return pathname
 }
 
+// Extracts safe request metadata for structured logging.
 export function buildRequestSummary(req: Request, routePath: string) {
   const requestUrl = new URL(req.url)
 

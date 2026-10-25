@@ -3,12 +3,16 @@ export const gatewaySecretHeader = "x-washroom-gateway-secret";
 export const gatewayAuthorizationHeader = "x-washroom-gateway-authorization";
 export const gatewayCallerValue = "washroom-gateway";
 export const gatewayInternalSecretEnv = "GATEWAY_INTERNAL_SECRET";
+
+// Creates the internal headers that identify and authenticate gateway requests.
 export function buildGatewayHeaders(secret: string): Record<string, string> {
   return {
     [gatewayCallerHeader]: gatewayCallerValue,
     [gatewaySecretHeader]: secret
   };
 }
+
+// Rejects requests that do not carry the configured gateway identity and secret.
 export function authorizeGatewayRequest(
   req: Request,
   jsonResponse: (status: number, body: unknown) => Response,

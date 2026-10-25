@@ -5,12 +5,14 @@ import { RequestError } from "../utils/errors.ts"
 import { logWithColor } from "../utils/logger.ts"
 import { parseFiniteNumber } from "../utils/request.ts"
 
+// Restricts geocoding requests to the supported US country code.
 function validateCountryCode(countryCode: string): void {
   if (countryCode.toLowerCase() !== "us") {
     throw new RequestError(400, "Only US searches are supported. Use countryCode 'us' or omit it.")
   }
 }
 
+// Calls the ZIP provider and validates its response before returning coordinates.
 async function geocodeUsZipCode(url: URL, zipCode: string): Promise<SearchOrigin | null> {
   const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
   logWithColor("geocode", ANSI_COLORS.magenta, `Zippopotam response status: ${response.status}`)
@@ -64,6 +66,7 @@ async function geocodeUsZipCode(url: URL, zipCode: string): Promise<SearchOrigin
   return { latitude, longitude, source: "zip", zipCode, countryCode: "us" }
 }
 
+// Validates and caches a US ZIP-code lookup.
 export async function geocodeZipCode(zipCode: string, countryCode = "us"): Promise<SearchOrigin | null> {
   validateCountryCode(countryCode)
   if (!/^[0-9]{5}$/.test(zipCode)) {
@@ -82,6 +85,7 @@ export async function geocodeZipCode(zipCode: string, countryCode = "us"): Promi
   return origin
 }
 
+// Chooses ZIP geocoding or validated coordinates as the search origin.
 export async function resolveSearchOrigin(input: PlacesApiRequestInput): Promise<SearchOrigin> {
   const latValue = input.lat
   const lonValue = input.lon

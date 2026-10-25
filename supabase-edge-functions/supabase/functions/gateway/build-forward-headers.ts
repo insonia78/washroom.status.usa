@@ -1,3 +1,4 @@
+// Adds verified user metadata and gateway context to headers forwarded downstream.
 export function buildForwardHeaders(
   req: Request,
   payload: Record<string, unknown>,
@@ -25,6 +26,7 @@ export function buildForwardHeaders(
   return headers;
 }
 
+// Reads a string claim from the verified token payload.
 function getPayloadStringValue(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === "string" ? value : "";

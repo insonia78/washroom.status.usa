@@ -4,7 +4,7 @@ export default {
       source: '/:path*',
       headers: [{
         key: 'Content-Security-Policy',
-        value: "connect-src 'self' https://tile.openstreetmap.org",
+        value: "connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'",
       }],
     }];
   },

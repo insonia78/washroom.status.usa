@@ -1,3 +1,5 @@
+import { apiFailureMessage } from './user-messages.ts';
+
 export class GatewayConfigurationError extends Error {}
 
 export async function gatewayFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -35,6 +37,6 @@ export async function proxyGateway(req: Request, path: string): Promise<Response
     console.error('Gateway proxy failed:', error);
     const status = error instanceof GatewayConfigurationError ? 503 :
       error instanceof Error && error.name === 'TimeoutError' ? 504 : 502;
-    return Response.json({ error: 'The application gateway is unavailable. Please retry.' }, { status });
+    return Response.json({ error: apiFailureMessage(null, 'Gateway API') }, { status });
   }
 }

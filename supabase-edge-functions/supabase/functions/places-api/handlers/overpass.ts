@@ -5,6 +5,7 @@ import { RequestError } from "../utils/errors.ts"
 import { jsonResponse } from "../utils/http.ts"
 import { parseFiniteNumber } from "../utils/request.ts"
 
+// Validates the requested search mode and returns matching nearby places.
 export async function handleOverpassRequest(input: PlacesApiRequestInput) {
   const radiusValue = input.radius ?? "1000"
   const modeValue = (input.mode ?? "all").toLowerCase()

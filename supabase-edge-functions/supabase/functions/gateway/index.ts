@@ -53,6 +53,7 @@ const defaultRetryDelayMs = 250;
 
 type LogLevel = "info" | "warn" | "error";
 
+// Derives a sibling edge-function URL by replacing the final path segment.
 function deriveSiblingFunctionUrl(functionUrl: string | undefined, functionName: string): string | null {
   if (!functionUrl) {
     return null;
@@ -80,6 +81,7 @@ const placesApiUrl =
 const frontendApiUrl = Deno.env.get("FRONTEND_API_URL") ??
   deriveSiblingFunctionUrl(placesApiUrl ?? undefined, "frontend-api");
 
+// Emits a structured gateway log entry at the requested severity.
 function logGatewayEvent(level: LogLevel, event: string, details: Record<string, unknown> = {}) {
   const payload = {
     event,
@@ -101,10 +103,12 @@ function logGatewayEvent(level: LogLevel, event: string, details: Record<string,
   console.log(message);
 }
 
+// Waits for the requested duration between retry attempts.
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Reports only whether key request headers are present, not their values.
 function getHeaderPresence(req: Request) {
   return {
     hasApiKey: Boolean(req.headers.get("apikey")),
@@ -115,6 +119,7 @@ function getHeaderPresence(req: Request) {
   };
 }
 
+// Collects request metadata used by gateway logs.
 function buildRequestLogContext(req: Request, requestId: string) {
   const requestUrl = new URL(req.url);
 
@@ -128,6 +133,7 @@ function buildRequestLogContext(req: Request, requestId: string) {
   };
 }
 
+// Returns the backend origin and path without exposing URL credentials or query data.
 function summarizeBackendUrl(baseUrl: string) {
   const parsedUrl = new URL(baseUrl);
 
@@ -137,10 +143,12 @@ function summarizeBackendUrl(baseUrl: string) {
   };
 }
 
+// Converts unknown thrown values into readable error text.
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+// Summarizes configured backend URLs and secret presence for startup logging.
 function getConfiguredBackendsSummary() {
   return {
     hasRegistrationApiUrl: Boolean(registrationApiUrl),
@@ -155,6 +163,7 @@ function getConfiguredBackendsSummary() {
   };
 }
 
+// Reports whether a forwarded request body exists and its size and content type.
 function summarizeRequestBody(requestBody: Blob | null) {
   if (!requestBody) {
     return {
@@ -171,6 +180,7 @@ function summarizeRequestBody(requestBody: Blob | null) {
   };
 }
 
+// Produces a compact description of a response payload for logs.
 function summarizeBodyPayload(payload: unknown) {
   if (typeof payload === "string") {
     return {
@@ -198,10 +208,12 @@ function summarizeBodyPayload(payload: unknown) {
   };
 }
 
+// Determines whether HTTP semantics allow a response body for this method and status.
 function canResponseHaveBody(method: string, status: number) {
   return method !== "HEAD" && ![101, 103, 204, 205, 304].includes(status);
 }
 
+// Reports presence and content type of headers forwarded to a backend.
 function summarizeForwardHeaders(headers: Headers) {
   return {
     hasApiKey: headers.has("apikey"),
@@ -216,6 +228,7 @@ function summarizeForwardHeaders(headers: Headers) {
   };
 }
 
+// Builds CORS headers using the request origin and requested header list when present.
 function buildCorsHeaders(req?: Request) {
   const requestOrigin = req?.headers.get("origin");
   const requestedHeaders = req?.headers.get("access-control-request-headers");
@@ -228,6 +241,7 @@ function buildCorsHeaders(req?: Request) {
   };
 }
 
+// Serializes a JSON gateway response with request-specific CORS headers.
 function jsonResponse(status: number, body: unknown, req?: Request) {
   return new Response(JSON.stringify(body), {
     status,
@@ -238,6 +252,7 @@ function jsonResponse(status: number, body: unknown, req?: Request) {
   });
 }
 
+// Removes the gateway function prefix to obtain the downstream route path.
 function extractProxyPath(pathname: string) {
   for (const prefix of FUNCTION_PATH_PREFIXES) {
     if (!pathname.startsWith(prefix)) {
@@ -251,10 +266,12 @@ function extractProxyPath(pathname: string) {
   return pathname;
 }
 
+// Finds the configured route definition matching a request path.
 function matchRoute(pathname: string) {
   return supportedRoutes.find((route) => route.pattern.test(pathname));
 }
 
+// Maps an exposed proxy path to the service that should receive it.
 function inferService(proxyPath: string): SERVICES | null {
   if (proxyPath.startsWith(`/${SERVICES.FRONTEND}/`)) {
     return SERVICES.FRONTEND;
@@ -278,6 +295,7 @@ function inferService(proxyPath: string): SERVICES | null {
   return null;
 }
 
+// Selects the configured backend URL for the matched service.
 function resolveBackendUrl(service: SERVICES | null): string | null {
   if (service === SERVICES.FRONTEND) {
     return frontendApiUrl ?? null;
@@ -297,6 +315,7 @@ function resolveBackendUrl(service: SERVICES | null): string | null {
   return registrationApiUrl ?? null;
 }
 
+// Reads the incoming body when the HTTP method permits one.
 async function buildForwardBody(req: Request) {
   if (req.method === "GET" || req.method === "HEAD") {
     return null;
@@ -305,6 +324,7 @@ async function buildForwardBody(req: Request) {
   return await req.blob();
 }
 
+// Combines the backend base path, proxy route, and query string into the target URL.
 function buildTargetUrl(baseUrl: string, proxyPath: string, search: string, service: SERVICES | null) {
   if (service === SERVICES.AUTH) {
     const targetUrl = new URL(baseUrl);
@@ -333,6 +353,7 @@ function buildTargetUrl(baseUrl: string, proxyPath: string, search: string, serv
   return targetUrl;
 }
 
+// Rewrites local hostnames to the Docker host when a backend is container-local.
 function buildContainerReachableBackendUrl(baseUrl: string) {
   const parsedUrl = new URL(baseUrl);
   if (parsedUrl.hostname !== "127.0.0.1" && parsedUrl.hostname !== "localhost") {
@@ -343,6 +364,7 @@ function buildContainerReachableBackendUrl(baseUrl: string) {
   return parsedUrl.toString();
 }
 
+// Builds downstream headers, including verified user metadata and gateway credentials.
 function buildProxyHeaders(
   req: Request,
   service: SERVICES | null,
@@ -383,26 +405,32 @@ function buildProxyHeaders(
   return headers;
 }
 
+// Identifies the administrator login route for specialized gateway handling.
 function isAdminLoginPath(proxyPath: string) {
   return proxyPath === "/admin/login";
 }
 
+// Identifies the administrator access-check route.
 function isAdminAccessPath(proxyPath: string) {
   return proxyPath === "/admin/access";
 }
 
+// Identifies the administrator password-setup route.
 function isAdminCreatePasswordPath(proxyPath: string) {
   return proxyPath === "/admin/create-password";
 }
 
+// Identifies the account deactivation route.
 function isAccountDeactivatePath(proxyPath: string) {
   return proxyPath === "/accounts/deactivate";
 }
 
+// Identifies unauthenticated place-search routes.
 function isPublicPlacesPath(proxyPath: string) {
   return /^\/places\/(bathrooms|overpass)\/?$/.test(proxyPath);
 }
 
+// Extracts the best available client IP address from proxy headers.
 function getRequestIpAddress(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   if (forwardedFor) {
@@ -425,6 +453,7 @@ function getRequestIpAddress(req: Request) {
   return "";
 }
 
+// Verifies a Turnstile challenge when login protection is enabled.
 async function verifyTurnstileChallenge(
   req: Request,
   turnstileToken: string,
@@ -496,11 +525,13 @@ async function verifyTurnstileChallenge(
   return null;
 }
 
+// Returns a trimmed string field from an object, or an empty string.
 function getRecordStringValue(record: Record<string, unknown>, key: string) {
   const value = record[key];
   return typeof value === "string" ? value.trim() : "";
 }
 
+// Validates the email-only body used for administrator access checks.
 function isAdminEmailRequestBody(value: unknown): value is { email: string } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -510,6 +541,7 @@ function isAdminEmailRequestBody(value: unknown): value is { email: string } {
   return typeof record.email === "string";
 }
 
+// Validates the email and password body used by account login routes.
 function isAdminLoginRequestBody(value: unknown): value is { email: string; password: string } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -519,6 +551,7 @@ function isAdminLoginRequestBody(value: unknown): value is { email: string; pass
   return typeof record.email === "string" && typeof record.password === "string";
 }
 
+// Reads the optional Turnstile token from a request body.
 function getTurnstileToken(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return "";
@@ -528,14 +561,17 @@ function getTurnstileToken(value: unknown) {
   return typeof record.turnstileToken === "string" ? record.turnstileToken.trim() : "";
 }
 
+// Reuses login-body validation for administrator password setup.
 function isAdminCreatePasswordRequestBody(value: unknown): value is { email: string; password: string } {
   return isAdminLoginRequestBody(value);
 }
 
+// Identifies the account login route.
 function isAccountLoginPath(proxyPath: string) {
   return proxyPath === "/accounts/login";
 }
 
+// Parses a non-empty JSON body from the buffered request body.
 async function parseJsonBodyFromBlob(requestBody: Blob | null) {
   if (!requestBody) {
     return null;
@@ -549,6 +585,7 @@ async function parseJsonBodyFromBlob(requestBody: Blob | null) {
   return JSON.parse(text);
 }
 
+// Requests a signed custom JWT for an authenticated identity.
 async function createJwtForIdentity(
   req: Request,
   identity: { userId: string; role: string },
@@ -597,6 +634,7 @@ async function createJwtForIdentity(
   return jwtPayload as Record<string, unknown>;
 }
 
+// Resolves an account API endpoint against the configured registration service.
 function getAccountApiUrl(pathname: string) {
   if (!registrationApiUrl) {
     throw new Error("Missing WASHROOM_REGISTRATION_API_URL environment variable.");
@@ -605,6 +643,7 @@ function getAccountApiUrl(pathname: string) {
   return new URL(pathname, registrationApiUrl.endsWith("/") ? registrationApiUrl : `${registrationApiUrl}/`);
 }
 
+// Calls the registration API with optional bounded retries for transient failures.
 async function fetchAccountApiResponse(
   pathname: string,
   body: Record<string, unknown>,
@@ -675,6 +714,7 @@ async function fetchAccountApiResponse(
   };
 }
 
+// Extracts the email, role, and password-setup status from an account response.
 function getAdminAccountResponseDetails(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
@@ -694,6 +734,7 @@ function getAdminAccountResponseDetails(value: unknown) {
   };
 }
 
+// Rejects account details that do not represent an administrator.
 function ensureAdminAccount(details: { email: string; role: string }, req: Request) {
   if (details.role !== adminRole) {
     return jsonResponse(403, {
@@ -704,6 +745,7 @@ function ensureAdminAccount(details: { email: string; role: string }, req: Reque
   return null;
 }
 
+// Validates the email and returns the administrator's access and setup state.
 async function buildAdminAccessResponse(
   req: Request,
   requestBody: Blob | null,
@@ -757,6 +799,7 @@ async function buildAdminAccessResponse(
   }, req);
 }
 
+// Authenticates a standard account and appends a custom token to the result.
 async function buildAccountLoginResponse(
   req: Request,
   requestBody: Blob | null,
@@ -801,6 +844,7 @@ async function buildAccountLoginResponse(
   return jsonResponse(response.status, payloadWithToken, req);
 }
 
+// Authenticates an administrator and issues a JWT only after role and setup checks.
 async function buildAdminLoginResponse(
   req: Request,
   requestBody: Blob | null,
@@ -873,6 +917,7 @@ async function buildAdminLoginResponse(
   }, req);
 }
 
+// Sets an administrator password and issues a JWT after account verification.
 async function buildAdminCreatePasswordResponse(
   req: Request,
   requestBody: Blob | null,
@@ -933,6 +978,7 @@ async function buildAdminCreatePasswordResponse(
   }, req);
 }
 
+// Revokes the user's active JWTs before asking the account service to deactivate them.
 async function buildAccountDeactivateResponse(
   req: Request,
   verifiedToken: VerifiedToken | null,
@@ -974,6 +1020,7 @@ async function buildAccountDeactivateResponse(
   }, req);
 }
 
+// Forwards a request to its backend and retries local endpoints through the container host if needed.
 async function fetchBackendResponse(
   req: Request,
   service: SERVICES | null,
@@ -1041,6 +1088,7 @@ async function fetchBackendResponse(
   }
 }
 
+// Decodes a backend response as JSON when possible, otherwise as text.
 async function parseBackendBody(response: Response) {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
@@ -1050,12 +1098,14 @@ async function parseBackendBody(response: Response) {
   return await response.text();
 }
 
+// Detects response content types that must be relayed without parsing.
 function shouldProxyRawResponseBody(contentType: string) {
   return contentType.includes("text/event-stream") ||
     contentType.startsWith("image/") ||
     contentType.includes("application/octet-stream");
 }
 
+// Summarizes a proxied response without inspecting binary or streaming content.
 function summarizeProxiedBody(contentType: string, rawResponseBody: boolean, body: unknown) {
   if (rawResponseBody) {
     return {
@@ -1066,6 +1116,7 @@ function summarizeProxiedBody(contentType: string, rawResponseBody: boolean, bod
   return summarizeBodyPayload(body);
 }
 
+// Preserves backend response headers and overlays gateway CORS headers.
 function buildResponseHeaders(sourceHeaders: Headers, req?: Request) {
   const responseHeaders = new Headers(sourceHeaders);
   Object.entries(buildCorsHeaders(req)).forEach(([key, value]) => {
@@ -1074,6 +1125,7 @@ function buildResponseHeaders(sourceHeaders: Headers, req?: Request) {
   return responseHeaders;
 }
 
+// Reconstructs the backend response while respecting status and body type.
 function buildProxiedResponse(
   req: Request,
   status: number,
@@ -1109,6 +1161,7 @@ function buildProxiedResponse(
   });
 }
 
+// Adds a custom JWT to successful account responses when identity details are available.
 async function appendTokenForAccountRoutes(
   req: Request,
   payload: unknown,
@@ -1138,6 +1191,7 @@ console.log("Washroom Gateway initialized");
 logGatewayEvent("info", "function.initialized", getConfiguredBackendsSummary());
 
 export default {
+  // Matches and authorizes routes, performs specialized auth flows, then proxies requests and responses.
   fetch: async (req: Request) => {
     const requestId = crypto.randomUUID();
     const startedAt = Date.now();

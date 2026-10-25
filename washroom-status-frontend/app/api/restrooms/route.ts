@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server.js';
 import type { Restroom } from '@/components/RestroomDetails';
 import { gatewayFetch, GatewayConfigurationError } from '../../../lib/gateway.ts';
+import { LOCATION_RESULTS_ERROR, apiFailureMessage } from '../../../lib/user-messages.ts';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,7 +12,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function toRestroom(value: unknown): Restroom {
   if (!isRecord(value) || !Number.isSafeInteger(value.id) ||
-      (value.osmType !== 'node' && value.osmType !== 'way' && value.osmType !== 'relation') ||
+      (value.osmType !== 'node' && value.osmType !== 'way' && value.osmType !== 'relation' && value.osmType !== 'refuge') ||
       !isRecord(value.coordinates)) {
     throw new Error('Invalid restroom in gateway response.');
   }
@@ -24,6 +25,9 @@ function toRestroom(value: unknown): Restroom {
   return {
     id: Number(value.id),
     osm_type: value.osmType,
+    ...(value.provider === 'refuge-restrooms' ? { source: 'refuge-restrooms' as const } : {}),
+    ...(typeof value.createdAt === 'string' ? { created_at: value.createdAt } : {}),
+    ...(typeof value.directions === 'string' ? { directions: value.directions } : {}),
     lat: latitude,
     lon: longitude,
     name: typeof value.name === 'string' && value.name ? value.name : 'Public restroom',
@@ -36,7 +40,7 @@ function toRestroom(value: unknown): Restroom {
 }
 
 export async function GET(req: NextRequest) {
-  const radiusMiles = req.nextUrl.searchParams.get('radiusMiles') ?? '1';
+  const radiusMiles = req.nextUrl.searchParams.get('radiusMiles') ?? '5';
   const radiusMeters: Record<string, string> = { '1': '1609.344', '2': '3218.688', '5': '8046.72', '10': '16093.44' };
   if (!Object.hasOwn(radiusMeters, radiusMiles)) {
     return NextResponse.json({ error: 'Choose a search radius of 1, 2, 5, or 10 miles.' }, { status: 400 });
@@ -69,10 +73,8 @@ export async function GET(req: NextRequest) {
     const response = await gatewayFetch(url.pathname + url.search, { headers: { Accept: 'application/json' } });
     if (!response.ok) {
       console.error('Restroom gateway returned an error:', response.status);
-      const error = response.status === 504
-        ? 'The restroom data source timed out. Please retry shortly.'
-        : 'The restroom service could not load locations. Please retry.';
-      return NextResponse.json({ error }, { status: response.status });
+      const detail: unknown = await response.json().catch(() => null);
+      return NextResponse.json({ error: apiFailureMessage(isRecord(detail) ? detail.error : null) }, { status: response.status });
     }
     const payload: unknown = await response.json();
     if (!isRecord(payload) || payload.success !== true || !Array.isArray(payload.data)) {
@@ -81,9 +83,9 @@ export async function GET(req: NextRequest) {
     const restrooms = payload.data.map(toRestroom);
     if (payload.warning !== undefined &&
         (typeof payload.warning !== 'string' || !payload.warning.trim() || !restrooms.length)) {
-      throw new Error('Invalid partial restroom response.');
+      throw new Error(LOCATION_RESULTS_ERROR);
     }
-    const warning = payload.warning;
+    const warning = payload.warning ? `${apiFailureMessage(payload.warning)} Results may be incomplete.` : undefined;
     let searchOrigin: { latitude: number; longitude: number; zipCode: string } | undefined;
     if (zip) {
       const origin = payload.searchOrigin;
@@ -91,7 +93,7 @@ export async function GET(req: NextRequest) {
           typeof origin.longitude !== 'number' || !Number.isFinite(origin.latitude) ||
           !Number.isFinite(origin.longitude) || Math.abs(origin.latitude) > 90 ||
           Math.abs(origin.longitude) > 180) {
-        throw new Error('Invalid ZIP coordinates in gateway response.');
+        throw new Error(LOCATION_RESULTS_ERROR);
       }
       searchOrigin = { latitude: origin.latitude, longitude: origin.longitude, zipCode: zip };
     }
@@ -100,9 +102,9 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('Restroom gateway lookup failed:', err);
     if (err instanceof GatewayConfigurationError) {
-      return NextResponse.json({ error: err.message }, { status: 503 });
+      return NextResponse.json({ error: apiFailureMessage(null, 'Gateway API') }, { status: 503 });
     }
     const timedOut = err instanceof Error && err.name === 'TimeoutError';
-    return NextResponse.json({ error: timedOut ? 'The restroom gateway timed out. Please retry.' : 'Could not load restroom locations from the gateway. Please retry.' }, { status: timedOut ? 504 : 502 });
+      return NextResponse.json({ error: apiFailureMessage(null, 'Gateway / Places API') }, { status: timedOut ? 504 : 502 });
   }
 }

@@ -18,6 +18,7 @@ const supportedRoutes = ["/bathrooms", "/overpass"]
 console.log("Places API function loaded.")
 
 export default {
+  // Handles preflight, gateway authorization, input parsing, route dispatch, and request errors.
   fetch: async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders })

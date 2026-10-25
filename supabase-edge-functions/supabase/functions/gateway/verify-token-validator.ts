@@ -7,6 +7,7 @@ const jwtValidatorUrl = Deno.env.get("JWT_VALIDATOR_URL");
 
 type JsonResponse = (status: number, body: unknown, req?: Request) => Response;
 
+// Sends the caller's credentials to jwt-validator and validates its response.
 export async function verifyTokenWithValidator(
   req: Request,
   jsonResponse: JsonResponse,
