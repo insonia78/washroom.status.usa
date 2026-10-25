@@ -5,7 +5,6 @@
 // import "@supabase/functions-js/edge-runtime.d.ts";
 
 import { handleBathroomsRequest } from "./handlers/bathrooms.ts"
-import { handleOverpassRequest } from "./handlers/overpass.ts"
 import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts"
 import { ANSI_COLORS, corsHeaders } from "./config/constants.ts"
 import { RequestError } from "./utils/errors.ts"
@@ -13,7 +12,7 @@ import { jsonResponse } from "./utils/http.ts"
 import { logError, logWithColor } from "./utils/logger.ts"
 import { buildRequestSummary, getRoutePath, readRequestInput } from "./utils/request.ts"
 
-const supportedRoutes = ["/bathrooms", "/overpass"]
+const supportedRoutes = ["/bathrooms"]
 
 console.log("Places API function loaded.")
 
@@ -50,8 +49,6 @@ export default {
 
       if (routePath === "/" || routePath === "/bathrooms") {
         response = await handleBathroomsRequest(requestInput)
-      } else if (routePath === "/overpass") {
-        response = await handleOverpassRequest(requestInput)
       } else {
         response = jsonResponse(404, {
           error: "Route not found",
@@ -91,7 +88,5 @@ export default {
   3. Call:
      - POST http://127.0.0.1:55321/functions/v1/places-api/bathrooms
        {"zip":"10001","radius":"1500"}
-     - POST http://127.0.0.1:55321/functions/v1/places-api/overpass
-       {"zip":"10001","radius":"1500","mode":"all"}
 
 */

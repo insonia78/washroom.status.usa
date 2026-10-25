@@ -9,7 +9,7 @@ export async function handleBathroomsRequest(input: PlacesApiRequestInput) {
   const radiusValue = input.radius ?? "1000"
   const searchOrigin = await resolveSearchOrigin(input)
   const searchRadiusMeters = parseFiniteNumber(radiusValue, "radius")
-  const { data: places, warning } = await searchNearbyPlaces(searchOrigin, radiusValue, "bathrooms")
+  const { data: places, warning } = await searchNearbyPlaces(searchOrigin, radiusValue)
 
   return jsonResponse(200, {
     success: true,

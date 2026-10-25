@@ -4,7 +4,6 @@ export function apiFailureMessage(detail: unknown, fallback = 'Places API'): str
   const text = typeof detail === 'string' ? detail : '';
   const apis = [
     /refuge/i.test(text) ? 'Refuge Restrooms API' : '',
-    /overpass|openstreetmap/i.test(text) ? 'OpenStreetMap Overpass API' : '',
     /openfreemap/i.test(text) ? 'OpenFreeMap API' : '',
     /gateway/i.test(text) ? 'Gateway API' : '',
     /photon/i.test(text) ? 'Photon Geocoding API' : '',

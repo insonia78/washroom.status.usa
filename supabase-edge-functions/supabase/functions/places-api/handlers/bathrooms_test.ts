@@ -1,144 +1,122 @@
 import { handleBathroomsRequest } from "./bathrooms.ts"
-import { handleOverpassRequest } from "./overpass.ts"
+import placesApi from "../index.ts"
+import { buildGatewayHeaders } from "../../_shared/gateway-auth.ts"
 import { RequestError } from "../utils/errors.ts"
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message)
 }
 
-Deno.test("nearby searches include businesses alongside stored or upstream restrooms", async () => {
+Deno.test("nearby searches use only stored locations and Refuge Restrooms", async () => {
   const originalFetch = globalThis.fetch
-  const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+  const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GATEWAY_INTERNAL_SECRET"]
   const originalEnv = keys.map(key => Deno.env.get(key))
   const stored = {
     osm_type: "node", osm_id: 123, name: "Stored restroom",
     latitude: 40.75, longitude: -73.99, opening_hours: "24/7",
   }
+  const fuel = {
+    osm_identity: "node/456", latitude: 40.75, longitude: -73.99,
+    tags: { amenity: "fuel", name: "Imported station" },
+  }
+  const refuge = {
+    id: 123, name: "Refuge restroom", latitude: 40.75, longitude: -73.99,
+    accessible: true, unisex: true, changing_table: false,
+    created_at: "2024-01-01T00:00:00.000Z", updated_at: "2024-01-01T00:00:00.000Z",
+    directions: null, distance: 0,
+  }
   let databaseRows: unknown[] = [stored]
-  const queries: string[] = []
-  let failOverpass = false
+  let fuelRows: unknown[] = [fuel]
+  let refugeRows: unknown[] = [refuge]
+  let failRefuge = false
   let failDatabase = false
-  let fuelRows: unknown[] = []
-  let databaseCalls = 0
+  const unexpectedRequests: string[] = []
   Deno.env.set(keys[0], "https://project.example")
   Deno.env.set(keys[1], "test-service-role-key")
+  Deno.env.set(keys[2], "test-gateway-secret")
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
-    if (url.pathname === "/rest/v1/rpc/find_nearby_fuel") return Response.json(fuelRows)
-    if (url.pathname === "/rest/v1/restrooms") {
-      databaseCalls++
-      if (failDatabase) return new Response("Database unavailable", { status: 503 })
-      return Response.json(databaseRows)
+    if (url.origin === "https://project.example") {
+      if (url.pathname === "/rest/v1/rpc/find_nearby_fuel") {
+        const body = JSON.parse(String(init?.body))
+        assert(body.search_latitude === 40.75 && body.search_longitude === -73.99 &&
+          body.radius_meters === 8046.72, "Preserve the requested origin and five-mile radius")
+        return Response.json(fuelRows)
+      }
+      if (url.pathname === "/rest/v1/restrooms") {
+        if (failDatabase) return new Response("Database unavailable", { status: 503 })
+        return Response.json(databaseRows)
+      }
     }
-    assert(init?.body instanceof URLSearchParams, "Expected form POST")
-    const query = init.body.get("data") || ""
-    queries.push(query)
-    if (failOverpass) return new Response("Unavailable", { status: 503 })
-    const elements = [
-      { id: 456, type: "node", lat: 40.75, lon: -73.99, tags: { amenity: "fuel" } },
-      { id: 789, type: "way", center: { lat: 40.75, lon: -73.99 }, tags: { shop: "supermarket", toilets: "no" } },
-    ]
-    if (query.includes('["amenity"="toilets"]')) {
-      elements.push({ id: 123, type: "node", lat: 40.75, lon: -73.99, tags: { amenity: "toilets" } })
+    if (url.hostname === "www.refugerestrooms.org") {
+      assert(url.searchParams.get("lat") === "40.75" && url.searchParams.get("lng") === "-73.99",
+        "Search Refuge at the selected origin")
+      if (failRefuge) return new Response("Unavailable", { status: 503 })
+      return Response.json(refugeRows)
     }
-    return Response.json({ elements })
+    unexpectedRequests.push(url.href)
+    throw new Error(`Unexpected provider request: ${url}`)
   }
-  type Result = { count: number; warning?: string; data: Array<{ id: number; name: string; toilets: string; placeType: string }> }
+  type Result = {
+    count: number; warning?: string;
+    data: Array<{ id: number; name: string; osmType: string; toilets: string; provider?: string }>
+  }
+  const input = { lat: "40.75", lon: "-73.99", radius: "8046.72" }
+  const search = async (): Promise<Result> => {
+    const response = await handleBathroomsRequest(input)
+    assert(response.status === 200, "Return successful searches")
+    const result = await response.json()
+    assert(result.searchRadiusMeters === 8046.72, "Keep the response radius")
+    return result
+  }
   try {
-    const input = { lat: "40.75", lon: "-73.99", radius: "1609.344" }
-    const storedResult: Result = await (await handleBathroomsRequest(input)).json()
-    assert(storedResult.count === 3, "Include both businesses even when stored restrooms exist")
-    assert(storedResult.warning === undefined, "Complete results need no warning")
-    assert(storedResult.data.find(place => place.id === 123)?.name === stored.name, "Preserve stored restroom")
-    assert(storedResult.data.find(place => place.id === 456)?.toilets === "unknown", "Do not invent toilets at gas stations")
-    assert(storedResult.data.find(place => place.id === 789)?.toilets === "no", "Preserve explicit absence of toilets")
-    assert(!queries[0].includes('["amenity"="toilets"]'), "Avoid fetching restrooms when stored ones exist")
-    assert(queries[0].includes('["amenity"="fuel"]') && queries[0].includes('["shop"="supermarket"]'), "Fetch both categories")
-    assert(queries[0].includes("(around:1609.344, 40.75, -73.99)"), "Preserve one-mile radius and origin")
+    const complete = await search()
+    assert(complete.count === 3 && !complete.warning, "Merge stored restrooms, imported fuel, and Refuge")
+    assert(complete.data[0].provider === "refuge-restrooms", "Keep timestamped Refuge listings first")
+    assert(complete.data.filter(place => place.id === 123).length === 2, "Keep distinct source identities")
+    assert(complete.data.find(place => place.id === 456)?.toilets === "unknown",
+      "Imported business presence must not imply restroom availability")
 
-    databaseRows = [stored, { ...stored, osm_id: 456 }, { ...stored, osm_id: 789 }]
-    const merged: Result = await (await handleBathroomsRequest(input)).json()
-    assert(merged.count === 4, "Deduplicate identical OSM identities but retain different element types")
-    assert(merged.data.find(place => place.id === 456)?.name === stored.name, "Stored fields take precedence on duplicate identities")
+    databaseRows = [stored, { ...stored, osm_id: 456 }]
+    const deduplicated = await search()
+    assert(deduplicated.count === 3 &&
+      deduplicated.data.find(place => place.id === 456)?.name === stored.name,
+      "Stored restrooms take precedence over fuel with the same OSM identity")
 
+    failRefuge = true
+    databaseRows = [stored]
+    const partial = await search()
+    assert(partial.count === 2 && partial.warning?.includes("Refuge Restrooms API"),
+      "Preserve stored results and identify the unavailable provider")
     databaseRows = []
-    const fallback: Result = await (await handleBathroomsRequest(input)).json()
-    assert(fallback.count === 3 && fallback.data.some(place => place.id === 123), "Fetch upstream restrooms when storage is empty")
-    assert(queries[1].includes('["amenity"="toilets"]'), "Include toilets in fallback query")
+    const fuelOnly = await search()
+    assert(fuelOnly.count === 1 && fuelOnly.warning, "Preserve imported fuel during Refuge outages")
+    fuelRows = []
+    let caught: unknown
+    try { await search() } catch (error) { caught = error }
+    assert(caught instanceof RequestError && caught.status === 502 &&
+      caught.message === "Refuge Restrooms API request failed. Please try again.",
+      "Total upstream failure must not become empty success")
 
-    databaseRows = [stored]
-    const all: Result = await (await handleOverpassRequest({ ...input, mode: "all" })).json()
-    assert(all.count === 3 && queries[2].includes('["shop"]["toilets"="yes"]'), "All mode supplements stored results with shops and businesses")
-    const callsBeforeShops = databaseCalls
-    const shops: Result = await (await handleOverpassRequest({ ...input, mode: "shops" })).json()
-    assert(shops.count === 2 && databaseCalls === callsBeforeShops, "Shops mode skips stored restrooms")
-
-    // Use a distinct query to avoid the success cache.
-    failOverpass = true
-    const partial: Result = await (await handleBathroomsRequest({ ...input, lon: "-73.98" })).json()
-    assert(partial.count === 1 && partial.data[0].id === 123, "Return real stored restrooms on provider failure")
-    assert(partial.warning?.includes("Gas stations, supermarkets"), "Partial results must identify missing categories")
-    const partialAll: Result = await (await handleOverpassRequest({ ...input, lon: "-73.98", mode: "all" })).json()
-    assert(partialAll.count === 1 && partialAll.warning?.includes("other shops"), "All-mode warning includes unavailable shops")
-    databaseRows = []
-    try {
-      await handleBathroomsRequest({ ...input, lon: "-73.98" })
-      throw new Error("Expected provider failure")
-    } catch (error) {
-      assert(error instanceof RequestError && error.status === 502, "No stored rows means provider failure, not empty success")
-    }
-    databaseRows = [stored]
-    const timeout = AbortSignal.timeout
-    const providerFetch = globalThis.fetch
-    try {
-      AbortSignal.timeout = () => timeout(5)
-      globalThis.fetch = (input, init) => {
-        if (String(input).includes("/rest/v1/")) return providerFetch(input, init)
-        return new Promise<Response>((_, reject) => {
-          const signal = init?.signal
-          assert(signal, "Provider requests need a timeout")
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true })
-        })
-      }
-      const timedOut: Result = await (await handleBathroomsRequest({ ...input, lon: "-73.985" })).json()
-      assert(timedOut.count === 1 && timedOut.warning, "Provider timeout must also preserve stored restrooms with a warning")
-      databaseRows = []
-      try {
-        await handleBathroomsRequest({ ...input, lon: "-73.985" })
-        throw new Error("Expected timeout")
-      } catch (error) {
-        assert(error instanceof RequestError && error.status === 504, "No stored rows must retain the explicit 504")
-      }
-    } finally {
-      AbortSignal.timeout = timeout
-      globalThis.fetch = providerFetch
-    }
-    databaseRows = [stored]
+    failRefuge = false
+    const recovered = await search()
+    assert(recovered.count === 1 && !recovered.warning, "Retry Refuge and clear warnings on recovery")
+    refugeRows = []
+    const empty = await search()
+    assert(empty.count === 0 && !empty.warning, "Successful empty searches remain valid")
     failDatabase = true
-    try {
-      await handleBathroomsRequest(input)
-      throw new Error("Expected database failure")
-    } catch (error) {
-      assert(error instanceof RequestError && error.message === "Restroom database search failed.", "Do not hide database errors")
-    }
-    failDatabase = false
-    failOverpass = false
-    const recovered: Result = await (await handleBathroomsRequest({ ...input, lon: "-73.98" })).json()
-    assert(recovered.count === 3 && recovered.warning === undefined, "Do not cache partial results; retry upstream and clear warning on recovery")
-    fuelRows = [{
-      osm_identity: "node/456", latitude: 40.75, longitude: -73.99,
-      tags: { amenity: "fuel", name: " Imported station ", toilets: " YES " },
-    }]
-    const withFuel: Result = await (await handleBathroomsRequest(input)).json()
-    assert(withFuel.count === 3, "Imported and upstream gas stations must deduplicate by OSM identity")
-    assert(withFuel.data.find(place => place.id === 456)?.name === "Imported station", "Use normalized stored fuel fields")
-    databaseRows = []
-    failOverpass = true
-    const fuelOnly: Result = await (await handleBathroomsRequest({ ...input, lon: "-73.986" })).json()
-    assert(fuelOnly.count === 1 && fuelOnly.data[0].toilets === "yes", "Imported stations remain available during Overpass outages")
-    assert(fuelOnly.warning?.includes("imported gas stations"), "Warning must not claim imported stations failed to load")
-    const shopsFuel: Result = await (await handleOverpassRequest({ ...input, lon: "-73.986", mode: "shops" })).json()
-    assert(shopsFuel.count === 1 && shopsFuel.data[0].placeType === "gas-station", "Shops mode also includes imported stations")
+    caught = undefined
+    try { await search() } catch (error) { caught = error }
+    assert(caught instanceof RequestError && caught.message === "Restroom database search failed.",
+      "Do not hide database failures")
+
+    const removedRoute = await placesApi.fetch(new Request("https://project.example/places-api/overpass", {
+      headers: buildGatewayHeaders("test-gateway-secret"),
+    }))
+    assert(removedRoute.status === 404, "The removed provider route must not execute searches")
+    const removedBody = await removedRoute.json()
+    assert(JSON.stringify(removedBody.supportedRoutes) === '["/bathrooms"]', "Advertise only the supported route")
+    assert(unexpectedRequests.length === 0, "Never call a removed provider, including on failure or empty results")
   } finally {
     globalThis.fetch = originalFetch
     keys.forEach((key, index) => {

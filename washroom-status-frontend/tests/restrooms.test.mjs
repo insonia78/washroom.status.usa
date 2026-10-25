@@ -149,11 +149,11 @@ test('unsupported manual radii are rejected without upstream requests', async ()
 });
 
 test('partial results preserve stored restrooms and the warning without caching', async () => {
-  const warning = "Refuge Restrooms API and OpenStreetMap Overpass API request failed. Please try again. Results may be incomplete.";
+  const warning = "Refuge Restrooms API request failed. Please try again. Results may be incomplete.";
   globalThis.fetch = async () => Response.json({
     success: true,
     data: [place],
-    warning: 'Refuge Restrooms and OpenStreetMap data could not be checked.',
+    warning: 'Refuge Restrooms data could not be checked.',
   });
   const response = await GET(request());
   assert.equal(response.status, 200);
@@ -173,12 +173,12 @@ test('invalid partial-result warnings do not become successful empty results', a
 
 test('failed upstream API names reach the client without internal error details', async () => {
   globalThis.fetch = async () => Response.json({
-    error: 'All Overpass endpoints failed. Internal URL: private.example',
+    error: 'Refuge Restrooms API request failed. Internal URL: private.example',
   }, {status: 502});
   const response = await GET(request());
   assert.equal(response.status, 502);
   assert.equal((await response.json()).error,
-    'OpenStreetMap Overpass API request failed. Please try again.');
+    'Refuge Restrooms API request failed. Please try again.');
 });
 
 test('missing gateway configuration returns an explicit service error', async () => {

@@ -1,4 +1,3 @@
-import { formatOverpassElement } from "./overpass.ts"
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
 
@@ -31,14 +30,20 @@ export function normalizeFuelPlace(value: unknown) {
   }
   if (tags.amenity !== "fuel") throw new Error("Stored fuel location is not a gas station.")
   tags.name = tags.name || tags.brand || tags.operator || "Gas Station"
-  const place = formatOverpassElement({
-    id: Number(identity[2]), type: identity[1],
-    lat: value.latitude, lon: value.longitude, tags,
-  })
   return {
-    ...place,
-    openingHours: tags["toilets:opening_hours"] || place.openingHours,
+    id: Number(identity[2]),
+    osmType: identity[1],
+    placeType: "gas-station",
+    name: tags.name,
+    category: tags.shop || "fuel",
+    access: tags["toilets:access"] || "unknown",
+    fee: tags["toilets:fee"] || "unknown",
+    wheelchair: tags["toilets:wheelchair"] || "unknown",
+    openingHours: tags["toilets:opening_hours"] || tags.opening_hours || undefined,
+    changingTable: tags.changing_table || "no",
     unisex: tags["toilets:unisex"] || "unknown",
+    toilets: tags.toilets || "unknown",
+    coordinates: { latitude: value.latitude, longitude: value.longitude },
   }
 }
 

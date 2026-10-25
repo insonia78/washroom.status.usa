@@ -33,8 +33,7 @@ export async function readRequestInput(req: Request): Promise<PlacesApiRequestIn
       lon: getSearchParamValue(searchParams, "lon"),
       zip: getSearchParamValue(searchParams, "zip"),
       countryCode: getSearchParamValue(searchParams, "countryCode"),
-      radius: getSearchParamValue(searchParams, "radius"),
-      mode: getSearchParamValue(searchParams, "mode")
+      radius: getSearchParamValue(searchParams, "radius")
     }
   }
 
@@ -62,8 +61,7 @@ export async function readRequestInput(req: Request): Promise<PlacesApiRequestIn
     lon: normalizeStringValue(payload.lon),
     zip: normalizeStringValue(payload.zip),
     countryCode: normalizeStringValue(payload.countryCode),
-    radius: normalizeStringValue(payload.radius),
-    mode: normalizeStringValue(payload.mode)
+    radius: normalizeStringValue(payload.radius)
   }
 }
 

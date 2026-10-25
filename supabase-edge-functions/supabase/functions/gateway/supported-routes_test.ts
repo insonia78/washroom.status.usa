@@ -8,14 +8,11 @@ function findRoute(pathname: string) {
 
 Deno.test("supportedRoutes allow washroom places lookups and account deactivation", () => {
   const bathroomsRoute = findRoute("/places/bathrooms");
-  const overpassRoute = findRoute("/places/overpass");
   const deactivateRoute = findRoute("/accounts/deactivate");
 
   assert(bathroomsRoute);
-  assert(overpassRoute);
   assert(deactivateRoute);
   assertEquals(bathroomsRoute.methods.sort(), ["GET", "POST"]);
-  assertEquals(overpassRoute.methods.sort(), ["GET", "POST"]);
   assertEquals(deactivateRoute.methods, ["POST"]);
 });
 
@@ -32,7 +29,8 @@ Deno.test("supportedRoutes allow administrator authentication routes", () => {
   assertEquals(createPasswordRoute.methods, ["POST"]);
 });
 
-Deno.test("supportedRoutes no longer expose legacy weather or admin dashboard routes", () => {
+Deno.test("supportedRoutes no longer expose removed provider or legacy routes", () => {
+  assertFalse(findRoute("/places/overpass"));
   assertFalse(findRoute("/weather/profile"));
   assertFalse(findRoute("/weather/search"));
   assertFalse(findRoute("/admin/dashboard"));

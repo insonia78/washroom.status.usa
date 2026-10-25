@@ -74,13 +74,6 @@ export const supportedRoutes = [
     ]
   },
   {
-    pattern: /^\/places\/overpass\/?$/,
-    methods: [
-      "GET",
-      "POST"
-    ]
-  },
-  {
     pattern: /^\/admin\/access\/?$/,
     methods: [
       "POST"

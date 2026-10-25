@@ -427,7 +427,7 @@ function isAccountDeactivatePath(proxyPath: string) {
 
 // Identifies unauthenticated place-search routes.
 function isPublicPlacesPath(proxyPath: string) {
-  return /^\/places\/(bathrooms|overpass)\/?$/.test(proxyPath);
+  return /^\/places\/bathrooms\/?$/.test(proxyPath);
 }
 
 // Extracts the best available client IP address from proxy headers.

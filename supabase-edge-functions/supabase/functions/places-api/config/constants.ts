@@ -2,18 +2,7 @@
 export const FUNCTION_NAME = "places-api"
 export const FUNCTION_BASE_PATH = `/functions/v1/${FUNCTION_NAME}`
 export const FUNCTION_PATH_PREFIXES = [FUNCTION_BASE_PATH, `/${FUNCTION_NAME}`]
-export const OVERPASS_URLS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter"
-] as const
-export const OVERPASS_REQUEST_TIMEOUT_MS = 18_000
-export const OVERPASS_QUERY_TIMEOUT_SECONDS = 15
 export const ZIPPOTAM_URL = "https://api.zippopotam.us"
-// Identifies this application to the Overpass provider and controls cache lifetimes.
-export const OVERPASS_HEADERS = {
-  "User-Agent": "WashroomStatusUSA/1.0 (washroom.status.usa@gmail.com)"
-}
-export const OVERPASS_CACHE_TTL_MS = 5 * 60 * 1000
 export const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 // Shares cross-origin request policy and terminal log colors across the function.
 export const corsHeaders = {

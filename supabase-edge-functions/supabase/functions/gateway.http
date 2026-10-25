@@ -7,7 +7,7 @@
 #   TEST_PASSWORD=<that account's password>
 #
 # /places/bathrooms is public (anon key only).
-# Run "Login" before overpass / logout; they reuse its token.
+# Run "Login" before logout; it reuses the token.
 
 @baseUrl = https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/gateway
 @anonKey = {{$dotenv SUPABASE_ANON_KEY}}
@@ -63,18 +63,6 @@ Content-Type: application/json
 {
   "email": "{{email}}",
   "password": "{{password}}"
-}
-
-### Overpass raw results - public, anon key only
-POST {{baseUrl}}/places/overpass
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
-
-{
-  "zip": "10001",
-  "radius": "1500",
-  "mode": "all"
 }
 
 ### Expect 404 - legacy weather route is no longer exposed
