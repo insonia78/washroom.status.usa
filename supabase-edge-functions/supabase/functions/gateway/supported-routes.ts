@@ -1,5 +1,6 @@
 // Defines the public gateway paths and HTTP methods accepted for each route.
 export const supportedRoutes = [
+  { pattern: /^\/frontend\/moderation\/reviews\/?$/, methods: ["GET", "POST"] },
   { pattern: /^\/frontend\/reviews\/?$/, methods: ["GET", "POST"] },
   { pattern: /^\/frontend\/(geocode|map-boundary)\/?$/, methods: ["GET"] },
   { pattern: /^\/frontend\/auth\/v1\/(otp|verify|token|logout)\/?$/, methods: ["POST"] },

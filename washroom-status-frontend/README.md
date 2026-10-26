@@ -36,20 +36,24 @@ npm run dev
 4. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable/anon key) in `.env.local` and Vercel Environment Variables.
    Restroom searches follow `browser -> /api/restrooms -> gateway/places/bathrooms -> places-api/bathrooms`.
    The server derives the gateway URL from the Supabase project URL. Optionally set server-only `WASHROOM_GATEWAY_URL` to a different gateway base URL, such as `http://127.0.0.1:55321/functions/v1/gateway`.
-   Public restroom searches do not require an API key when gateway JWT verification is disabled; an API key is forwarded when configured. Supabase sign-in and reviews still require the public key.
+   Public restroom searches and anonymous reviews do not require an API key when gateway JWT verification is disabled; an API key is forwarded when configured. Optional Supabase Auth routes still require the public key.
    Deploy `gateway`, `places-api`, and `frontend-api`. Set `PLACES_API_URL` and `FRONTEND_API_URL` to the respective function base URLs, and the same `GATEWAY_INTERNAL_SECRET` for all three functions. Never send that internal secret from the frontend. All three use `verify_jwt = false` in the checked-in Supabase config; backend functions enforce the internal gateway headers.
-   Searches default to a 5-mile radius (8,046.72 meters). The Search radius selector offers 1, 2, 5, and 10 miles and immediately reloads all place types through the gateway without requiring Search. Changing radius retains the current origin and cancels obsolete frontend requests; it does not geocode again. Places API combines stored restrooms and imported gas stations with Refuge Restrooms listings; Refuge entries are filtered to the selected radius and ordered newest first by the backend, while the UI sorts all results nearest first. No live Overpass business searches or shop/supermarket discovery remain; the `/places/overpass` route has been removed. Refuge entries are clearly identified and do not use the app's OpenStreetMap review system. Before deploying Places API, apply `supabase-edge-functions/supabase/migrations/20261022153000_search_fuel_locations.sql` to enable the server-only spatial search RPC. Fuel rows are normalized into the existing place format, including parsed OSM IDs, geometry coordinates, trimmed names and restroom-specific metadata. Cards and details mark restroom availability unconfirmed unless explicitly tagged; `toilets=no` remains visible. Business presence and opening hours do not confirm restroom access. Stored and upstream results are deduplicated by source identity. If Refuge fails, stored results remain visible with a warning about incomplete coverage; if no locations can be returned, the error remains explicit. Partial responses are not cached. Deploy both `places-api` and `gateway` to activate the provider removal.
+   Searches default to a 5-mile radius (8,046.72 meters). The Search radius selector offers 1, 2, 5, and 10 miles and immediately reloads all place types through the gateway without requiring Search. Changing radius retains the current origin and cancels obsolete frontend requests; it does not geocode again. Places API combines stored restrooms and imported gas stations with Refuge Restrooms listings; Refuge entries are filtered to the selected radius and ordered newest first by the backend, while the UI sorts all results nearest first. No live Overpass business searches or shop/supermarket discovery remain; the `/places/overpass` route has been removed. Refuge entries are clearly identified and use a separate source identity in the app's moderated review system. Before deploying Places API, apply `supabase-edge-functions/supabase/migrations/20261022153000_search_fuel_locations.sql` to enable the server-only spatial search RPC. Fuel rows are normalized into the existing place format, including parsed OSM IDs, geometry coordinates, trimmed names and restroom-specific metadata. Cards and details mark restroom availability unconfirmed unless explicitly tagged; `toilets=no` remains visible. Business presence and opening hours do not confirm restroom access. Stored and upstream results are deduplicated by source identity. If Refuge fails, stored results remain visible with a warning about incomplete coverage; if no locations can be returned, the error remains explicit. Partial responses are not cached. Deploy both `places-api` and `gateway` to activate the provider removal.
 5. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` in the edge-function environment. Next.js does not need database credentials or a service-role key. Never put service-role keys in browser code, Git, or any `NEXT_PUBLIC_` variable.
-6. Visit localhost:3000, select a real restroom, sign in with a magic link, submit a review. It will be saved as **pending**. In Supabase Table Editor, manually change `status` to `approved` after moderation. Only approved reviews are displayed.
+6. For an existing database, apply `../supabase-edge-functions/supabase/migrations/20261026143000_anonymous_review_questions.sql` before deploying the updated `frontend-api`. New databases use the updated `supabase/schema.sql`. Visit localhost:3000, select a real restroom and choose **Add review**. No sign-in is required. Answer availability, 1-5 cleanliness rating, and Excellent/Clean/Average/Poor/Very Dirty condition, then optionally add issues and a comment. Reviews are saved as **pending**. In Supabase Table Editor, manually change `status` to `approved` after moderation. Only approved reviews are displayed.
 
 ## What is included
 
 - OpenFreeMap display with multiple clickable location markers, restroom details, accessibility and fee tags, unverified availability
+- Hover over a map marker (or focus it with the keyboard) to preview its name, listing type, distance, accessibility, fee, hours, approved five-star average/count, and latest approved timestamped comment. Move into the scrollable preview to read or retry review errors; it remains open while hovered or focused. Escape or the close button dismisses it. From a focused marker, Arrow Down moves focus into the preview. Clicking/tapping a marker still selects its full details and also opens the preview; **View full details and reviews** selects the same location. Reviews work for every listing source, including Refuge Restrooms. Switching markers, filters, or search results removes the old preview and cancels obsolete review requests.
 - Each result card and listing's details include **Google Maps directions** to the location's coordinates. These are external navigation links with no API key requirement, not embedded Google Maps API calls. OpenFreeMap remains the map display. Navigation does not confirm restroom access. Cards and navigation links appear after a location search returns results.
-- Approved review feed with rating, review date, count (up to 50 recent reviews) and average over displayed reviews
-- Email OTP authentication, server-side session validation, strict payload checks
-- OSM ID/type verification against imported restroom records before accepting reviews
-- One review per user/restroom; pending-by-default moderation; RLS restricts public reads
+- Approved review feed with rating, review date, up to 50 recent reviews, and a five-star average/count over all approved ratings
+- **Add review** on every result card and in the selected restroom's details opens an anonymous review modal for that location, with no listing-source exceptions. Three required radio groups collect Restroom Availability (Open/Closed/Temporarily unavailable/Unverified), Cleanliness Ratings (1-5), and Clean or Dirty Status (Excellent/Clean/Average/Poor/Very Dirty). Optional issue reports/comments and pending moderation remain. Reviews for Refuge listings are collected by this app, not submitted to Refuge Restrooms. Close with Escape, the close button, or the backdrop; keyboard focus returns to the opener.
+- Below each card's **Add review** button, the latest approved non-empty comment is shown with a local date/time timestamp. `GET /api/reviews?osm_type=node&osm_id=123&latest=1` returns at most one comment, ordered newest first; pending/rejected and empty comments are excluded. Cards show loading, empty, and retryable error states explicitly.
+- Cards show a five-star grade with fractional star fills, the numeric average out of 5, and the total approved review count. This uses **all approved review ratings**, including reviews without a written comment, not just the latest comment or the 50 displayed in details. Unrated restrooms show five empty stars and "Not yet rated", never a fabricated zero rating. Apply `../supabase-edge-functions/supabase/migrations/20261026150000_approved_review_summary.sql` and redeploy `frontend-api` to enable the server-only aggregate. The latest-comment response includes `average` and `review_count`.
+- Anonymous review submission with strict server-side payload checks; optional gateway-backed Email OTP Auth routes remain available separately
+- Source/ID verification against imported restrooms or the server-only registry of returned search listings before accepting reviews
+- Pending-by-default moderation; RLS restricts public reads and prevents direct browser writes. Anonymous submissions have no account-based duplicate limit.
 - USA overview on arrival, map search and filters, Codyza branding on every page
 
 ## ZIP code searches
@@ -101,11 +105,75 @@ not application API calls. Browser geolocation uses the browser API, not a
 Next.js outbound request.
 
 `frontend-api` rejects requests lacking the shared internal gateway headers.
-Review submissions still validate the Supabase user, verify the imported OSM
-record, enforce one review per user/restroom, and save reviews as pending.
+Review submissions accept anonymous callers, validate all three radio answers,
+verify the listing source/ID, and save reviews as pending with no user identity.
 Auth proxy routes are allowlisted; arbitrary Supabase REST/admin access is not exposed.
+
+## Reviews for every listed toilet
+
+Apply `../supabase-edge-functions/supabase/migrations/20261026193000_all_listing_reviews.sql`
+before deploying the updated `places-api`, `frontend-api`, and frontend. The existing
+gateway review routes already handle all listing types; no new route is needed.
+Refresh the location search after deployment so previously cached results are registered.
+
+OpenStreetMap nodes, ways, relations, imported gas stations (including unconfirmed
+restroom availability), and Refuge Restrooms listings all accept the same anonymous
+questionnaire. The backend registers each returned search result in private
+`review_locations` using service-role credentials. A failed registration is an explicit
+search error, never a silently unreviewable listing. Browser clients cannot register
+arbitrary locations. Imported restroom IDs remain reviewable without a new search.
+
+For compatibility, API/database fields remain `osm_type` and `osm_id`;
+`osm_type=refuge` denotes the separate Refuge ID namespace. An OSM node and a Refuge
+listing with the same numeric ID never share reviews, averages, or counts. Existing
+OSM reviews are unchanged. Cards, map previews, details, and moderation support all
+four types. Only approved reviews affect public comments and grades.
 These new routes require deployment of both the updated gateway and `frontend-api`;
 an older gateway will return 404 rather than falling back to a direct provider call.
+
+## Review moderation
+
+The footer's **Review moderation** link opens `/moderation`. Existing Supabase users
+sign in with an email magic link; sign-in alone does not grant moderation access.
+The server validates the session and confirmed email, then checks the explicit
+`public.review_moderators` allowlist on every queue read and decision.
+
+Local setup (not deployed automatically):
+
+1. Apply `../supabase-edge-functions/supabase/migrations/20261026160000_review_moderation.sql`
+   to your **local/test** database after the review schema and earlier review migrations.
+2. Create the moderator account in Supabase Auth. Add its `/moderation` callback URL
+   (for example `http://localhost:3000/moderation`) to the Auth redirect allowlist.
+3. Explicitly grant access in the local/test SQL editor, substituting the intended email:
+
+   ```sql
+   insert into public.review_moderators(user_id)
+   select id from auth.users where lower(email) = lower('moderator@example.com')
+   on conflict (user_id) do nothing;
+   ```
+
+   Confirm one account was added. Remove access with
+   `delete from public.review_moderators where user_id = '<user UUID>';`.
+   Roles are never inferred from client data, email domains, or public signup.
+4. Run the updated local `frontend-api` and `gateway`; configure the frontend's
+   `WASHROOM_GATEWAY_URL` for that local gateway and public Supabase Auth values.
+
+The queue shows the oldest 50 pending reviews with the restroom source identity/link,
+timestamp, all questionnaire answers, optional issues and comment. Approve or
+reject with an optional private note (maximum 2,000 characters). Decisions and
+the acting moderator/time are saved atomically in `review_moderation_log`.
+That table has RLS, no public policies, and no anon/authenticated grants; notes
+are not stored in publicly readable review rows. Only the backend service role
+can call the decision function. Existing moderated reviews cannot be reopened.
+If two moderators act on the same review, only the first succeeds; the second
+receives a conflict and must refresh. Failed decisions preserve the note.
+Refresh after processing a batch to load more pending reviews.
+
+Approval includes the review in public comment lookups and rating aggregates
+on their next fetch. Rejection keeps it hidden. Already-open search cards do
+not update live; refresh the search/page to retrieve the latest approved data.
+Production requires explicit migration and deployment of `frontend-api`,
+`gateway`, and the frontend; this flow is implemented for local testing first.
 
 ## Validation
 
@@ -114,11 +182,11 @@ With Node.js 22.18+ or 24+, run `npm test` for the HTTP adapter and gateway-only
 ## Not yet production ready
 
 - **Photos intentionally disabled** until EXIF removal, private upload buckets, consent and moderator approval are implemented.
-- The review GET endpoint currently returns the **50 most recent approved reviews** and the average of those 50 only. Build database-side aggregates for accurate lifetime ratings before publishing rankings.
+- The review GET endpoint returns the **50 most recent approved reviews** while the average and `review_count` include all approved ratings. The latest-comment mode returns at most one non-empty comment with the same all-review grade. Public rankings remain out of scope.
 - Review submission requires an imported restroom record. Keep the database current with verified OSM locations; add anti-spam/rate limits, CAPTCHA and automated abuse detection.
 - The map uses OpenFreeMap and gateway-backed Photon geocoding. Photon's [public demo](https://photon.komoot.io/) is for reasonable development traffic with no availability guarantee; heavy use may be throttled or blocked. Add shared geocoding caching/rate limiting and use a production provider or self-host at scale. Nominatim rejected requests from the edge runtime with HTTP 403, so it is not used for city searches.
-- The UI has no owner/admin dashboard, public ranking, photo uploads, edit-review workflow, or automated moderation yet. Reviews are manually approved in Supabase.
-- A single reviewer can submit only one review per restroom. This is a first-pass anti-duplication control, not proof of a visit.
+- The UI has no owner dashboard, public ranking, photo uploads, edit-review workflow, or automated moderation yet. The protected `/moderation` dashboard supports manual approval/rejection once its migration and moderator allowlist are configured.
+- Anonymous reviews are not proof of a visit and cannot enforce one submission per person. Add server-side rate limits and abuse detection before a public launch; all submissions remain pending until manually approved.
 - Add accessibility audits, integration tests, privacy/terms pages, monitoring and deployment hardening.
 
 **Security:** Rotate any password or credential that has been shared in chat. Never reuse it as a database secret.

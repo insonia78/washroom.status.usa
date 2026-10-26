@@ -52,9 +52,9 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
   return response;
 }
 
-// Ensures a review refers to a positive OpenStreetMap node, way, or relation ID.
+// Source type keeps Refuge IDs distinct from OpenStreetMap IDs.
 function validRestroom(type: unknown, id: unknown): boolean {
-  return typeof type === "string" && ["node", "way", "relation"].includes(type) &&
+  return typeof type === "string" && ["node", "way", "relation", "refuge"].includes(type) &&
     typeof id === "number" && Number.isSafeInteger(id) && id > 0;
 }
 
@@ -65,22 +65,29 @@ async function reviews(req: Request): Promise<Response> {
     const type = query.get("osm_type");
     const id = Number(query.get("osm_id"));
     if (!validRestroom(type, id)) throw new ApiError(400, "Invalid restroom");
+    const latest = query.get("latest");
+    if (latest !== null && latest !== "1") throw new ApiError(400, "Invalid latest comment query");
     const params = new URLSearchParams({
-      select: "id,rating,issues,comment,created_at", osm_type: `eq.${type}`,
-      osm_id: `eq.${id}`, status: "eq.approved", order: "created_at.desc", limit: "50",
+      select: "id,rating,availability,cleanliness_status,issues,comment,created_at", osm_type: `eq.${type}`,
+      osm_id: `eq.${id}`, status: "eq.approved", order: "created_at.desc,id.desc", limit: latest ? "1" : "50",
     });
+    if (latest) params.set("comment", "neq.");
     const data: unknown = await (await database("reviews", params)).json();
     if (!Array.isArray(data) || !data.every(row => isRecord(row) && typeof row.rating === "number")) {
       throw new ApiError(502, "Invalid reviews database response");
     }
-    const sum = data.reduce((total, row) => total + row.rating, 0);
-    return json(200, { reviews: data, count: data.length, average: data.length ? sum / data.length : null, limited_to: 50 });
+    const summary: unknown = await (await database("rpc/approved_review_summary", new URLSearchParams(), {
+      method: "POST", body: JSON.stringify({ p_osm_type: type, p_osm_id: id }),
+    })).json();
+    if (!Array.isArray(summary) || summary.length !== 1 || !isRecord(summary[0]) ||
+      typeof summary[0].review_count !== "number" || !Number.isSafeInteger(summary[0].review_count) || summary[0].review_count < 0 ||
+      (summary[0].review_count === 0 ? summary[0].average !== null :
+        typeof summary[0].average !== "number" || !Number.isFinite(summary[0].average) || summary[0].average < 1 || summary[0].average > 5)) {
+      throw new ApiError(502, "Invalid review summary database response");
+    }
+    return json(200, { reviews: data, count: data.length, average: summary[0].average, review_count: summary[0].review_count, limited_to: latest ? 1 : 50 });
   }
   if (req.method !== "POST") throw new ApiError(405, "Method not allowed");
-  const authorization = req.headers.get("authorization");
-  if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) {
-    throw new ApiError(401, "Sign in to submit a review");
-  }
   let body: unknown;
   try {
     body = await req.json();
@@ -88,32 +95,30 @@ async function reviews(req: Request): Promise<Response> {
     throw new ApiError(400, "Invalid JSON");
   }
   if (!isRecord(body)) throw new ApiError(400, "Invalid review fields");
-  const { osm_type, osm_id, rating, issues, comment } = body;
+  const { osm_type, osm_id, rating, availability, cleanliness_status, issues, comment } = body;
   const allowedIssues = ["dirty_floor", "broken_fixture", "odor", "missing_supplies", "other"];
   if (!validRestroom(osm_type, osm_id) || typeof rating !== "number" ||
     !Number.isInteger(rating) || rating < 1 || rating > 5 ||
+    typeof availability !== "string" || !["open", "closed", "temporarily_unavailable", "unverified"].includes(availability) ||
+    typeof cleanliness_status !== "string" || !["excellent", "clean", "average", "poor", "very_dirty"].includes(cleanliness_status) ||
     !Array.isArray(issues) || issues.length > 6 ||
     issues.some(value => typeof value !== "string" || !allowedIssues.includes(value)) ||
     typeof comment !== "string" || comment.length > 1000) {
     throw new ApiError(400, "Invalid review fields");
   }
-  const userResponse = await upstream(new URL("/auth/v1/user", config("SUPABASE_URL")), {
-    headers: { apikey: config("SUPABASE_ANON_KEY"), Authorization: authorization },
-  });
-  if (!userResponse.ok) {
-    if ([401, 403].includes(userResponse.status)) throw new ApiError(401, "Invalid session");
-    throw new ApiError(502, "Session validation is temporarily unavailable");
-  }
-  const user: unknown = await userResponse.json();
-  if (!isRecord(user) || typeof user.id !== "string") throw new ApiError(502, "Invalid authentication response");
-  const locations: unknown = await (await database("restrooms", new URLSearchParams({
+  const locationParams = new URLSearchParams({
     select: "osm_id", osm_type: `eq.${osm_type}`, osm_id: `eq.${osm_id}`, limit: "1",
-  }))).json();
+  });
+  let locations: unknown = await (await database(osm_type === "refuge" ? "review_locations" : "restrooms", locationParams)).json();
   if (!Array.isArray(locations)) throw new ApiError(502, "Invalid restroom database response");
-  if (!locations.length) throw new ApiError(422, "Restroom is not in the verified imported location list");
+  if (!locations.length && osm_type !== "refuge") {
+    locations = await (await database("review_locations", locationParams)).json();
+    if (!Array.isArray(locations)) throw new ApiError(502, "Invalid restroom database response");
+  }
+  if (!locations.length) throw new ApiError(422, "Restroom is not in the verified location list. Refresh the search and try again.");
   await database("reviews", new URLSearchParams(), {
     method: "POST",
-    body: JSON.stringify({ osm_type, osm_id, rating, issues, comment: comment.trim(), user_id: user.id, status: "pending" }),
+    body: JSON.stringify({ osm_type, osm_id, rating, availability, cleanliness_status, issues, comment: comment.trim(), user_id: null, status: "pending" }),
   });
   return json(201, { message: "Review submitted for moderation", status: "pending" });
 }
@@ -143,6 +148,50 @@ async function auth(req: Request, path: string): Promise<Response> {
   return new Response(response.body, { status: response.status, headers: responseHeaders });
 }
 
+async function moderation(req: Request): Promise<Response> {
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const authorization = req.headers.get("authorization");
+  if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) throw new ApiError(401, "Sign in to moderate reviews");
+  const response = await upstream(new URL("/auth/v1/user", config("SUPABASE_URL")), {
+    headers: { apikey: config("SUPABASE_ANON_KEY"), Authorization: authorization },
+  });
+  if (!response.ok) {
+    if ([401, 403].includes(response.status)) throw new ApiError(401, "Your session has expired. Sign in again.");
+    throw new ApiError(503, "Moderator session validation is temporarily unavailable");
+  }
+  const user: unknown = await response.json();
+  if (!isRecord(user) || typeof user.id !== "string" || !user.email_confirmed_at) throw new ApiError(403, "A verified moderator account is required");
+  const moderators: unknown = await (await database("review_moderators", new URLSearchParams({
+    select: "user_id", user_id: `eq.${user.id}`, limit: "1",
+  }))).json();
+  if (!Array.isArray(moderators)) throw new ApiError(502, "Invalid moderator lookup response");
+  if (!moderators.length) throw new ApiError(403, "Your account is not on the moderator allowlist");
+  if (req.method === "GET") {
+    const pending: unknown = await (await database("reviews", new URLSearchParams({
+      select: "id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,created_at,status",
+      status: "eq.pending", order: "created_at.asc,id.asc", limit: "50",
+    }))).json();
+    if (!Array.isArray(pending)) throw new ApiError(502, "Invalid moderation queue response");
+    return json(200, { reviews: pending, limited_to: 50 });
+  }
+  let body: unknown;
+  try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+  if (!isRecord(body) || typeof body.review_id !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.review_id) ||
+    typeof body.decision !== "string" || !["approved", "rejected"].includes(body.decision) ||
+    typeof body.note !== "string" || body.note.length > 2000) throw new ApiError(400, "Invalid moderation decision");
+  const result: unknown = await (await database("rpc/moderate_review", new URLSearchParams(), {
+    method: "POST",
+    body: JSON.stringify({ p_review_id: body.review_id, p_moderator_id: user.id, p_decision: body.decision, p_note: body.note.trim() }),
+  })).json();
+  if (!Array.isArray(result)) throw new ApiError(502, "Invalid moderation decision response");
+  if (!result.length) throw new ApiError(409, "This review is no longer pending. Refresh the queue.");
+  if (result.length !== 1 || !isRecord(result[0]) || result[0].id !== body.review_id || result[0].status !== body.decision) {
+    throw new ApiError(502, "Invalid moderation decision response");
+  }
+  return json(200, { review: result[0] });
+}
+
 export default {
   // Authorizes gateway traffic and dispatches review, auth, geocoding, and map requests.
   async fetch(req: Request): Promise<Response> {
@@ -151,6 +200,7 @@ export default {
     const path = new URL(req.url).pathname.replace(/^\/(?:functions\/v1\/)?frontend-api(?=\/|$)/, "").replace(/\/$/, "") || "/";
     try {
       if (path === "/reviews") return await reviews(req);
+      if (path === "/moderation/reviews") return await moderation(req);
       if (path.startsWith("/auth/")) return await auth(req, path);
       if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
       // Resolves ZIP codes or geocodes a US address, returning coordinates or suggestions.

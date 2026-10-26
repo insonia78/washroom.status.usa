@@ -1,9 +1,9 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {browserSupabase} from '@/lib/supabase';
-import {Star, X, ShieldCheck, AlertTriangle} from 'lucide-react';
+import {X,ShieldCheck} from 'lucide-react';
 import {formatDistance} from '@/lib/distance';
 import NavigationLinks from '@/components/NavigationLinks';
+import ReviewGrade from '@/components/ReviewGrade';
 export type Restroom={id:number;osm_type:'node'|'way'|'relation'|'refuge';source?:'refuge-restrooms';created_at?:string;directions?:string;lat:number;lon:number;name:string;wheelchair?:string;fee?:string;opening_hours?:string;category?:string;toilets?:string;distanceMiles?:number};
 export function restroomLabel(restroom:Restroom){
 if(restroom.source==='refuge-restrooms')return 'Refuge Restrooms listing';
@@ -11,22 +11,58 @@ const category=restroom.category==='fuel'?'Gas station':restroom.category==='sup
 if(!category)return 'Mapped restroom';
 return `${category} · ${restroom.toilets==='yes'?'Toilets listed':restroom.toilets==='no'?'No toilets listed':'Restroom availability unconfirmed'}`;
 }
-type Review={id:string;rating:number;issues:string[];comment:string;created_at:string};
-const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
-export default function RestroomDetails({restroom,onClose}:{restroom:Restroom;onClose:()=>void}){
-const [reviews,setReviews]=useState<Review[]>([]),[average,setAverage]=useState<number|null>(null),[loading,setLoading]=useState(true),[rating,setRating]=useState(0),[issues,setIssues]=useState<string[]>([]),[comment,setComment]=useState(''),[email,setEmail]=useState(''),[message,setMessage]=useState(''),[sending,setSending]=useState(false),[signedIn,setSignedIn]=useState(false);
-const supabase=browserSupabase();
-const isRefugeRestroom=restroom.source==='refuge-restrooms';
-const navigation=<NavigationLinks latitude={restroom.lat} longitude={restroom.lon} name={restroom.name}/>;
-useEffect(()=>{let active=true;setLoading(!isRefugeRestroom);setMessage('');setRating(0);setIssues([]);setComment('');if(isRefugeRestroom){setReviews([]);setAverage(null)}else{fetch(`/api/reviews?osm_type=${restroom.osm_type}&osm_id=${restroom.id}`).then(async r=>{const data=await r.json();if(!r.ok)throw new Error(data.error||'Could not load reviews');if(!Array.isArray(data.reviews))throw new Error('Invalid reviews response');return data}).then(data=>{if(active){setReviews(data.reviews);setAverage(data.average??null)}}).catch(error=>{if(active){setReviews([]);setAverage(null);setMessage(error instanceof Error?error.message:'Could not load reviews')}}).finally(()=>{if(active)setLoading(false)})}if(!isRefugeRestroom)supabase?.auth.getUser().then(({data})=>{if(active)setSignedIn(!!data.user)});return()=>{active=false}},[restroom.id,restroom.osm_type,isRefugeRestroom]);
-if(isRefugeRestroom)return <section className="panel mt-5" aria-label="Restroom details"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">Refuge Restrooms listing</p><h2 className="mt-1 text-2xl font-extrabold">{restroom.name}</h2><p className="mt-1 text-sm text-slate-500">Refuge Restrooms #{restroom.id}</p></div><button onClick={onClose} aria-label="Close details" className="pill"><X size={18}/></button></div><p className="mt-3 text-sm font-semibold text-amber-800">{restroomLabel(restroom)}</p>{restroom.created_at&&<p className="mt-2 text-sm text-slate-600">Added {new Date(restroom.created_at).toLocaleDateString('en-US')}</p>}{restroom.distanceMiles!==undefined&&<p className="mt-2 text-sm font-semibold text-teal-700">{formatDistance(restroom.distanceMiles)} from search location (straight-line)</p>}{navigation}{restroom.directions&&<p className="mt-3 whitespace-pre-wrap text-sm">{restroom.directions}</p>}<p className="mt-4 text-xs text-slate-600">Accessibility and restroom details are provided by Refuge Restrooms. Community reviews are not linked to these listings.</p></section>;
-async function login(){if(!supabase){setMessage('Supabase is not configured. See README.');return}if(!email.includes('@')){setMessage('Enter a valid email address');return}setSending(true);const {error}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:window.location.origin}});setMessage(error?.message||'Check your email for a sign-in link.');setSending(false)}
-async function submit(e:React.FormEvent){e.preventDefault();if(!rating){setMessage('Choose a star rating');return}if(!supabase){setMessage('Supabase is not configured');return}setSending(true);setMessage('');const {data:{session}}=await supabase.auth.getSession();if(!session){setSignedIn(false);setMessage('Please sign in first');setSending(false);return}try{const response=await fetch('/api/reviews',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,rating,issues,comment})});const data=await response.json();if(!response.ok)throw Error(data.error||'Submission failed');setMessage('Thanks! Your review is awaiting moderation.');setRating(0);setIssues([]);setComment('')}catch(err){setMessage(err instanceof Error?err.message:'Submission failed')}finally{setSending(false)}}
-return <section className="panel mt-5" aria-label="Restroom details"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">Restroom details</p><h2 className="mt-1 text-2xl font-extrabold">{restroom.name}</h2><p className="mt-1 text-sm text-slate-500">OpenStreetMap {restroom.osm_type} #{restroom.id}</p></div><button onClick={onClose} aria-label="Close details" className="pill"><X size={18}/></button></div>
-<p className="mt-3 text-sm font-semibold text-amber-800">{restroomLabel(restroom)}</p>
-{restroom.distanceMiles!==undefined&&<p className="mt-2 text-sm font-semibold text-teal-700">{formatDistance(restroom.distanceMiles)} from search location (straight-line)</p>}
-{navigation}
-<div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Cleanliness</p><p className="font-bold">{average===null?'Not yet rated':`${average.toFixed(1)} / 5`}</p><p className="text-xs text-slate-500">{reviews.length} approved reviews shown</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Availability</p><p className="font-bold">Unverified</p><p className="text-xs text-slate-500">No live sensor data</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Facilities from OSM</p><p className="font-bold">{restroom.wheelchair==='yes'?'Wheelchair access listed':'Accessibility unknown'}</p><p className="text-xs text-slate-500">{restroom.fee==='no'?'Free access listed':'Fee unknown'} · {restroom.opening_hours||'Hours unknown'}</p></div></div>
-<p className="mt-3 flex items-center gap-2 text-xs text-slate-600"><ShieldCheck size={16}/> Ratings reflect approved community reports, not independent inspections. New reports may take time to appear.</p>
-<div className="mt-6 grid gap-6 md:grid-cols-2"><div><h3 className="text-lg font-bold">Community reviews</h3>{loading?<p className="mt-2 text-sm">Loading reviews…</p>:reviews.length===0?<p className="mt-2 text-sm text-slate-500">No approved reviews yet. Be the first to submit one.</p>:<div className="mt-3 space-y-3">{reviews.map(r=><article key={r.id} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between gap-2"><strong>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</strong><time className="text-xs text-slate-500" dateTime={r.created_at}>{new Date(r.created_at).toLocaleDateString('en-US')}</time></div>{r.comment&&<p className="mt-2 whitespace-pre-wrap break-words text-sm">{r.comment}</p>}{r.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {r.issues.join(', ').replaceAll('_',' ')}</p>}</article>)}</div>}</div>
-<div className="rounded-xl border border-slate-200 p-4"><h3 className="text-lg font-bold">Submit a cleanliness review</h3><p className="mt-1 text-xs text-slate-500">One review per account per restroom. Reports are screened before publication. Do not include names or private information.</p>{!signedIn?<div className="mt-4"><label htmlFor="signin-email" className="text-sm font-medium">Email for secure sign-in</label><input id="signin-email" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3" placeholder="you@example.com"/><button type="button" disabled={sending} onClick={login} className="mt-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-50">Send sign-in link</button><button type="button" onClick={async()=>setSignedIn(!!(await supabase?.auth.getUser())?.data.user)} className="ml-2 text-sm underline">I signed in</button></div>:<form onSubmit={submit} className="mt-4 space-y-3"><fieldset><legend className="text-sm font-medium">Cleanliness rating</legend><div className="mt-2 flex gap-2">{[1,2,3,4,5].map(n=><button type="button" key={n} aria-label={`${n} star${n===1?'':'s'}`} aria-pressed={rating===n} onClick={()=>setRating(n)} className="rounded-lg p-1 focus-visible:outline-2 focus-visible:outline-teal-700"><Star size={28} fill={n<=rating?'#0f766e':'none'} color="#0f766e"/></button>)}</div></fieldset><fieldset><legend className="text-sm font-medium">Problems noticed (optional)</legend><div className="mt-2 flex flex-wrap gap-2">{issueOptions.map(([key,label])=><label key={key} className="pill text-xs"><input type="checkbox" checked={issues.includes(key)} onChange={e=>setIssues(v=>e.target.checked?[...v,key]:v.filter(x=>x!==key))} className="mr-2"/>{label}</label>)}</div></fieldset><label className="block text-sm font-medium">Details (optional)<textarea maxLength={1000} value={comment} onChange={e=>setComment(e.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Describe what you observed without identifying other restroom users"/></label><button disabled={sending||rating===0} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Submitting…':'Submit for moderation'}</button></form>}{message&&<p role="status" className="mt-3 flex items-start gap-2 text-sm text-slate-700"><AlertTriangle size={17}/>{message}</p>}</div></div></section>}
+type Review={id:string;rating:number;availability?:string|null;cleanliness_status?:string|null;issues:string[];comment:string;created_at:string};
+export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom:Restroom;onClose:()=>void;onAddReview:()=>void}){
+  const [reviews,setReviews]=useState<Review[]>([]);
+  const [average,setAverage]=useState<number|null>(null);
+  const [reviewCount,setReviewCount]=useState(0);
+  const [loading,setLoading]=useState(true);
+  const [message,setMessage]=useState('');
+  const isRefugeRestroom=restroom.source==='refuge-restrooms';
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    setMessage('');
+    setReviews([]);
+    setAverage(null);
+    setReviewCount(0);
+    fetch(`/api/reviews?osm_type=${restroom.osm_type}&osm_id=${restroom.id}`).then(async response=>{
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||'Could not load reviews');
+        if(!Array.isArray(data.reviews))throw new Error('Invalid reviews response');
+        if(!Number.isSafeInteger(data.review_count)||data.review_count<0||
+          (data.review_count===0?data.average!==null:typeof data.average!=='number'||!Number.isFinite(data.average)||data.average<1||data.average>5))throw new Error('Invalid review grade response.');
+        return data;
+      }).then(data=>{
+        if(active){setReviews(data.reviews);setAverage(data.average??null);setReviewCount(data.review_count)}
+      }).catch(error=>{
+        if(active)setMessage(error instanceof Error?error.message:'Could not load reviews');
+      }).finally(()=>{if(active)setLoading(false)});
+    return()=>{active=false};
+  },[restroom.id,restroom.osm_type]);
+  return <section className="panel mt-5" aria-label="Restroom details">
+    <div className="flex items-start justify-between gap-3">
+      <div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">{isRefugeRestroom?'Refuge Restrooms listing':'Restroom details'}</p><h2 className="mt-1 text-2xl font-extrabold">{restroom.name}</h2><p className="mt-1 text-sm text-slate-500">{isRefugeRestroom?'Refuge Restrooms':`OpenStreetMap ${restroom.osm_type}`} #{restroom.id}</p></div>
+      <button onClick={onClose} aria-label="Close details" className="pill"><X size={18}/></button>
+    </div>
+    <p className="mt-3 text-sm font-semibold text-amber-800">{restroomLabel(restroom)}</p>
+    {isRefugeRestroom&&restroom.created_at&&<p className="mt-2 text-sm text-slate-600">Added {new Date(restroom.created_at).toLocaleDateString('en-US')}</p>}
+    {restroom.distanceMiles!==undefined&&<p className="mt-2 text-sm font-semibold text-teal-700">{formatDistance(restroom.distanceMiles)} from search location (straight-line)</p>}
+    <NavigationLinks latitude={restroom.lat} longitude={restroom.lon} name={restroom.name}/>
+    <button type="button" onClick={onAddReview} aria-haspopup="dialog" className="mt-3 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white">Add review</button>
+    {isRefugeRestroom?<>
+      {restroom.directions&&<p className="mt-3 whitespace-pre-wrap text-sm">{restroom.directions}</p>}
+      <p className="mt-4 text-xs text-slate-600">Accessibility and restroom details are provided by Refuge Restrooms. Community reviews are collected and moderated by Washroom Status USA, not Refuge Restrooms.</p>
+    </>:null}
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Cleanliness</p><ReviewGrade average={average} count={reviewCount}/><p className="text-xs text-slate-500">{reviews.length} recent approved reviews shown</p></div>
+        <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Availability</p><p className="font-bold">Unverified</p><p className="text-xs text-slate-500">No live sensor data</p></div>
+        <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{isRefugeRestroom?'Facilities from Refuge Restrooms':'Facilities from OSM'}</p><p className="font-bold">{restroom.wheelchair==='yes'?'Wheelchair access listed':'Accessibility unknown'}</p><p className="text-xs text-slate-500">{restroom.fee==='no'?'Free access listed':'Fee unknown'} · {restroom.opening_hours||'Hours unknown'}</p></div>
+      </div>
+      <p className="mt-3 flex items-center gap-2 text-xs text-slate-600"><ShieldCheck size={16}/> Ratings reflect approved community reports, not independent inspections. New reports may take time to appear.</p>
+      <div className="mt-6"><h3 className="text-lg font-bold">Community reviews</h3>{message?<p role="alert" className="mt-2 text-sm text-amber-800">{message}</p>:loading?<p className="mt-2 text-sm">Loading reviews…</p>:reviews.length===0?<p className="mt-2 text-sm text-slate-500">No approved reviews yet. Be the first to submit one.</p>:<div className="mt-3 space-y-3">{reviews.map(review=><article key={review.id} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between gap-2"><strong>{'★'.repeat(review.rating)}{'☆'.repeat(5-review.rating)}</strong><time className="text-xs text-slate-500" dateTime={review.created_at}>{new Date(review.created_at).toLocaleDateString('en-US')}</time></div>
+        {review.availability&&<p className="mt-2 text-xs capitalize text-slate-500">Availability reported at visit: {review.availability.replaceAll('_',' ')}</p>}
+        {review.cleanliness_status&&<p className="mt-1 text-xs capitalize text-slate-500">Clean or dirty status: {review.cleanliness_status.replaceAll('_',' ')}</p>}
+        {review.comment&&<p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.comment}</p>}{review.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {review.issues.join(', ').replaceAll('_',' ')}</p>}</article>)}</div>}</div>
+  </section>;
+}

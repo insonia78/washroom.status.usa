@@ -20,7 +20,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
     return new Request(`https://project.example/functions/v1/frontend-api${path}`, { ...init, headers });
   };
-  const review = { osm_type: "node", osm_id: 123, rating: 4, issues: ["odor"], comment: " Needs cleaning " };
+  const review = { osm_type: "node", osm_id: 123, rating: 4, availability: "open", cleanliness_status: "clean", issues: ["odor"], comment: " Needs cleaning " };
 
   try {
     await t.step("direct callers and bad internal secrets cannot reach upstreams", async () => {
@@ -29,9 +29,10 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       assert((await api.fetch(request("/reviews", { headers: { "x-washroom-gateway-secret": "wrong" } }))).status === 403, "Bad secret must be denied");
     });
 
-    await t.step("reviews return only approved rows, limited to fifty with the same average", async () => {
+    await t.step("reviews return only approved rows, limited to fifty with an all-review average", async () => {
       globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
+        if (url.pathname === "/rest/v1/rpc/approved_review_summary") return Response.json([{ review_count: 2, average: 3 }]);
         assert(url.pathname === "/rest/v1/reviews", "Expected reviews database");
         assert(url.searchParams.get("status") === "eq.approved" && url.searchParams.get("limit") === "50", "Preserve moderation and result limit");
         assert(new Headers(init?.headers).get("apikey") === values.SUPABASE_SERVICE_ROLE_KEY, "Service role stays in backend");
@@ -42,7 +43,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       assert(response.status === 200 && result.count === 2 && result.average === 3 && result.limited_to === 50, "Reviews shape must be preserved");
     });
 
-    await t.step("writes validate session, imported location and moderation before insertion", async () => {
+    await t.step("writes validate imported location and moderation without sign-in", async () => {
       const calls: string[] = [];
       globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
@@ -54,26 +55,27 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
         if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 123 }]);
         assert(url.pathname === "/rest/v1/reviews" && init?.method === "POST", "Expected review insert");
         const payload = JSON.parse(String(init?.body));
-        assert(payload.user_id === "user-id" && payload.status === "pending" && payload.comment === "Needs cleaning", "Preserve ownership, moderation and trimming");
+        assert(payload.user_id === null && payload.status === "pending" && payload.comment === "Needs cleaning", "Anonymous reviews retain moderation and trimming");
+        assert(payload.availability === "open" && payload.cleanliness_status === "clean", "Persist radio answers");
         return new Response(null, { status: 201 });
       };
       const response = await api.fetch(request("/reviews", {
         method: "POST", headers: { Authorization: "Bearer user-token" }, body: JSON.stringify(review),
       }));
-      assert(response.status === 201 && calls.length === 3, "Expected verified review submission");
+      assert(response.status === 201 && calls.length === 2 && !calls.includes("/auth/v1/user"), "Expected submission without auth calls");
     });
 
-    await t.step("invalid input and missing authentication fail before network calls", async () => {
+    await t.step("invalid input fails before network calls", async () => {
       globalThis.fetch = async () => { throw new Error("No network calls expected"); };
       assert((await api.fetch(request("/reviews?osm_type=bad&osm_id=1"))).status === 400, "Invalid restroom");
-      assert((await api.fetch(request("/reviews", { method: "POST", body: "{}" }))).status === 401, "Missing session");
+      assert((await api.fetch(request("/reviews", { method: "POST", body: "{}" }))).status === 400, "Missing fields");
       for (const body of ["not JSON", JSON.stringify({ ...review, rating: 9 }), JSON.stringify({ ...review, issues: ["bad"] })]) {
         assert((await api.fetch(request("/reviews", { method: "POST", headers: { Authorization: "Bearer user-token" }, body }))).status === 400, "Reject invalid payload");
       }
     });
 
-    await t.step("invalid sessions, unavailable database, unknown locations and duplicates keep error status", async () => {
-      for (const expected of [401, 503, 422, 409]) {
+    await t.step("unavailable database, unknown locations and duplicates keep error status", async () => {
+      for (const expected of [503, 422, 409]) {
         globalThis.fetch = async input => {
           const url = new URL(String(input));
           if (url.pathname === "/auth/v1/user") {
@@ -82,6 +84,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
           if (url.pathname === "/rest/v1/restrooms") {
             return Response.json(expected === 422 ? [] : [{ osm_id: 123 }], { status: expected === 503 ? 500 : 200 });
           }
+          if (url.pathname === "/rest/v1/review_locations") return Response.json([]);
           return Response.json({ code: "23505" }, { status: 409 });
         };
         const response = await api.fetch(request("/reviews", {

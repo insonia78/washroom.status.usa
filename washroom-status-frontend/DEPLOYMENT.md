@@ -8,4 +8,27 @@
 6. OpenFreeMap requires no map API key or billing setup. Verify the Liberty basemap and visible attribution load, that multiple markers and filters work, and that selecting a result recenters the map and offers Google Maps directions. Verify reviews, city searches and magic-link sign-in through `/gateway/frontend/*`. No direct-provider fallback exists. A missing deployment returns 404. Application data calls stay same-origin through the gateway; MapLibre loads map resources from `https://tiles.openfreemap.org`. The frontend CSP permits this host and the bundled same-origin map worker. Obsolete Google/HERE map environment variables can be removed from deployment settings.
 7. Production launch blockers: verify tile-provider traffic terms and switch providers at scale; cache/rate-limit gateway-backed Photon searches and replace its public demo at scale; implement review rate limiting and moderation controls; add privacy/terms and operational monitoring.
 
+Before deploying anonymous review questions, apply `../supabase-edge-functions/supabase/migrations/20261026143000_anonymous_review_questions.sql` to an existing database (or the updated `supabase/schema.sql` for a new database), then redeploy `frontend-api` and the frontend. Confirm POST reviews work without Authorization, all three radio answers persist, new rows remain pending, and only the latest approved non-empty comment and its timestamp appear below each card's Add review button. Existing review rows keep unknown availability/condition rather than fabricated answers. Availability reports describe a visit, not verified live status.
+
+For five-star card grades, also apply `../supabase-edge-functions/supabase/migrations/20261026150000_approved_review_summary.sql` before redeploying `frontend-api`. Its service-role-only aggregate counts all approved ratings for the selected restroom; pending/rejected reviews do not affect the score. Confirm fractional averages, total counts, unrated states, and that latest-comment timestamps remain visible.
+
+For reviews on **every** listed toilet, apply
+`../supabase-edge-functions/supabase/migrations/20261026193000_all_listing_reviews.sql`
+before deploying the updated `places-api`, `frontend-api`, and frontend. It extends
+the review source constraint to `refuge` and creates a private `review_locations`
+registry. Places API registers all returned listings, including imported fuel and
+Refuge results, before returning a successful search. Refresh any pre-deployment
+search results. Existing gateway routes do not change. Verify submissions for OSM
+nodes/ways/relations, gas stations, and Refuge listings; all must remain pending.
+Approve test reviews and confirm cards, map previews, details, and moderation keep
+identical numeric IDs from different sources separate.
+
+Moderation is local/test-first and is **not automatically deployed**. When approved
+for production, apply `../supabase-edge-functions/supabase/migrations/20261026160000_review_moderation.sql`,
+explicitly add intended existing Auth users to `review_moderators`, allowlist the
+`/moderation` magic-link redirect, then deploy `frontend-api`, `gateway`, and the
+frontend. Validate unauthenticated requests return 401, signed-in non-moderators
+return 403, and approval/rejection records private audit notes without exposing
+them through public review reads. Keep RLS enabled on both moderation tables.
+
 This package contains source code only. It does not include any credentials or imported database records.

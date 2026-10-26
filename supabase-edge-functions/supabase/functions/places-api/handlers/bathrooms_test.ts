@@ -30,6 +30,8 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   let refugeRows: unknown[] = [refuge]
   let failRefuge = false
   let failDatabase = false
+  let failRegistration = false
+  let registered: Array<{ osm_type: string; osm_id: number }> = []
   const unexpectedRequests: string[] = []
   Deno.env.set(keys[0], "https://project.example")
   Deno.env.set(keys[1], "test-service-role-key")
@@ -37,6 +39,14 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
     if (url.origin === "https://project.example") {
+      if (url.pathname === "/rest/v1/review_locations") {
+        assert(init?.method === "POST", "Only server searches register review locations")
+        assert(new Headers(init.headers).get("apikey") === "test-service-role-key", "Registration uses backend credentials")
+        assert(new Headers(init.headers).get("Prefer") === "resolution=ignore-duplicates,return=minimal", "Repeated searches preserve existing identities")
+        registered = JSON.parse(String(init.body))
+        if (failRegistration) return new Response("Unavailable", { status: 503 })
+        return new Response(null, { status: 201 })
+      }
       if (url.pathname === "/rest/v1/rpc/find_nearby_fuel") {
         const body = JSON.parse(String(init?.body))
         assert(body.search_latitude === 40.75 && body.search_longitude === -73.99 &&
@@ -76,6 +86,15 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
     assert(complete.data.filter(place => place.id === 123).length === 2, "Keep distinct source identities")
     assert(complete.data.find(place => place.id === 456)?.toilets === "unknown",
       "Imported business presence must not imply restroom availability")
+    assert(JSON.stringify(registered) === JSON.stringify(complete.data.map(place => ({ osm_type: place.osmType, osm_id: place.id }))),
+      "Every returned listing is registered for reviews, including fuel and distinct Refuge IDs")
+
+    failRegistration = true
+    let registrationError: unknown
+    try { await search() } catch (error) { registrationError = error }
+    assert(registrationError instanceof RequestError && registrationError.status === 502 &&
+      registrationError.message.includes("prepared for reviews"), "Do not silently return listings that cannot accept reviews")
+    failRegistration = false
 
     databaseRows = [stored, { ...stored, osm_id: 456 }]
     const deduplicated = await search()
@@ -88,6 +107,8 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
     const partial = await search()
     assert(partial.count === 2 && partial.warning?.includes("Refuge Restrooms API"),
       "Preserve stored results and identify the unavailable provider")
+    assert(registered.length === 2 && registered.every(place => place.osm_type === "node"),
+      "Partial search results also support reviews")
     databaseRows = []
     const fuelOnly = await search()
     assert(fuelOnly.count === 1 && fuelOnly.warning, "Preserve imported fuel during Refuge outages")

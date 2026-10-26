@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { gatewayFetch, proxyGateway } from '../lib/gateway.ts';
 import { gatewayAuthFetch } from '../lib/gateway-auth-fetch.ts';
 import { GET as reviewsGet, POST as reviewsPost } from '../app/api/reviews/route.ts';
-import { GET as backendGet } from '../app/api/backend/[...path]/route.ts';
+import { GET as backendGet, POST as backendPost } from '../app/api/backend/[...path]/route.ts';
 import nextConfig from '../next.config.mjs';
 import { createClient } from '@supabase/supabase-js';
 
@@ -56,7 +56,7 @@ test('Next.js review reads and writes only proxy to the gateway', async () => {
 });
 
 test('city geocoding and boundary data follow the gateway; arbitrary backend paths are rejected', async () => {
-  for (const path of [['geocode'], ['map-boundary'], ['auth', 'v1', 'user']]) {
+  for (const path of [['geocode'], ['map-boundary'], ['auth', 'v1', 'user'], ['moderation', 'reviews']]) {
     globalThis.fetch = async (input) => {
       assert.equal(String(input), `https://project.example/functions/v1/gateway/frontend/${path.join('/')}?q=Boston`);
       return Response.json({});
@@ -86,6 +86,22 @@ test('address and ZIP suggestions preserve query parameters through the gateway'
     };
     const response = await backendGet(new Request(`http://localhost/api/backend/geocode?${query}`), {
       params: Promise.resolve({ path: ['geocode'] }),
+    });
+
+    test('moderation decisions forward the caller token and note only through the gateway', async () => {
+      const body={review_id:'11111111-1111-4111-8111-111111111111',decision:'approved',note:'Private note'};
+      globalThis.fetch=async(input,init)=>{
+        assert.equal(String(input),'https://project.example/functions/v1/gateway/frontend/moderation/reviews');
+        assert.equal(init.method,'POST');
+        assert.equal(new Headers(init.headers).get('authorization'),'Bearer moderator-session');
+        assert.deepEqual(JSON.parse(new TextDecoder().decode(init.body)),body);
+        return Response.json({review:{id:body.review_id,status:'approved'}});
+      };
+      const response=await backendPost(new Request('http://localhost/api/backend/moderation/reviews',{
+        method:'POST',headers:{Authorization:'Bearer moderator-session','Content-Type':'application/json'},body:JSON.stringify(body),
+      }),{params:Promise.resolve({path:['moderation','reviews']})});
+      assert.equal(response.status,200);
+      assert.equal(response.headers.get('cache-control'),'no-store');
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), body);

@@ -6,6 +6,13 @@ function findRoute(pathname: string) {
   return supportedRoutes.find((route) => route.pattern.test(pathname));
 }
 
+Deno.test("moderation exposes only review listing and decisions", () => {
+  const route = findRoute("/frontend/moderation/reviews");
+  assert(route);
+  assertEquals(route.methods, ["GET", "POST"]);
+  assertFalse(findRoute("/frontend/moderation/users"));
+});
+
 Deno.test("supportedRoutes allow washroom places lookups and account deactivation", () => {
   const bathroomsRoute = findRoute("/places/bathrooms");
   const deactivateRoute = findRoute("/accounts/deactivate");
