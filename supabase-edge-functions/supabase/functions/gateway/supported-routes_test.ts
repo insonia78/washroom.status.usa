@@ -6,6 +6,12 @@ function findRoute(pathname: string) {
   return supportedRoutes.find((route) => route.pattern.test(pathname));
 }
 
+Deno.test("owner responses expose public reads and separately protected admin actions", () => {
+  assertEquals(findRoute("/frontend/owner-responses")?.methods, ["GET"]);
+  assertEquals(findRoute("/frontend/admin/owner-responses")?.methods, ["GET", "POST"]);
+  assertFalse(findRoute("/frontend/admin/users"));
+});
+
 Deno.test("moderation exposes only review listing and decisions", () => {
   const route = findRoute("/frontend/moderation/reviews");
   assert(route);

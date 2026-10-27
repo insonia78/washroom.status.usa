@@ -32,3 +32,21 @@ return 403, and approval/rejection records private audit notes without exposing
 them through public review reads. Keep RLS enabled on both moderation tables.
 
 This package contains source code only. It does not include any credentials or imported database records.
+
+## Owner response administration
+
+This feature is **not automatically deployed**. Apply
+`../supabase-edge-functions/supabase/migrations/20261026230000_owner_responses.sql`
+after the previous review/all-listing migrations, then deploy `frontend-api`,
+`gateway`, and the frontend. Add `/admin` to Supabase Auth's allowed magic-link
+redirects. Explicitly add only intended existing, email-confirmed Auth users to
+`owner_response_admins` using the setup SQL in [README.md](./README.md).
+The moderator allowlist does not grant admin access.
+
+Verify unauthenticated admin GET/POST requests return 401 and moderator-only users
+return 403. Confirm an admin can save an owner-verified draft, edit it and explicitly
+publish it. Drafts, verification notes and actor IDs must never appear in the public
+response feed. Check invalid/mismatched review targets, future completion dates,
+non-HTTPS evidence links and stale versions fail explicitly. Confirm published
+responses appear in restroom details for all source types, without affecting review
+grades, and private dashboard state disappears after sign-out.

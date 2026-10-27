@@ -55,8 +55,24 @@ test('Next.js review reads and writes only proxy to the gateway', async () => {
   assert.equal(write.headers.get('cache-control'), 'no-store');
 });
 
+test('owner response admin writes forward session and payload only through the gateway',async()=>{
+  const body={action:'publish',id:'11111111-1111-4111-8111-111111111111',version:1};
+  globalThis.fetch=async(input,init)=>{
+    assert.equal(String(input),'https://project.example/functions/v1/gateway/frontend/admin/owner-responses');
+    assert.equal(init.method,'POST');
+    assert.equal(new Headers(init.headers).get('authorization'),'Bearer admin-test');
+    assert.deepEqual(JSON.parse(new TextDecoder().decode(init.body)),body);
+    return Response.json({response:{id:body.id,status:'published'}});
+  };
+  const result=await backendPost(new Request('http://localhost/api/backend/admin/owner-responses',{
+    method:'POST',headers:{Authorization:'Bearer admin-test','Content-Type':'application/json'},body:JSON.stringify(body),
+  }),{params:Promise.resolve({path:['admin','owner-responses']})});
+  assert.equal(result.status,200);
+  assert.equal(result.headers.get('cache-control'),'no-store');
+});
+
 test('city geocoding and boundary data follow the gateway; arbitrary backend paths are rejected', async () => {
-  for (const path of [['geocode'], ['map-boundary'], ['auth', 'v1', 'user'], ['moderation', 'reviews']]) {
+  for (const path of [['geocode'], ['map-boundary'], ['auth', 'v1', 'user'], ['moderation', 'reviews'], ['admin','owner-responses'], ['owner-responses']]) {
     globalThis.fetch = async (input) => {
       assert.equal(String(input), `https://project.example/functions/v1/gateway/frontend/${path.join('/')}?q=Boston`);
       return Response.json({});
@@ -64,6 +80,7 @@ test('city geocoding and boundary data follow the gateway; arbitrary backend pat
     const response = await backendGet(new Request('http://localhost/api/backend/anything?q=Boston'), {
       params: Promise.resolve({ path }),
     });
+
     assert.equal(response.status, 200);
   }
   globalThis.fetch = async () => assert.fail('Disallowed paths must not make requests');

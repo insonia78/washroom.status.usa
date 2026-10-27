@@ -4,6 +4,7 @@ import {X,ShieldCheck} from 'lucide-react';
 import {formatDistance} from '@/lib/distance';
 import NavigationLinks from '@/components/NavigationLinks';
 import ReviewGrade from '@/components/ReviewGrade';
+import OwnerResponses from '@/components/OwnerResponses';
 export type Restroom={id:number;osm_type:'node'|'way'|'relation'|'refuge';source?:'refuge-restrooms';created_at?:string;directions?:string;lat:number;lon:number;name:string;wheelchair?:string;fee?:string;opening_hours?:string;category?:string;toilets?:string;distanceMiles?:number};
 export function restroomLabel(restroom:Restroom){
 if(restroom.source==='refuge-restrooms')return 'Refuge Restrooms listing';
@@ -63,6 +64,7 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
       <div className="mt-6"><h3 className="text-lg font-bold">Community reviews</h3>{message?<p role="alert" className="mt-2 text-sm text-amber-800">{message}</p>:loading?<p className="mt-2 text-sm">Loading reviews…</p>:reviews.length===0?<p className="mt-2 text-sm text-slate-500">No approved reviews yet. Be the first to submit one.</p>:<div className="mt-3 space-y-3">{reviews.map(review=><article key={review.id} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between gap-2"><strong>{'★'.repeat(review.rating)}{'☆'.repeat(5-review.rating)}</strong><time className="text-xs text-slate-500" dateTime={review.created_at}>{new Date(review.created_at).toLocaleDateString('en-US')}</time></div>
         {review.availability&&<p className="mt-2 text-xs capitalize text-slate-500">Availability reported at visit: {review.availability.replaceAll('_',' ')}</p>}
         {review.cleanliness_status&&<p className="mt-1 text-xs capitalize text-slate-500">Clean or dirty status: {review.cleanliness_status.replaceAll('_',' ')}</p>}
-        {review.comment&&<p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.comment}</p>}{review.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {review.issues.join(', ').replaceAll('_',' ')}</p>}</article>)}</div>}</div>
+        {review.comment&&<p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.comment}</p>}{review.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {review.issues.join(', ').replaceAll('_',' ')}</p>}<p className="mt-2 break-all text-xs text-slate-500">Review ID: {review.id}</p></article>)}</div>}</div>
+    <OwnerResponses key={`${restroom.osm_type}-${restroom.id}`} restroom={restroom}/>
   </section>;
 }

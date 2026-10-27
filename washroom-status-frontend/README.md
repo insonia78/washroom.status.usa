@@ -128,6 +128,76 @@ For compatibility, API/database fields remain `osm_type` and `osm_id`;
 listing with the same numeric ID never share reviews, averages, or counts. Existing
 OSM reviews are unchanged. Cards, map previews, details, and moderation support all
 four types. Only approved reviews affect public comments and grades.
+
+## Admin-only owner responses and improvements
+
+The footer's **Owner response admin** link opens `/admin`. Business owners do not
+sign in or submit through a public form: admins receive responses offline, verify
+the owner's connection to the business, then enter them on the owner's behalf.
+The new admin allowlist is separate from `review_moderators`; moderator access
+alone never grants access to owner verification notes or this dashboard.
+
+Setup:
+
+1. Apply `../supabase-edge-functions/supabase/migrations/20261026230000_owner_responses.sql`
+   after the review, moderation, and all-listing migrations. This is also required
+   for new databases after running `supabase/schema.sql`.
+2. Create/confirm the intended existing Supabase Auth account. Explicitly grant
+   admin access in SQL Editor, replacing the example email:
+
+   ```sql
+   do $$
+   declare admin_id uuid;
+   begin
+     select id into strict admin_id from auth.users
+     where lower(email) = lower('admin@example.com') and email_confirmed_at is not null;
+     insert into public.owner_response_admins(user_id) values (admin_id)
+     on conflict (user_id) do nothing;
+   end;
+   $$;
+   ```
+
+   No accounts are automatically granted admin rights. To revoke access, delete
+   that user's row from `owner_response_admins`; each backend read/write checks
+   the allowlist again. The save/publish SQL function checks it too.
+3. Allowlist the deployed `/admin` magic-link redirect in Supabase Auth, then
+   deploy `frontend-api`, `gateway`, and the frontend. Sign-in intentionally uses
+   `shouldCreateUser:false`; this dashboard cannot create new Auth accounts.
+
+Workflow:
+
+- Search for a listing, then use its source and ID from the restroom details.
+  All four source types are supported. Copy an approved review's displayed
+  **Review ID** to reply specifically to it, or leave Review ID empty for a
+  restroom-level improvement update. The server rejects unknown locations,
+  pending/rejected reviews, and reviews belonging to a different source/listing.
+- Enter a public business name and response, optional completed improvement date
+  (not in the future), and an optional HTTPS evidence link. Private verification
+  notes are required and never included in the public endpoint. Do not put
+  personal information in public fields or link to private documents.
+- Confirm offline verification, then **Save draft**. Drafts are not public.
+  Review the saved draft and explicitly choose **Publish saved draft**.
+  Unsaved changes must be saved first. Version checks reject stale updates and
+  double publication. Failed saves preserve the editor contents.
+- Published responses are read-only; add a new update for further progress.
+  Public restroom details display published replies/improvements, completion
+  dates, external evidence links and publication timestamps. Owner claims are
+  clearly distinguished from independent inspection. Responses do not change
+  community star ratings. A reply is hidden if its target review ceases to be approved.
+- Dashboard and public response lists page in batches of 50. Refresh details to
+  see newly published updates. Sign-out clears private dashboard state.
+
+Transport: `/api/backend/admin/owner-responses` forwards GET/POST through
+`gateway/frontend/admin/owner-responses`; `/api/backend/owner-responses` forwards
+public GETs scoped by `osm_type` and `osm_id` through
+`gateway/frontend/owner-responses`. Neither route exposes arbitrary database access.
+Both owner tables have RLS enabled and no anon/authenticated grants; only the backend
+service role can read/write them. Public reads select explicit published fields.
+
+SQL regression checks are in `../supabase-edge-functions/supabase/tests/owner_responses.sql`.
+Run them only against an isolated migrated test database, with `psql -v ON_ERROR_STOP=1`;
+fixtures and writes are rolled back. API tests cover separate admin authorization,
+draft/publication isolation, URL/date validation, target failures and version conflicts.
 These new routes require deployment of both the updated gateway and `frontend-api`;
 an older gateway will return 404 rather than falling back to a direct provider call.
 
