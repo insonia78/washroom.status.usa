@@ -1,8 +1,8 @@
 'use client';
 import {useEffect,useId,useRef,useState} from 'react';
 import {X} from 'lucide-react';
-import type {Session} from '@supabase/supabase-js';
-import {browserSupabase} from '@/lib/supabase';
+import {useContributionAuth} from '@/lib/contribution-auth';
+import ContributionSignIn from '@/components/ContributionSignIn';
 
 export default function AddToiletModal({coordinates,onClose}:{coordinates:[number,number];onClose:()=>void}){
   const dialog=useRef<HTMLDialogElement>(null);
@@ -16,38 +16,8 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
   const [submitted,setSubmitted]=useState(false);
   const [error,setError]=useState('');
   const inFlight=useRef(false);
-  const supabase=browserSupabase();
-  const [session,setSession]=useState<Session|null>(null);
-  const [checking,setChecking]=useState(true);
-  const [email,setEmail]=useState('');
-  const [authBusy,setAuthBusy]=useState(false);
-  const [authMessage,setAuthMessage]=useState('');
-
-  useEffect(()=>{
-    if(!supabase){setChecking(false);setError('Sign-in is not configured. Please contact the site administrator.');return}
-    let active=true;
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,current)=>{
-      if(active){setSession(current);setChecking(false)}
-    });
-    supabase.auth.getSession().then(({data,error})=>{
-      if(error)throw error;
-      if(active)setSession(data.session);
-    }).catch(error=>{if(active)setError(error instanceof Error?error.message:'Could not check sign-in.')})
-      .finally(()=>{if(active)setChecking(false)});
-    return()=>{active=false;subscription.unsubscribe()};
-  },[supabase]);
-
-  async function signIn(event:React.FormEvent){
-    event.preventDefault();
-    if(!supabase||authBusy)return;
-    setAuthBusy(true);setError('');setAuthMessage('');
-    try{
-      const {error}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:`${window.location.origin}/`}});
-      if(error)throw error;
-      setAuthMessage('Check your email for a sign-in link. After signing in, use your current location and reopen Add a toilet if needed.');
-    }catch(error){setError(error instanceof Error?error.message:'Could not send sign-in link.')}
-    finally{setAuthBusy(false)}
-  }
+  const auth=useContributionAuth();
+  const {session,checking}=auth;
 
   useEffect(()=>{
     const element=dialog.current;
@@ -70,17 +40,14 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
     setSending(true);
     setError('');
     try{
-      if(!supabase)throw new Error('Sign-in is not configured.');
-      const {data:auth,error:authError}=await supabase.auth.getSession();
-      if(authError)throw authError;
-      if(!auth.session){setSession(null);throw new Error('Sign in before adding a toilet.')}
+      const token=await auth.accessToken();
       const response=await fetch('/api/backend/toilet-submissions',{
         method:'POST',
-        headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.session.access_token}`},
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
         body:JSON.stringify({name:name.trim(),longitude:coordinates[0],latitude:coordinates[1],wheelchair,fee,notes}),
       });
       const data=await response.json();
-      if(response.status===401)setSession(null);
+      if(response.status===401)auth.clearSession();
       if(!response.ok)throw new Error(data.error||'Toilet could not be saved. Please try again.');
       if(response.status!==201||data.status!=='pending')throw new Error('The server did not confirm your submission. Please try again.');
       setSubmitted(true);
@@ -107,12 +74,7 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
     </div>
     <p id={descriptionId} className="mt-3 text-sm text-slate-600">Add a public toilet at your current location. Sign-in is required. Each account can submit up to 3 toilets per UTC day (resets at midnight UTC). Your submission is saved privately for moderation, not published immediately. Do not include private information.</p>
     <p className="mt-2 text-sm font-semibold text-teal-800">Current location: {coordinates[1].toFixed(5)}, {coordinates[0].toFixed(5)}</p>
-    {checking&&<p role="status" className="mt-4">Checking sign-in...</p>}
-    {!checking&&!session&&<form onSubmit={signIn} className="mt-4 space-y-3">
-      <label className="block text-sm font-medium">Email<input required type="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"/></label>
-      <button disabled={authBusy||!supabase} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{authBusy?'Sending...':'Send sign-in link'}</button>
-      {authMessage&&<p role="status" className="text-sm text-teal-800">{authMessage}</p>}
-    </form>}
+    {!submitted&&<ContributionSignIn auth={auth}/>}
     {!submitted?<form onSubmit={submit} className="mt-4 space-y-4" aria-busy={sending}>
       <fieldset disabled={sending||checking||!session} className="space-y-4">
         <label className="block text-sm font-medium">Toilet name (required)<input autoFocus required maxLength={120} value={name} onChange={event=>setName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3" placeholder="For example, Riverside Park public toilets"/></label>

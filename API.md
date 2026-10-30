@@ -1,5 +1,16 @@
 # Places API
 
+## Contribution authentication
+
+POST `/frontend/reviews` and `/frontend/toilet-submissions` require a verified,
+non-anonymous Supabase bearer session. The frontend offers email magic links;
+existing verified email sessions are also accepted. Backend Auth validation,
+not the request body, determines `user_id`. Reviews are saved pending and
+duplicate account/listing reviews return 409. Missing/expired sessions return
+401; unverified/anonymous identities return 403. GET approved reviews and place
+searches remain public. Historical anonymous-submission references below are
+superseded by this requirement.
+
 ## Database schema ownership
 
 The project remains a single Supabase database. After

@@ -43,26 +43,26 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       assert(response.status === 200 && result.count === 2 && result.average === 3 && result.limited_to === 50, "Reviews shape must be preserved");
     });
 
-    await t.step("writes validate imported location and moderation without sign-in", async () => {
+    await t.step("writes validate verified ownership, imported location and moderation", async () => {
       const calls: string[] = [];
       globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
         calls.push(url.pathname);
         if (url.pathname === "/auth/v1/user") {
           assert(new Headers(init?.headers).get("authorization") === "Bearer user-token", "Validate original user's session");
-          return Response.json({ id: "user-id" });
+          return Response.json({ id: "user-id", email_confirmed_at: "2026-01-01" });
         }
         if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 123 }]);
         assert(url.pathname === "/rest/v1/reviews" && init?.method === "POST", "Expected review insert");
         const payload = JSON.parse(String(init?.body));
-        assert(payload.user_id === null && payload.status === "pending" && payload.comment === "Needs cleaning", "Anonymous reviews retain moderation and trimming");
+        assert(payload.user_id === "user-id" && payload.status === "pending" && payload.comment === "Needs cleaning", "Verified reviews retain moderation and trimming");
         assert(payload.availability === "open" && payload.cleanliness_status === "clean", "Persist radio answers");
         return new Response(null, { status: 201 });
       };
       const response = await api.fetch(request("/reviews", {
         method: "POST", headers: { Authorization: "Bearer user-token" }, body: JSON.stringify(review),
       }));
-      assert(response.status === 201 && calls.length === 2 && !calls.includes("/auth/v1/user"), "Expected submission without auth calls");
+      assert(response.status === 201 && calls.length === 3 && calls.includes("/auth/v1/user"), "Expected verified submission");
     });
 
     await t.step("invalid input fails before network calls", async () => {
@@ -79,7 +79,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
         globalThis.fetch = async input => {
           const url = new URL(String(input));
           if (url.pathname === "/auth/v1/user") {
-            return Response.json(expected === 401 ? { error: "invalid" } : { id: "user-id" }, { status: expected === 401 ? 401 : 200 });
+            return Response.json({ id: "user-id", email_confirmed_at: "2026-01-01" });
           }
           if (url.pathname === "/rest/v1/restrooms") {
             return Response.json(expected === 422 ? [] : [{ osm_id: 123 }], { status: expected === 503 ? 500 : 200 });

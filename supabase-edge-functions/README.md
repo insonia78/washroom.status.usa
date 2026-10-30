@@ -6,6 +6,14 @@ configuration. Deploy from this folder so the Supabase CLI finds
 
 ## Functions
 
+Contribution authentication: `POST /frontend/reviews` and
+`POST /frontend/toilet-submissions` require verified, non-anonymous Supabase
+sessions. Public approved review reads and place searches remain unsigned.
+Deploy the updated `frontend-api` with the frontend's email magic-link forms;
+enable the Email provider, configure SMTP and allow application callback URLs
+using [the frontend setup](../washroom-status-frontend/README.md#email-magic-link-sign-in-for-contributions).
+No additional migration is needed. Old anonymous review rows remain intact.
+
 | Function | Purpose |
 | --- | --- |
 | `gateway` | Public API entry point. Routes place, account, review, and authentication requests to the appropriate backend. |

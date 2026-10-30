@@ -154,6 +154,7 @@ async function reviews(req: Request): Promise<Response> {
     typeof comment !== "string" || comment.length > 1000) {
     throw new ApiError(400, "Invalid review fields");
   }
+  const userId = await requireAuthenticatedUser(req);
   const locationParams = new URLSearchParams({
     select: "osm_id", osm_type: `eq.${osm_type}`, osm_id: `eq.${osm_id}`, limit: "1",
   });
@@ -166,7 +167,7 @@ async function reviews(req: Request): Promise<Response> {
   if (!locations.length) throw new ApiError(422, "Restroom is not in the verified location list. Refresh the search and try again.");
   await database("reviews", new URLSearchParams(), {
     method: "POST",
-    body: JSON.stringify({ osm_type, osm_id, rating, availability, cleanliness_status, issues, comment: comment.trim(), user_id: null, status: "pending" }),
+    body: JSON.stringify({ osm_type, osm_id, rating, availability, cleanliness_status, issues, comment: comment.trim(), user_id: userId, status: "pending" }),
   });
   return json(201, { message: "Review submitted for moderation", status: "pending" });
 }

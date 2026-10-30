@@ -1,5 +1,41 @@
 # Washroom Status USA
 
+## Email magic-link sign-in for contributions
+
+**Add review** and **Add a toilet** require a verified Supabase session and offer
+an email address field and **Send sign-in link**. Gmail and other email providers
+work; no Google OAuth client ID or secret is needed. Searches and approved review reads remain public.
+Both backends validate the bearer token through Supabase Auth, derive ownership
+from the verified account, and ignore client-supplied identity/publication fields.
+Existing email-authenticated sessions remain valid; moderator/admin email
+sign-in is unchanged. Reviews remain pending and the existing per-listing/account
+unique constraint returns 409 for a duplicate review. Existing anonymous reviews
+are preserved. The three-per-account UTC daily limit still applies to toilets.
+
+1. In Supabase **Authentication > Sign In / Providers > Email**, enable Email.
+   Allow new signups if visitors should be able to create accounts through the link.
+2. In Supabase **Authentication > URL Configuration**, set the production Site URL
+   and allow exact application return URLs `https://YOUR_SITE/auth/callback` and
+   `http://localhost:3000/auth/callback`. Use the actual port for local tests.
+   Keep the email magic-link template's `{{ .ConfirmationURL }}` verification link.
+3. Configure production SMTP in Supabase; the built-in email service has delivery
+   restrictions and rate limits. Keep SMTP credentials only in Supabase settings.
+4. Deploy the updated `frontend-api` and frontend. No new database migration is
+   needed for magic-link sign-in. Existing user-ID/FK and review-uniqueness constraints
+   are reused. Do not grant browser access to private application schemas.
+5. Test signed-out forms, email delivery, expired/invalid links, successful return,
+   both submissions and a fourth toilet submission's quota error.
+
+Email OTP requests and refresh/session/token calls use the same-origin gateway
+Auth proxy. The user verifies the email through Supabase's emailed link.
+The callback reports provider/session errors explicitly, removes URL credentials,
+and offers a return to search. Re-select the restroom/current location and reopen
+the form after returning; unsaved form answers are not retained across navigation.
+Setup reference: https://supabase.com/docs/guides/auth/auth-email-passwordless
+
+The older anonymous-review descriptions below are historical; authenticated
+magic-link contribution sign-in above supersedes them.
+
 **Database ownership:** after migration `20261030230000_private_application_schemas.sql`,
 application accounts/connections use private schema `app_accounts`; location,
 review and moderation data use private schema `app_locations`. Supabase Auth

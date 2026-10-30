@@ -2,6 +2,8 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import {X} from 'lucide-react';
 import type {Restroom} from '@/components/RestroomDetails';
+import {useContributionAuth} from '@/lib/contribution-auth';
+import ContributionSignIn from '@/components/ContributionSignIn';
 
 const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
 
@@ -19,6 +21,8 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
   const [sending,setSending]=useState(false);
   const [submitted,setSubmitted]=useState(false);
   const isRefugeRestroom=restroom.source==='refuge-restrooms';
+  const auth=useContributionAuth();
+  const locked=sending||auth.checking||!auth.session;
 
   useEffect(()=>{
     const element=dialog.current;
@@ -40,13 +44,16 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
     setSending(true);
     setMessage('');
     try{
+      const token=await auth.accessToken();
       const response=await fetch('/api/reviews',{
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
         body:JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment})
       });
       const data=await response.json();
+      if(response.status===401)auth.clearSession();
       if(!response.ok)throw new Error(data.error||'Submission failed');
+      if(response.status!==201||data.status!=='pending')throw new Error('The server did not confirm your review. Please try again.');
       setSubmitted(true);
       setMessage('Thanks! Your review is awaiting moderation.');
     }catch(error){
@@ -67,16 +74,17 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
       <div><h2 id={titleId} className="text-xl font-bold">Add a review</h2><p className="mt-1 break-words font-semibold text-teal-800">{restroom.name}</p><p className="mt-1 text-xs text-slate-500">{isRefugeRestroom?'Refuge Restrooms':`OpenStreetMap ${restroom.osm_type}`} #{restroom.id}</p></div>
       <button type="button" autoFocus onClick={onClose} aria-label="Close review modal" className="pill"><X size={18}/></button>
     </div>
-    <p id={descriptionId} className="mt-3 text-sm text-slate-600">No sign-in required. Reports are screened before publication. Describe your visit without including names or private information. Availability reports are not live verification.</p>
+    <p id={descriptionId} className="mt-3 text-sm text-slate-600">Sign in to add a review. Reports are screened before publication. Describe your visit without including names or private information. Availability reports are not live verification.</p>
+    {!submitted&&<ContributionSignIn auth={auth}/>}
     {!submitted&&
-      <form onSubmit={submit} className="mt-4 space-y-4">
+      <form onSubmit={submit} className="mt-4 space-y-4"><fieldset disabled={locked} className="space-y-4">
         <fieldset disabled={sending}><legend className="text-sm font-medium">Restroom Availability: Was it available during your visit? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['open','Open'],['closed','Closed'],['temporarily_unavailable','Temporarily unavailable'],['unverified','Unverified']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-availability`} value={value} checked={availability===value} onChange={()=>setAvailability(value)} className="mr-2"/>{label}</label>)}</div></fieldset>
         <fieldset disabled={sending}><legend className="text-sm font-medium">Cleanliness Ratings: How would you rate it? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[1,2,3,4,5].map(value=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-rating`} value={value} checked={rating===value} onChange={()=>setRating(value)} className="mr-2"/>{value} {value===1?'star':'stars'}</label>)}</div><p className="mt-1 text-xs text-slate-500">1 is lowest, 5 is highest.</p></fieldset>
         <fieldset disabled={sending}><legend className="text-sm font-medium">Clean or Dirty Status: What condition was it in? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['excellent','Excellent'],['clean','Clean'],['average','Average'],['poor','Poor'],['very_dirty','Very Dirty']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-condition`} value={value} checked={cleanlinessStatus===value} onChange={()=>setCleanlinessStatus(value)} className="mr-2"/>{label}</label>)}</div></fieldset>
         <fieldset disabled={sending}><legend className="text-sm font-medium">Problems noticed (optional)</legend><div className="mt-2 flex flex-wrap gap-2">{issueOptions.map(([key,label])=><label key={key} className="pill text-xs"><input type="checkbox" checked={issues.includes(key)} onChange={event=>setIssues(previous=>event.target.checked?[...previous,key]:previous.filter(value=>value!==key))} className="mr-2"/>{label}</label>)}</div></fieldset>
         <label className="block text-sm font-medium">Details (optional)<textarea disabled={sending} maxLength={1000} value={comment} onChange={event=>setComment(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Describe what you observed without identifying other restroom users"/></label>
         <button disabled={sending||!rating||!availability||!cleanlinessStatus} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Submitting...':'Submit for moderation'}</button>
-      </form>}
+      </fieldset></form>}
     {message&&<p role="status" className="mt-4 text-sm text-slate-700">{message}</p>}
     {submitted&&<button type="button" onClick={onClose} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Done</button>}
   </dialog>;
