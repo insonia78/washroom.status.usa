@@ -1,5 +1,6 @@
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
+import { locationDatabaseHeaders } from "../../_shared/database-schema.ts"
 
 // Narrows an unknown value to a plain object before reading database fields.
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,7 +62,7 @@ export async function findNearbyFuel(latitude: number, longitude: number, radius
     for (let offset = 0; ; offset += pageSize) {
       const response = await fetch(new URL("/rest/v1/rpc/find_nearby_fuel", baseUrl), {
         method: "POST",
-        headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        headers: { ...locationDatabaseHeaders("POST"), apikey: apiKey, Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           search_latitude: latitude, search_longitude: longitude, radius_meters: radius,
           page_offset: offset, page_size: pageSize,

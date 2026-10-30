@@ -6,6 +6,11 @@ function findRoute(pathname: string) {
   return supportedRoutes.find((route) => route.pattern.test(pathname));
 }
 
+Deno.test("toilet submissions expose only POST to the private moderation inbox", () => {
+  assertEquals(findRoute("/frontend/toilet-submissions")?.methods, ["POST"]);
+  assertEquals(findRoute("/frontend/moderation/toilets")?.methods, ["GET", "POST"]);
+});
+
 Deno.test("owner responses expose public reads and separately protected admin actions", () => {
   assertEquals(findRoute("/frontend/owner-responses")?.methods, ["GET"]);
   assertEquals(findRoute("/frontend/admin/owner-responses")?.methods, ["GET", "POST"]);

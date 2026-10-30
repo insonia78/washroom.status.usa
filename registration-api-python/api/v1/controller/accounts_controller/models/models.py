@@ -20,6 +20,7 @@ class AccountEmailLookup(SQLModel):
 
 class Account(SQLModel, table=True):
     __tablename__: str = "accounts"
+    __table_args__ = {"schema": "app_accounts"}
 
     id: int | None = Field(default=None, primary_key=True)
     email: EmailStr = Field()
@@ -52,9 +53,10 @@ class AccountUpdate(SQLModel):
 
 class PasswordResetToken(SQLModel, table=True):
     __tablename__: str = "password_reset_tokens"
+    __table_args__ = {"schema": "app_accounts"}
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    account_id: int = Field(foreign_key="accounts.id", index=True)
+    account_id: int = Field(foreign_key="app_accounts.accounts.id", index=True)
     token_hash: str = Field(index=True, unique=True, min_length=64, max_length=64)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     expires_at: datetime = Field()

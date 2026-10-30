@@ -40,3 +40,26 @@ create table if not exists public.review_locations (
 alter table public.review_locations enable row level security;
 revoke all on table public.review_locations from public, anon, authenticated;
 grant select, insert on table public.review_locations to service_role;
+
+-- Private moderation inbox for community toilets; not OpenStreetMap records.
+create table if not exists public.toilet_submissions (
+ id uuid primary key default gen_random_uuid(),
+ name text not null check (char_length(btrim(name)) between 1 and 120),
+ latitude double precision not null check (latitude between 17 and 72),
+ longitude double precision not null check (longitude between -179 and -65),
+ wheelchair text not null default 'unknown' check (wheelchair in ('yes','no','unknown')),
+ fee text not null default 'unknown' check (fee in ('yes','no','unknown')),
+ notes text not null default '' check (char_length(notes) <= 1000),
+ status text not null default 'pending' check (status in ('pending','approved','rejected')),
+ created_at timestamptz not null default now()
+);
+alter table public.toilet_submissions enable row level security;
+revoke all on table public.toilet_submissions from public, anon, authenticated;
+grant select, insert, update on table public.toilet_submissions to service_role;
+create index if not exists toilet_submissions_moderation
+ on public.toilet_submissions (status, created_at);
+
+-- Run 20261026160000_review_moderation.sql for the moderator allowlist,
+-- then 20261030223000_toilet_submission_accounts.sql for account attribution,
+-- the atomic 3-per-UTC-day limit, and toilet moderation decisions.
+-- These migrations are required for new databases as well as existing ones.

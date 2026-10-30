@@ -39,6 +39,8 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
     if (url.origin === "https://project.example") {
+      const profile = init?.method === "POST" ? "Content-Profile" : "Accept-Profile"
+      assert(new Headers(init?.headers).get(profile) === "app_locations", "Every database search/RPC/write uses the private location schema")
       if (url.pathname === "/rest/v1/review_locations") {
         assert(init?.method === "POST", "Only server searches register review locations")
         assert(new Headers(init.headers).get("apikey") === "test-service-role-key", "Registration uses backend credentials")

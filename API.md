@@ -1,5 +1,19 @@
 # Places API
 
+## Database schema ownership
+
+The project remains a single Supabase database. After
+`20261030230000_private_application_schemas.sql`, backend PostgREST reads use
+`Accept-Profile: app_locations` and writes/RPCs use
+`Content-Profile: app_locations`; account/token consumers select `app_accounts`.
+No browser contract, project URL or browser key changes. The gateway does not
+trust client-supplied profile headers; backend services choose their schema.
+Managed authentication remains in `auth`; no application tables remain in
+`public` for the migrated inventory. Historical `public.*` references below
+describe pre-cutover setup; operational queries must use the owning schema.
+Hosted Data API must list both application schemas, but schema/table/function
+grants deny `anon`/`authenticated`. Service-role credentials remain server-only.
+
 ## Application gateway boundary
 
 Next.js proxies all application API calls through `gateway`; database queries
@@ -10,6 +24,42 @@ The gateway also exposes `/frontend/reviews` (GET/POST), `/frontend/geocode`
 internal `frontend-api` function using `GATEWAY_INTERNAL_SECRET`.
 Configure `FRONTEND_API_URL` or let the gateway derive it from `PLACES_API_URL`.
 Deploy both the updated gateway and `frontend-api` before using these routes.
+
+### POST /frontend/toilet-submissions
+
+The Next.js adapter is `POST /api/backend/toilet-submissions`. A verified,
+non-anonymous Supabase account is required; send its `Authorization: Bearer`
+access token. Send JSON with `name` (trimmed, 1-120 characters), numeric `latitude`
+(17-72) and `longitude` (-179 to -65), `wheelchair` and `fee` (each `yes`, `no`,
+or `unknown`), and `notes` (string, at most 1000 characters; may be empty).
+The coordinate envelope matches browser location eligibility; it is not proof
+of a US address or GPS provenance. Moderators must verify the public location.
+The backend inserts only these fields plus forced `status: pending` into the
+private `public.toilet_submissions` table, with `user_id` from the server-verified
+session (client identity/status are ignored). An atomic database counter permits
+at most **3 successful insertions per account per UTC calendar day**. It resets
+at midnight UTC; rejected/deleted submissions still count; failed inserts roll
+back the counter. Returns HTTP 201 with
+`{"message":"Toilet saved for moderation","status":"pending"}` only after a
+successful insert. Invalid payloads return 400, missing/expired sessions 401,
+unverified accounts 403, unsupported methods 405, quota exhaustion 429, and
+database failures 503. Apply migrations `20261030220000_toilet_submissions.sql`
+and `20261030223000_toilet_submission_accounts.sql` (after the existing review
+moderation migration) before deployment. Pending submissions are not search results; publication is
+not automatic even when the moderation status is changed.
+
+### GET/POST /frontend/moderation/toilets
+
+The Next.js adapter is `/api/backend/moderation/toilets`. Both methods require a
+verified account on `review_moderators`, using the existing moderator session.
+GET returns `{submissions: [...], limited_to: 50}` with pending submissions,
+oldest first. Rows include ID, name, full-precision latitude/longitude, wheelchair,
+fee, notes, status, and timestamp, but not contributor identity. The dashboard's
+Google Maps location and directions links use these exact coordinates.
+POST accepts `{id: "<submission UUID>", decision: "approved" | "rejected"}` and
+returns `{submission: {id, status}}` after saving moderator ID/time. A
+no-longer-pending submission returns 409 without overwriting a prior decision.
+
 OpenStreetMap tile requests are the only permitted direct external browser
 connections; map boundaries and city geocoding are gateway-backed.
 

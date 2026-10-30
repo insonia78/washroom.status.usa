@@ -23,6 +23,14 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
       return await api.fetch(req);
     }
     if (url.pathname === "/rest/v1/reviews") return Response.json([]);
+    if (url.pathname === "/auth/v1/user") return Response.json({ id: "10000000-0000-4000-8000-000000000001", email_confirmed_at: "2026-01-01" });
+    if (url.pathname === "/rest/v1/toilet_submissions") {
+      const body = await req.json();
+      if (body.status !== "pending" || body.latitude !== 40.71 || body.longitude !== -74) {
+        throw new Error("Submission fields must reach database insertion");
+      }
+      return new Response(null, { status: 201 });
+    }
     if (url.pathname === "/rest/v1/rpc/approved_review_summary") return Response.json([{ review_count: 0, average: null }]);
     if (url.pathname === "/auth/v1/otp") return Response.json({ sent: true });
     if (url.hostname === "photon.komoot.io") return Response.json({ features: [{ geometry: { type: "Point", coordinates: [-71.06, 42.36] }, properties: { countrycode: "US" } }] });
@@ -40,10 +48,15 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
       if (response.status !== 200) throw new Error(`Gateway failed ${path}: ${await response.text()}`);
     }
     if (forwarded !== 3) throw new Error("All three calls must pass through the gateway");
+    const submission = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/toilet-submissions", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-user-token" },
+      body: JSON.stringify({ name: "Park toilet", latitude: 40.71, longitude: -74, wheelchair: "unknown", fee: "no", notes: "" }),
+    }));
+    if (submission.status !== 201 || Number(forwarded) !== 4) throw new Error("Toilet submission must forward and insert");
     const unauthorized = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/moderation/reviews"));
-    if (unauthorized.status !== 401 || forwarded !== 4) throw new Error("Moderation routes must forward to backend authorization");
+    if (unauthorized.status !== 401 || Number(forwarded) !== 5) throw new Error("Moderation routes must forward to backend authorization");
     const blocked = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/auth/v1/admin"));
-    if (blocked.status !== 404 || forwarded !== 4) throw new Error("Unlisted auth endpoints must not forward");
+    if (blocked.status !== 404 || Number(forwarded) !== 5) throw new Error("Unlisted auth endpoints must not forward");
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of previous) {

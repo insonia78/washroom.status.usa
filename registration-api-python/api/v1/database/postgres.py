@@ -77,12 +77,14 @@ def ensure_database_exists():
 
 def create_db_and_tables():
     ensure_database_exists()
+    with engine.begin() as connection:
+        connection.execute(text("CREATE SCHEMA IF NOT EXISTS app_accounts"))
     SQLModel.metadata.create_all(engine)
     with engine.begin() as connection:
         connection.execute(
             text(
                 """
-                ALTER TABLE accounts
+                ALTER TABLE app_accounts.accounts
                 ADD COLUMN IF NOT EXISTS password_salt VARCHAR(64)
                 """
             )
@@ -90,7 +92,7 @@ def create_db_and_tables():
         connection.execute(
             text(
                 """
-                ALTER TABLE accounts
+                ALTER TABLE app_accounts.accounts
                 ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'user'
                 """
             )
@@ -98,7 +100,7 @@ def create_db_and_tables():
         connection.execute(
             text(
                 """
-                ALTER TABLE accounts
+                ALTER TABLE app_accounts.accounts
                 ALTER COLUMN password DROP NOT NULL
                 """
             )
@@ -106,7 +108,7 @@ def create_db_and_tables():
         connection.execute(
             text(
                 """
-                UPDATE accounts
+                UPDATE app_accounts.accounts
                 SET role = 'user'
                 WHERE role IS NULL OR TRIM(role) = ''
                 """
@@ -116,7 +118,7 @@ def create_db_and_tables():
             text(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash
-                ON password_reset_tokens (token_hash)
+                ON app_accounts.password_reset_tokens (token_hash)
                 """
             )
         )
@@ -124,7 +126,7 @@ def create_db_and_tables():
             text(
                 """
                 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_account_id_created_at
-                ON password_reset_tokens (account_id, created_at DESC)
+                ON app_accounts.password_reset_tokens (account_id, created_at DESC)
                 """
             )
         )
@@ -132,7 +134,7 @@ def create_db_and_tables():
             text(
                 """
                 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at
-                ON password_reset_tokens (expires_at)
+                ON app_accounts.password_reset_tokens (expires_at)
                 """
             )
         )

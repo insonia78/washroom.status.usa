@@ -1,5 +1,13 @@
 # Washroom Status USA
 
+**Database ownership:** after migration `20261030230000_private_application_schemas.sql`,
+application accounts/connections use private schema `app_accounts`; location,
+review and moderation data use private schema `app_locations`. Supabase Auth
+stays in managed `auth`. This is one database with two service-role-only
+application schemas, not two projects. Historical `public.*` setup instructions
+below apply only before cutover. See [the migration/deployment guide](../supabase-edge-functions/README.md#data-preserving-private-schema-migration)
+for backup, preserving existing rows, hosted API settings and coordinated deployment.
+
 Next.js 15 + TypeScript + Tailwind 4 + MapLibre/OpenFreeMap + imported OpenStreetMap and Refuge Restrooms locations + Supabase Auth and moderated reviews. **No fabricated locations or ratings.** Requests the visitor's location on opening and uses it for nearby results when permitted. The contiguous United States overview and empty address field remain the fallback. Alaska and Hawaii remain searchable.
 
 ## Run locally
@@ -9,6 +17,8 @@ search origin (browser location or selected city/address/ZIP). Distances use the
 Haversine formula, update with each search, and are not walking or driving routes.
 On mobile, the search-radius selector sits immediately above the map; on desktop
 it remains alongside the address search. Both use the same radius state.
+When the current GPS location is active, **Add a toilet** sits beside the
+search-radius selector above the map on mobile.
 
 On mobile, choosing an address suggestion or submitting a search blurs the
 address input to dismiss the keyboard and immediately focuses the map/results
@@ -43,6 +53,9 @@ npm run dev
 6. For an existing database, apply `../supabase-edge-functions/supabase/migrations/20261026143000_anonymous_review_questions.sql` before deploying the updated `frontend-api`. New databases use the updated `supabase/schema.sql`. Visit localhost:3000, select a real restroom and choose **Add review**. No sign-in is required. Answer availability, 1-5 cleanliness rating, and Excellent/Clean/Average/Poor/Very Dirty condition, then optionally add issues and a comment. Reviews are saved as **pending**. In Supabase Table Editor, manually change `status` to `approved` after moderation. Only approved reviews are displayed.
 
 ## What is included
+
+- **Add a toilet** appears after browser geolocation succeeds (including when there are no nearby results), beside **Search radius** above the map on mobile and in the search toolbar on desktop. It is hidden during location lookup, after errors, and when typing or searching a manual address. Choose **Use my location** to re-enable it. The dialog uses the captured GPS coordinates, collects a required name and optional accessibility, fee, and access details, and saves a **pending** submission. Verified email sign-in is required; the dialog offers a magic link. Allow the site root URL in Supabase Auth redirects. Each account can save **3 toilets per UTC calendar day**, resetting at midnight UTC. The database atomically enforces this across tabs/concurrent requests; rejection or deletion does not refund the quota, and failed inserts do not consume it. Errors, including a fourth submission's HTTP 429, keep the form open; success is shown only after insertion is confirmed. Anonymous reviews remain unchanged.
+- Submission path: `browser -> /api/backend/toilet-submissions -> gateway/frontend/toilet-submissions -> frontend-api -> public.toilet_submissions`. Apply `../supabase-edge-functions/supabase/migrations/20261030220000_toilet_submissions.sql` (or `supabase/schema.sql` for a new database), the existing `20261026160000_review_moderation.sql`, then **`20261030223000_toilet_submission_accounts.sql` for both new and existing databases**, before deploying `gateway`, `frontend-api`, and the frontend. Submissions and quota counters are private under RLS; only the backend service role can write them. The backend verifies the session through Supabase Auth and uses that account ID, never a client-supplied identity. The moderator dashboard includes **Pending toilets** with full-precision coordinates, **View exact location on Google Maps**, and the existing Google Maps directions link. Both links target the saved coordinates, not a possibly ambiguous address/name. Allowlisted moderators can approve/reject; the database records who decided and when and rejects stale decisions. Approval does not automatically publish a map location or create a fake OpenStreetMap identity. Public listing publication is a separate workflow.
 
 - OpenFreeMap display with multiple clickable location markers, restroom details, accessibility and fee tags, unverified availability
 - Hover over a map marker (or focus it with the keyboard) to preview its name, listing type, distance, accessibility, fee, hours, approved five-star average/count, and latest approved timestamped comment. Move into the scrollable preview to read or retry review errors; it remains open while hovered or focused. Escape or the close button dismisses it. From a focused marker, Arrow Down moves focus into the preview. Clicking/tapping a marker still selects its full details and also opens the preview; **View full details and reviews** selects the same location. Reviews work for every listing source, including Refuge Restrooms. Switching markers, filters, or search results removes the old preview and cancels obsolete review requests.

@@ -1,5 +1,15 @@
 # Washroom Status USA — deployment checklist
 
+**Private-schema cutover:** after the legacy setup/migrations, apply
+`../supabase-edge-functions/supabase/migrations/20261030230000_private_application_schemas.sql`.
+It moves existing data, rather than copying/deleting it. Accounts/connections use
+`app_accounts`; all location-related data use `app_locations`; managed Supabase
+Auth stays in `auth`. Follow the coordinated backup, traffic pause, hosted
+Data API schema configuration, backend/registration-service deployment and
+verification steps in [the edge deployment guide](../supabase-edge-functions/README.md#data-preserving-private-schema-migration).
+Do not rerun the historical `public.*` setup SQL below after cutover. Moderator
+and administrator allowlist inserts must then target `app_locations`, not `public`.
+
 1. Run `npm ci` and `npm run build`.
 2. In Vercel, import this Next.js project. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` using your existing Supabase project. Do not configure `SUPABASE_SERVICE_ROLE_KEY` in Next.js: database access now belongs to the edge backend only.
 3. Do not upload `.env.local` to GitHub or the ZIP. For local testing, create your own `.env.local` from `.env.example`.

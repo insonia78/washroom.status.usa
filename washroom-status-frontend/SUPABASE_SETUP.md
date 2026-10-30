@@ -1,3 +1,12 @@
+# Private-schema migration notice
+
+The legacy setup below is a bootstrap prerequisite only. Once it is complete,
+apply all versioned migrations through
+`20261030230000_private_application_schemas.sql` to relocate existing data into
+`app_accounts` and `app_locations`, with managed Auth unchanged. Do not rerun
+legacy public-schema SQL after cutover. Follow the
+[coordinated deployment guide](../supabase-edge-functions/README.md#data-preserving-private-schema-migration).
+
 # Phase 3: Philadelphia Supabase connection
 
 Your `restrooms` table already contains 155 genuine imported OpenStreetMap records. **Do not reimport them** just to use this update.

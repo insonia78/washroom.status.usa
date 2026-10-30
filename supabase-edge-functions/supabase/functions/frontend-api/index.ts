@@ -1,6 +1,7 @@
 import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
 import { geocodeZipCode } from "../places-api/services/geocoding.ts";
 import { RequestError } from "../places-api/utils/errors.ts";
+import { locationDatabaseHeaders } from "../_shared/database-schema.ts";
 
 // Carries an HTTP status alongside a frontend API error message.
 class ApiError extends Error {
@@ -37,12 +38,25 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
   const response = await upstream(url, {
     ...init,
     headers: {
+      ...locationDatabaseHeaders(init.method),
       apikey: key, Authorization: `Bearer ${key}`,
       "Content-Type": "application/json", Prefer: "return=minimal",
     },
   });
   if (!response.ok) {
     const error: unknown = await response.json();
+    if (table === "toilet_submissions") {
+      if (isRecord(error) && error.code === "P0001") {
+        throw new ApiError(429, "You have reached the limit of 3 toilet submissions per UTC day. Try again after midnight UTC.");
+      }
+      console.error("frontend-api toilet submission failed", { status: response.status });
+      throw new ApiError(503, "Toilet could not be saved. Please try again.");
+    }
+    if (table === "rpc/moderate_toilet_submission") {
+      if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Moderator access required");
+      console.error("frontend-api toilet moderation failed", { status: response.status });
+      throw new ApiError(503, "Toilet moderation is temporarily unavailable");
+    }
     if (isRecord(error) && error.code === "23505") {
       throw new ApiError(409, "You have already reviewed this restroom");
     }
@@ -63,6 +77,33 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
 function validRestroom(type: unknown, id: unknown): boolean {
   return typeof type === "string" && ["node", "way", "relation", "refuge"].includes(type) &&
     typeof id === "number" && Number.isSafeInteger(id) && id > 0;
+}
+
+async function toiletSubmissions(req: Request): Promise<Response> {
+  if (req.method !== "POST") throw new ApiError(405, "Method not allowed");
+  const userId = await requireAuthenticatedUser(req);
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    throw new ApiError(400, "Invalid JSON");
+  }
+  if (!isRecord(body)) throw new ApiError(400, "Invalid toilet fields");
+  const { name, latitude, longitude, wheelchair, fee, notes } = body;
+  const validAnswer = (value: unknown) =>
+    typeof value === "string" && ["yes", "no", "unknown"].includes(value);
+  if (typeof name !== "string" || !name.trim() || name.trim().length > 120 ||
+    typeof latitude !== "number" || !Number.isFinite(latitude) || latitude < 17 || latitude > 72 ||
+    typeof longitude !== "number" || !Number.isFinite(longitude) || longitude < -179 || longitude > -65 ||
+    !validAnswer(wheelchair) || !validAnswer(fee) ||
+    typeof notes !== "string" || notes.length > 1000) {
+    throw new ApiError(400, "Enter a toilet name (up to 120 characters), valid US coordinates, accessibility, fee, and notes (up to 1000 characters).");
+  }
+  await database("toilet_submissions", new URLSearchParams(), {
+    method: "POST",
+    body: JSON.stringify({ name: name.trim(), latitude, longitude, wheelchair, fee, notes: notes.trim(), status: "pending", user_id: userId }),
+  });
+  return json(201, { message: "Toilet saved for moderation", status: "pending" });
 }
 
 // Lists approved reviews or validates and submits a new review for moderation.
@@ -155,9 +196,9 @@ async function auth(req: Request, path: string): Promise<Response> {
   return new Response(response.body, { status: response.status, headers: responseHeaders });
 }
 
-async function requireAllowlistedUser(req: Request, role: "moderator" | "admin"): Promise<string> {
+async function requireAuthenticatedUser(req: Request): Promise<string> {
   const authorization = req.headers.get("authorization");
-  if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) throw new ApiError(401, "Sign in to access this dashboard");
+  if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) throw new ApiError(401, "Sign in to continue");
   const response = await upstream(new URL("/auth/v1/user", config("SUPABASE_URL")), {
     headers: { apikey: config("SUPABASE_ANON_KEY"), Authorization: authorization },
   });
@@ -166,13 +207,46 @@ async function requireAllowlistedUser(req: Request, role: "moderator" | "admin")
     throw new ApiError(503, "Session validation is temporarily unavailable");
   }
   const user: unknown = await response.json();
-  if (!isRecord(user) || typeof user.id !== "string" || !user.email_confirmed_at) throw new ApiError(403, `A verified ${role} account is required`);
+  if (!isRecord(user) || typeof user.id !== "string" || !user.email_confirmed_at || user.is_anonymous === true) throw new ApiError(403, "A verified account is required");
+  return user.id;
+}
+
+async function requireAllowlistedUser(req: Request, role: "moderator" | "admin"): Promise<string> {
+  const userId = await requireAuthenticatedUser(req);
   const moderators: unknown = await (await database(role === "admin" ? "owner_response_admins" : "review_moderators", new URLSearchParams({
-    select: "user_id", user_id: `eq.${user.id}`, limit: "1",
+    select: "user_id", user_id: `eq.${userId}`, limit: "1",
   }))).json();
   if (!Array.isArray(moderators)) throw new ApiError(502, `Invalid ${role} lookup response`);
   if (!moderators.length) throw new ApiError(403, `Your account is not on the ${role} allowlist`);
-  return user.id;
+  return userId;
+}
+
+async function moderateToilets(req: Request): Promise<Response> {
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const moderatorId = await requireAllowlistedUser(req, "moderator");
+  if (req.method === "GET") {
+    const rows: unknown = await (await database("toilet_submissions", new URLSearchParams({
+      select: "id,name,latitude,longitude,wheelchair,fee,notes,status,created_at",
+      status: "eq.pending", order: "created_at.asc,id.asc", limit: "50",
+    }))).json();
+    if (!Array.isArray(rows)) throw new ApiError(502, "Invalid toilet moderation queue response");
+    return json(200, { submissions: rows, limited_to: 50 });
+  }
+  let body: unknown;
+  try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+  if (!isRecord(body) || typeof body.id !== "string" || !uuidPattern.test(body.id) ||
+    typeof body.decision !== "string" || !["approved", "rejected"].includes(body.decision)) {
+    throw new ApiError(400, "Invalid toilet moderation decision");
+  }
+  const rows: unknown = await (await database("rpc/moderate_toilet_submission", new URLSearchParams(), {
+    method: "POST", body: JSON.stringify({ p_id: body.id, p_moderator_id: moderatorId, p_decision: body.decision }),
+  })).json();
+  if (!Array.isArray(rows)) throw new ApiError(502, "Invalid toilet moderation response");
+  if (!rows.length) throw new ApiError(409, "This toilet is no longer pending. Refresh the queue.");
+  if (rows.length !== 1 || !isRecord(rows[0]) || rows[0].id !== body.id || rows[0].status !== body.decision) {
+    throw new ApiError(502, "Invalid toilet moderation response");
+  }
+  return json(200, { submission: rows[0] });
 }
 
 async function moderation(req: Request): Promise<Response> {
@@ -299,6 +373,8 @@ export default {
     if (denied) return denied;
     const path = new URL(req.url).pathname.replace(/^\/(?:functions\/v1\/)?frontend-api(?=\/|$)/, "").replace(/\/$/, "") || "/";
     try {
+      if (path === "/toilet-submissions") return await toiletSubmissions(req);
+      if (path === "/moderation/toilets") return await moderateToilets(req);
       if (path === "/reviews") return await reviews(req);
       if (path === "/moderation/reviews") return await moderation(req);
       if (path === "/admin/owner-responses") return await ownerResponses(req, true);

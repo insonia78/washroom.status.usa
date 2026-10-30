@@ -10,9 +10,12 @@ import NavigationLinks from '@/components/NavigationLinks';
 import {requestCurrentPosition} from '@/lib/geolocation';
 import ReviewModal from '@/components/ReviewModal';
 import LatestReview from '@/components/LatestReview';
+import AddToiletModal from '@/components/AddToiletModal';
 
 export default function Home(){const [city,setCity]=useState('');const [items,setItems]=useState<Restroom[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [filter,setFilter]=useState('all');const [center,setCenter]=useState<[number,number]>([-98.5795,39.8283]);const [selected,setSelected]=useState<Restroom|null>(null);
 const [hasSearchOrigin,setHasSearchOrigin]=useState(false);
+const [currentLocationActive,setCurrentLocationActive]=useState(false);
+const [toiletCoordinates,setToiletCoordinates]=useState<[number,number]|null>(null);
 const [reviewRestroom,setReviewRestroom]=useState<Restroom|null>(null);
 const [searching,setSearching]=useState(false);
 const [warning,setWarning]=useState('');
@@ -42,6 +45,7 @@ const [zoom,setZoom]=useState(3);
 const locationRequest=useRef(0);
 const locate=useCallback(()=>{
   const request=++locationRequest.current;
+  setCurrentLocationActive(false);
   setLocationError('');
   if(!window.isSecureContext){setLocating(false);setLocationError('Location requires HTTPS on mobile. Open the secure HTTPS site in Safari or Chrome, or search a US city or ZIP code.');return}
   if(!navigator.geolocation){setLocating(false);setLocationError('Your browser does not support location. Open this site in Safari or Chrome, or search a US city or ZIP code.');return}
@@ -54,7 +58,7 @@ const locate=useCallback(()=>{
     }
     focusAfterSearch.current=true;
     focusMapArea();
-    setLocation([longitude,latitude]);setZoom(15);setCity('');setHasSearchOrigin(true);setCenter([longitude,latitude]);
+    setLocation([longitude,latitude]);setCurrentLocationActive(true);setZoom(15);setCity('');setHasSearchOrigin(true);setCenter([longitude,latitude]);
   }).catch((error:GeolocationPositionError)=>{
     if(request!==locationRequest.current)return;
     setLocationError(error.code===1?'Location access is blocked. Enable Location Services and allow location for this site in Safari or Chrome settings, then tap Use my location. If using an in-app browser, open the site in Safari or Chrome.':
@@ -73,6 +77,7 @@ async function search(e:React.FormEvent){
   focusMapArea();
   focusAfterSearch.current=false;
   locationRequest.current++;
+  setCurrentLocationActive(false);
   setLocating(false);
   setLocationError('');
   setZoom(12);
@@ -111,16 +116,19 @@ async function search(e:React.FormEvent){
 }
 const shown=sortByDistance(items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7')));
 const hasResults=!busy&&!error&&shown.length>0;
+const addToiletButton=currentLocationActive&&location&&!locating&&!searching?<button type="button" aria-haspopup="dialog" onClick={()=>setToiletCoordinates([...location])} className="shrink-0 rounded-xl bg-teal-700 px-3 py-3 text-sm font-bold text-white">Add a toilet</button>:null;
 const radiusControl=<label className="flex items-center gap-2 text-sm font-semibold">Search radius<select aria-describedby="radius-search-help" value={radiusMiles} onChange={event=>{focusAfterSearch.current=true;setRadiusMiles(event.target.value)}} className="rounded-xl border border-slate-300 bg-white px-3 py-3">{['1','2','5','10'].map(miles=><option key={miles} value={miles}>{miles} {miles==='1'?'mile':'miles'}</option>)}</select></label>;
 return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-700 p-3 text-2xl text-white">🚻</span><div><h1 className="text-2xl font-black tracking-tight">Washroom Status USA</h1><p className="text-sm text-slate-500">Find clean restrooms. Travel confidently.</p></div></div><a className="header-brand" href="https://codyza.com" target="_blank" rel="noopener noreferrer"><span className="footer-credit">Powered by</span><span className="header-brand-name">Codyza.com</span></a></header>
 <div ref={mapArea} className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
 {locationError&&<p role="alert" className="order-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 lg:order-4 lg:col-span-2">{locationError}</p>}
 <section className="panel relative z-20 order-2 lg:order-1 lg:col-span-2"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2">
-<AddressSearch value={city} onChange={setCity} searching={searching} onSelect={suggestion=>{focusAfterSearch.current=true;focusMapArea();locationRequest.current++;setLocating(false);setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
+<AddressSearch value={city} onChange={value=>{setCity(value);setCurrentLocationActive(false);locationRequest.current++;setLocating(false)}} searching={searching} onSelect={suggestion=>{setCurrentLocationActive(false);focusAfterSearch.current=true;focusMapArea();locationRequest.current++;setLocating(false);setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
+{currentLocationActive&&<span className="self-center text-sm font-semibold text-teal-800">Current location</span>}
+<div className="hidden lg:block">{addToiletButton}</div>
 <div className="hidden lg:block">{radiusControl}</div>
 <button type="button" onClick={locate} disabled={locating} className="pill disabled:opacity-50" aria-label="Use my location" aria-busy={locating}><LocateFixed className={locating?'animate-pulse motion-reduce:animate-none':''}/></button></form>{locating&&<p role="status" className="mt-2 text-sm text-teal-800">Finding your location. Allow location access if prompted.</p>}<div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section>
 <div className="order-1 min-w-0 lg:order-2">
-<div className="mb-3 rounded-xl border border-slate-200 bg-white p-3 lg:hidden">{radiusControl}</div>
+<div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 lg:hidden">{radiusControl}{addToiletButton}</div>
 <p id="radius-search-help" className="mb-2 text-xs text-slate-500">{hasSearchOrigin?'Searching':'Search'} within {radiusMiles} {radiusMiles==='1'?'mile':'miles'}. {hasSearchOrigin?'Radius changes automatically reload restrooms and imported gas stations.':'Choose a location to find nearby restrooms and imported gas stations.'}</p>
 <div className="relative isolate" aria-busy={searching||busy}>
   <OpenFreeMap ref={mapRef} center={center} zoom={zoom} overview={!hasSearchOrigin} location={location} items={items} filter={filter} onSelect={handleSelect}/>
@@ -154,4 +162,5 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
 </div>)}</div></section></div>
 {selected&&<RestroomDetails key={`details-${selected.osm_type}-${selected.id}`} restroom={selected} onClose={()=>setSelected(null)} onAddReview={()=>setReviewRestroom(selected)}/>}
 {reviewRestroom&&<ReviewModal key={`review-${reviewRestroom.osm_type}-${reviewRestroom.id}`} restroom={reviewRestroom} onClose={()=>setReviewRestroom(null)}/>}
+{toiletCoordinates&&<AddToiletModal coordinates={toiletCoordinates} onClose={()=>setToiletCoordinates(null)}/>}
 <section className="mt-8 grid gap-3 md:grid-cols-3">{[[ShieldCheck,'Transparent ratings','Show review counts, timestamps and moderation status.'],[Accessibility,'Accessible search','Filter by documented wheelchair access and facilities.'],[Clock3,'Honest availability','Never mistake listed opening hours for live availability.']].map(([Icon,title,desc])=><div key={title as string} className="panel"><Icon className="mb-3 text-teal-700"/><h3 className="font-bold">{title as string}</h3><p className="mt-1 text-sm text-slate-500">{desc as string}</p></div>)}</section></main>}

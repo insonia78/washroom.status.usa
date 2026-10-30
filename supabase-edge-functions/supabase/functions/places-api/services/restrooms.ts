@@ -1,5 +1,6 @@
 import { logError, logWithColor } from "../utils/logger.ts"
 import { RequestError } from "../utils/errors.ts"
+import { locationDatabaseHeaders } from "../../_shared/database-schema.ts"
 
 type RestroomRow = {
   osm_type: "node" | "way" | "relation"
@@ -171,6 +172,7 @@ async function fetchRestroomRows(
 
     while (true) {
       const headers = new Headers({
+        ...locationDatabaseHeaders(),
         apikey: apiKey,
         Authorization: `Bearer ${apiKey}`,
         Range: `${offset}-${offset + PAGE_SIZE - 1}`,

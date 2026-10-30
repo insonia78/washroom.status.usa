@@ -1,0 +1,127 @@
+'use client';
+import {useEffect,useId,useRef,useState} from 'react';
+import {X} from 'lucide-react';
+import type {Session} from '@supabase/supabase-js';
+import {browserSupabase} from '@/lib/supabase';
+
+export default function AddToiletModal({coordinates,onClose}:{coordinates:[number,number];onClose:()=>void}){
+  const dialog=useRef<HTMLDialogElement>(null);
+  const titleId=useId();
+  const descriptionId=useId();
+  const [name,setName]=useState('');
+  const [wheelchair,setWheelchair]=useState('unknown');
+  const [fee,setFee]=useState('unknown');
+  const [notes,setNotes]=useState('');
+  const [sending,setSending]=useState(false);
+  const [submitted,setSubmitted]=useState(false);
+  const [error,setError]=useState('');
+  const inFlight=useRef(false);
+  const supabase=browserSupabase();
+  const [session,setSession]=useState<Session|null>(null);
+  const [checking,setChecking]=useState(true);
+  const [email,setEmail]=useState('');
+  const [authBusy,setAuthBusy]=useState(false);
+  const [authMessage,setAuthMessage]=useState('');
+
+  useEffect(()=>{
+    if(!supabase){setChecking(false);setError('Sign-in is not configured. Please contact the site administrator.');return}
+    let active=true;
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,current)=>{
+      if(active){setSession(current);setChecking(false)}
+    });
+    supabase.auth.getSession().then(({data,error})=>{
+      if(error)throw error;
+      if(active)setSession(data.session);
+    }).catch(error=>{if(active)setError(error instanceof Error?error.message:'Could not check sign-in.')})
+      .finally(()=>{if(active)setChecking(false)});
+    return()=>{active=false;subscription.unsubscribe()};
+  },[supabase]);
+
+  async function signIn(event:React.FormEvent){
+    event.preventDefault();
+    if(!supabase||authBusy)return;
+    setAuthBusy(true);setError('');setAuthMessage('');
+    try{
+      const {error}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:`${window.location.origin}/`}});
+      if(error)throw error;
+      setAuthMessage('Check your email for a sign-in link. After signing in, use your current location and reopen Add a toilet if needed.');
+    }catch(error){setError(error instanceof Error?error.message:'Could not send sign-in link.')}
+    finally{setAuthBusy(false)}
+  }
+
+  useEffect(()=>{
+    const element=dialog.current;
+    const trigger=document.activeElement;
+    const overflow=document.body.style.overflow;
+    element?.showModal();
+    document.body.style.overflow='hidden';
+    return()=>{
+      element?.close();
+      document.body.style.overflow=overflow;
+      if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus({preventScroll:true});
+    };
+  },[]);
+
+  async function submit(event:React.FormEvent){
+    event.preventDefault();
+    if(inFlight.current)return;
+    if(!name.trim()){setError('Enter a toilet name.');return}
+    inFlight.current=true;
+    setSending(true);
+    setError('');
+    try{
+      if(!supabase)throw new Error('Sign-in is not configured.');
+      const {data:auth,error:authError}=await supabase.auth.getSession();
+      if(authError)throw authError;
+      if(!auth.session){setSession(null);throw new Error('Sign in before adding a toilet.')}
+      const response=await fetch('/api/backend/toilet-submissions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.session.access_token}`},
+        body:JSON.stringify({name:name.trim(),longitude:coordinates[0],latitude:coordinates[1],wheelchair,fee,notes}),
+      });
+      const data=await response.json();
+      if(response.status===401)setSession(null);
+      if(!response.ok)throw new Error(data.error||'Toilet could not be saved. Please try again.');
+      if(response.status!==201||data.status!=='pending')throw new Error('The server did not confirm your submission. Please try again.');
+      setSubmitted(true);
+    }catch(error){
+      setError(error instanceof Error?error.message:'Toilet could not be saved. Check your connection and try again.');
+    }finally{
+      inFlight.current=false;
+      setSending(false);
+    }
+  }
+
+  return <dialog ref={dialog} aria-labelledby={titleId} aria-describedby={descriptionId}
+    onCancel={event=>{event.preventDefault();if(!inFlight.current)onClose()}}
+    onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();if(!inFlight.current)onClose()}}}
+    onClick={event=>{
+      if(inFlight.current||event.target!==event.currentTarget)return;
+      const bounds=event.currentTarget.getBoundingClientRect();
+      if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom)onClose();
+    }}
+    className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60 sm:p-6">
+    <div className="flex items-start justify-between gap-3">
+      <h2 id={titleId} className="text-xl font-bold">Add a toilet</h2>
+      <button type="button" disabled={sending} onClick={onClose} aria-label="Close add toilet modal" className="pill disabled:opacity-50"><X size={18}/></button>
+    </div>
+    <p id={descriptionId} className="mt-3 text-sm text-slate-600">Add a public toilet at your current location. Sign-in is required. Each account can submit up to 3 toilets per UTC day (resets at midnight UTC). Your submission is saved privately for moderation, not published immediately. Do not include private information.</p>
+    <p className="mt-2 text-sm font-semibold text-teal-800">Current location: {coordinates[1].toFixed(5)}, {coordinates[0].toFixed(5)}</p>
+    {checking&&<p role="status" className="mt-4">Checking sign-in...</p>}
+    {!checking&&!session&&<form onSubmit={signIn} className="mt-4 space-y-3">
+      <label className="block text-sm font-medium">Email<input required type="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"/></label>
+      <button disabled={authBusy||!supabase} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{authBusy?'Sending...':'Send sign-in link'}</button>
+      {authMessage&&<p role="status" className="text-sm text-teal-800">{authMessage}</p>}
+    </form>}
+    {!submitted?<form onSubmit={submit} className="mt-4 space-y-4" aria-busy={sending}>
+      <fieldset disabled={sending||checking||!session} className="space-y-4">
+        <label className="block text-sm font-medium">Toilet name (required)<input autoFocus required maxLength={120} value={name} onChange={event=>setName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3" placeholder="For example, Riverside Park public toilets"/></label>
+        <label className="block text-sm font-medium">Wheelchair accessible<select value={wheelchair} onChange={event=>setWheelchair(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"><option value="unknown">Not sure</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label className="block text-sm font-medium">Fee required<select value={fee} onChange={event=>setFee(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"><option value="unknown">Not sure</option><option value="yes">Yes</option><option value="no">No (free)</option></select></label>
+        <label className="block text-sm font-medium">Access details (optional)<textarea maxLength={1000} value={notes} onChange={event=>setNotes(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Entrance, opening hours, or how to find the toilet"/></label>
+        <button disabled={!name.trim()||sending||checking||!session} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Saving...':'Submit for moderation'}</button>
+      </fieldset>
+    </form>:<div className="mt-4"><p role="status" className="rounded-xl bg-teal-50 p-3 text-teal-900">Thanks! Your toilet was saved and is awaiting moderation. It will not appear in nearby results yet.</p><button type="button" onClick={onClose} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Done</button></div>}
+    {error&&<p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
+  </dialog>;
+}

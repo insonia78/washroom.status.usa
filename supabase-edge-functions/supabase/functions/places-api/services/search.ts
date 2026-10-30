@@ -4,6 +4,7 @@ import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
 import { findNearbyFuel, type normalizeFuelPlace } from "./fuel.ts"
 import { findNearbyRefugeRestrooms } from "./refuge.ts"
+import { locationDatabaseHeaders } from "../../_shared/database-schema.ts"
 
 export async function searchNearbyPlaces(origin: SearchOrigin, radius: string) {
   const restrooms = await findNearbyRestrooms(
@@ -54,6 +55,7 @@ async function registerReviewLocations(places: Array<{ id: number; osmType: stri
     const response = await fetch(url, {
       method: "POST",
       headers: {
+        ...locationDatabaseHeaders("POST"),
         apikey: apiKey, Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
         Prefer: "resolution=ignore-duplicates,return=minimal",
       },

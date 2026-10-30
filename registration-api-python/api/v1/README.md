@@ -110,7 +110,16 @@ When the application starts:
 2. It connects to PostgreSQL
 3. It checks whether the configured database exists
 4. It creates the database if needed
-5. It creates the SQLModel tables
+5. It creates the `app_accounts` schema and its SQLModel tables (`accounts` and `password_reset_tokens`) if missing
+
+The existing Supabase project hosts two private application schemas: account data lives in
+`app_accounts`, while location data lives in `app_locations`. Apply the repository's
+schema-routing migration before starting this version against an existing database; it
+moves existing tables in place rather than copying or resetting account data. All ORM
+queries, password-reset foreign keys, and startup maintenance explicitly target
+`app_accounts`, independent of the connection's `search_path`. Supabase-managed
+`auth.users` is unchanged. Use a trusted backend database role with access to
+`app_accounts`; never expose its database credentials to browsers.
 
 ## Authentication
 

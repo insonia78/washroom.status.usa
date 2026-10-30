@@ -1,7 +1,7 @@
 import postgres from "npm:postgres";
 
 export const jwtTokenDatabaseUrlEnvVar = "JWT_TOKEN_DATABASE_URL";
-export const jwtTokenTableName = "jwt_tokens";
+export const jwtTokenTableName = "app_accounts.jwt_tokens";
 const jwtTokenDatabasePoolMaxEnvVar = "JWT_TOKEN_DATABASE_POOL_MAX";
 const jwtTokenDatabaseIdleTimeoutSecondsEnvVar = "JWT_TOKEN_DATABASE_IDLE_TIMEOUT_SECONDS";
 const jwtTokenDatabaseConnectTimeoutSecondsEnvVar = "JWT_TOKEN_DATABASE_CONNECT_TIMEOUT_SECONDS";
@@ -94,7 +94,7 @@ export async function withJwtTokenDatabase<T>(
 export async function saveJwtTokenRecord(record: PersistedJwtTokenRecord): Promise<void> {
   await withJwtTokenDatabase(async (sql) => {
     await sql`
-      insert into jwt_tokens (
+      insert into app_accounts.jwt_tokens (
         token_id,
         token_sha,
         user_id,
@@ -160,7 +160,7 @@ export async function findJwtTokenRecordById(tokenId: string): Promise<Persisted
         issued_at as "issuedAt",
         expires_at as "expiresAt",
         revoked_at as "revokedAt"
-      from jwt_tokens
+      from app_accounts.jwt_tokens
       where token_id = ${tokenId}
       limit 1
     `;
@@ -176,7 +176,7 @@ export async function revokeJwtTokenRecord(
 ): Promise<PersistedJwtTokenRecord | null> {
   return await withJwtTokenDatabase(async (sql) => {
     const rows = await sql<PersistedJwtTokenRecordRow[]>`
-      update jwt_tokens
+      update app_accounts.jwt_tokens
       set revoked_at = ${revokedAt}
       where token_id = ${tokenId}
         and revoked_at is null
@@ -202,7 +202,7 @@ export async function revokeJwtTokenRecordsForUser(
 ): Promise<number> {
   return await withJwtTokenDatabase(async (sql) => {
     const rows = await sql<Array<{ tokenId: string }>>`
-      update jwt_tokens
+      update app_accounts.jwt_tokens
       set revoked_at = ${revokedAt}
       where user_id = ${userId}
         and revoked_at is null

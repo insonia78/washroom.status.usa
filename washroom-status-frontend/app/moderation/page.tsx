@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
 import {isPendingReview,type PendingReview} from '@/lib/moderation';
+import ToiletModerationQueue from '@/components/ToiletModerationQueue';
 
 export default function ModerationPage(){
   const supabase=browserSupabase();
@@ -97,8 +98,8 @@ export default function ModerationPage(){
 
   return <main className="mx-auto max-w-4xl px-4 py-7">
     <a href="/" className="text-sm font-semibold text-teal-800 underline">Back to restroom search</a>
-    <h1 className="mt-5 text-3xl font-extrabold">Review moderation</h1>
-    <p className="mt-2 text-sm text-slate-600">Review all reported answers before publishing. Moderator notes are private and are never included in public reviews.</p>
+    <h1 className="mt-5 text-3xl font-extrabold">Restroom moderation</h1>
+    <p className="mt-2 text-sm text-slate-600">Verify submitted toilet locations and review reported answers. Moderator notes are private and are never included in public reviews.</p>
     {error&&<p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
     {message&&<p role="status" className="mt-4 rounded-xl bg-teal-50 p-3 text-sm text-teal-900">{message}</p>}
     {checking?<p role="status" className="mt-5">Checking sign-in...</p>:!session?
@@ -112,6 +113,7 @@ export default function ModerationPage(){
           <button type="button" onClick={()=>{setMessage('');setRefresh(value=>value+1)}} disabled={busy||loading} className="pill disabled:opacity-50">Refresh queue</button>
           <button type="button" onClick={signOut} disabled={busy} className="pill disabled:opacity-50">Sign out</button>
         </div>
+        <ToiletModerationQueue session={session} refresh={refresh}/>
         <h2 className="mt-6 text-xl font-bold">Pending reviews</h2>
         <p className="mt-1 text-xs text-slate-500">Oldest first, up to 50 at a time. Refresh after moderation to load the next pending reviews.</p>
         {loading?<p role="status" className="mt-4">Loading pending reviews...</p>:ready&&reviews.length===0?<p className="panel mt-4">No pending reviews in this queue.</p>:null}

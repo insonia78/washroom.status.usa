@@ -163,7 +163,7 @@ class CreateAccountTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(account.email, "Admin.User@example.com")
         executed_statement = session.exec.call_args.args[0]
-        self.assertIn("lower(accounts.email)", str(executed_statement))
+        self.assertIn("lower(app_accounts.accounts.email)", str(executed_statement))
 
     def test_create_account_password_rejects_existing_password(self) -> None:
         existing_account = Account(

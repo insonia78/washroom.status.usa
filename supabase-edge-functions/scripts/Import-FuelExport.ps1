@@ -9,6 +9,8 @@ param(
     [int]$Port = 5432,
     [string]$SqlPath = (Join-Path $HOME 'Downloads\export_fuel.sql'),
     [string]$PsqlPath = 'psql',
+    [ValidateSet('app_locations', 'public')]
+    [string]$TargetSchema = 'app_locations',
     [switch]$ReplaceExisting,
     [switch]$BulkCopy
 )
@@ -37,6 +39,9 @@ SET LOCAL lock_timeout = '15s';
 SET LOCAL statement_timeout = '10min';
 SET LOCAL idle_in_transaction_session_timeout = '60s';
 CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE SCHEMA IF NOT EXISTS app_locations;
+REVOKE ALL ON SCHEMA app_locations FROM PUBLIC, anon, authenticated;
+GRANT USAGE ON SCHEMA app_locations TO service_role;
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions;
 SELECT set_config('search_path', format('pg_catalog, public, %I', n.nspname), true)
 FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
@@ -44,17 +49,17 @@ WHERE e.extname = 'postgis';
 '@)
     if ($ReplaceExisting) {
         # No CASCADE: dependent views or foreign keys must not be silently removed.
-        $writer.WriteLine('DROP TABLE IF EXISTS public.export_fuel;')
+        $writer.WriteLine("DROP TABLE IF EXISTS $TargetSchema.export_fuel;")
     } else {
-        $writer.WriteLine(@'
+        $writer.WriteLine((@'
 DO $guard$
 BEGIN
-    IF to_regclass('public.export_fuel') IS NOT NULL THEN
-        RAISE EXCEPTION 'public.export_fuel already exists. Use -ReplaceExisting only if you intend to replace it.';
+    IF to_regclass('app_locations.export_fuel') IS NOT NULL THEN
+        RAISE EXCEPTION 'app_locations.export_fuel already exists. Use -ReplaceExisting only if you intend to replace it.';
     END IF;
 END
 $guard$;
-'@)
+'@).Replace('app_locations.export_fuel', "$TargetSchema.export_fuel"))
     }
 
     $beginCount = 0
@@ -73,15 +78,19 @@ $guard$;
     if ($beginCount -ne 1 -or $commitCount -ne 1 -or $dropCount -ne 1 -or $createCount -ne 1) {
         throw 'Unexpected export structure. Expected the original GDAL public.export_fuel SQL export with one BEGIN, COMMIT, DROP TABLE and CREATE TABLE.'
     }
-    $writer.WriteLine(@'
-ALTER TABLE public.export_fuel ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.export_fuel FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON SEQUENCE public.export_fuel_ogc_fid_seq FROM PUBLIC, anon, authenticated;
-ANALYZE public.export_fuel;
+    if ($TargetSchema -eq 'app_locations') {
+        $writer.WriteLine('ALTER TABLE public.export_fuel SET SCHEMA app_locations;')
+    }
+    $writer.WriteLine((@'
+ALTER TABLE app_locations.export_fuel ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE app_locations.export_fuel FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON SEQUENCE app_locations.export_fuel_ogc_fid_seq FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE app_locations.export_fuel TO service_role;
+ANALYZE app_locations.export_fuel;
 SELECT count(*) AS imported_fuel_locations,
        count(wkb_geometry) AS locations_with_geometry
-FROM public.export_fuel;
-'@)
+FROM app_locations.export_fuel;
+'@).Replace('app_locations.', "$TargetSchema."))
     $writer.Dispose()
     $writer = $null
     $reader.Dispose()
@@ -89,7 +98,7 @@ FROM public.export_fuel;
 
     $env:PGSSLMODE = 'require'
     $env:PGCONNECT_TIMEOUT = '15'
-    Write-Host 'Importing public.export_fuel over SSL in one transaction. psql may prompt for your database password.'
+    Write-Host "Importing $TargetSchema.export_fuel over SSL in one transaction. psql may prompt for your database password."
     & $psql.Source -X --single-transaction --set=ON_ERROR_STOP=1 --quiet `
         --host=$DatabaseHost --port=$Port --username=$DatabaseUser --dbname=$DatabaseName `
         --file=$temporaryPath
