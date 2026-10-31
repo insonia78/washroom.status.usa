@@ -16,6 +16,7 @@ export function readContributionContext():ContributionContext|null{
     return saved.context;
   }catch{return null}
 }
+export function saveContributionContext(context:ContributionContext){try{window.localStorage.setItem(contextKey,JSON.stringify({savedAt:Date.now(),context}))}catch{}}
 export function clearContributionContext(){try{window.localStorage.removeItem(contextKey)}catch{}}
 
 export function useContributionAuth(){

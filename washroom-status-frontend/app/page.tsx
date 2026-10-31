@@ -8,9 +8,9 @@ import {distanceMiles,formatDistance,sortByDistance} from '@/lib/distance';
 import {LOCATION_RESULTS_ERROR,apiFailureMessage} from '@/lib/user-messages';
 import NavigationLinks from '@/components/NavigationLinks';
 import {requestCurrentPosition} from '@/lib/geolocation';
-import ReviewModal from '@/components/ReviewModal';
+import ContributionStart from '@/components/ContributionStart';
 import LatestReview from '@/components/LatestReview';
-import AddToiletModal from '@/components/AddToiletModal';
+
 
 export default function Home(){const [city,setCity]=useState('');const [items,setItems]=useState<Restroom[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [filter,setFilter]=useState('all');const [center,setCenter]=useState<[number,number]>([-98.5795,39.8283]);const [selected,setSelected]=useState<Restroom|null>(null);
 const [hasSearchOrigin,setHasSearchOrigin]=useState(false);
@@ -168,6 +168,6 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
 <LatestReview restroom={x}/>
 </div>)}</div></section></div>
 {selected&&<RestroomDetails key={`details-${selected.osm_type}-${selected.id}`} restroom={selected} onClose={()=>setSelected(null)} onAddReview={()=>setReviewRestroom(selected)}/>}
-{reviewRestroom&&<ReviewModal key={`review-${reviewRestroom.osm_type}-${reviewRestroom.id}`} restroom={reviewRestroom} onClose={()=>setReviewRestroom(null)}/>}
-{toiletCoordinates&&<AddToiletModal coordinates={toiletCoordinates} onClose={()=>setToiletCoordinates(null)}/>}
+{reviewRestroom&&<ContributionStart key={`review-${reviewRestroom.osm_type}-${reviewRestroom.id}`} title="Add a review" name={reviewRestroom.name} context={{kind:'review',restroom:reviewRestroom}} onClose={()=>setReviewRestroom(null)}/>}
+{toiletCoordinates&&<ContributionStart title="Add a toilet" context={{kind:'toilet',coordinates:toiletCoordinates}} onClose={()=>setToiletCoordinates(null)}/>}
 <section className="mt-8 grid gap-3 md:grid-cols-3">{[[ShieldCheck,'Transparent ratings','Show review counts, timestamps and moderation status.'],[Accessibility,'Accessible search','Filter by documented wheelchair access and facilities.'],[Clock3,'Honest availability','Never mistake listed opening hours for live availability.']].map(([Icon,title,desc])=><div key={title as string} className="panel"><Icon className="mb-3 text-teal-700"/><h3 className="font-bold">{title as string}</h3><p className="mt-1 text-sm text-slate-500">{desc as string}</p></div>)}</section></main>}
