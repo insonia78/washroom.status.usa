@@ -19,6 +19,8 @@ export default function ModerationPage(){
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
   const [refresh,setRefresh]=useState(0);
+  const [offset,setOffset]=useState(0);
+  const [nextOffset,setNextOffset]=useState<number|null>(null);
   useEffect(()=>{
     if(!supabase){setChecking(false);setError('Moderator sign-in is not configured. Set the public Supabase URL and anonymous key.');return}
     let active=true;
@@ -42,16 +44,16 @@ export default function ModerationPage(){
     const controller=new AbortController();
     setLoading(true);
     setError('');
-    fetch('/api/backend/moderation/reviews',{headers:{Authorization:`Bearer ${session.access_token}`},signal:controller.signal,cache:'no-store'})
+    fetch(`/api/backend/moderation/reviews?offset=${offset}`,{headers:{Authorization:`Bearer ${session.access_token}`},signal:controller.signal,cache:'no-store'})
       .then(async response=>{
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'Could not load the moderation queue.');
         if(!Array.isArray(data.reviews)||!data.reviews.every(isPendingReview))throw new Error('Invalid moderation queue response.');
-        if(!controller.signal.aborted){setReviews(data.reviews);setReady(true)}
+        if(!controller.signal.aborted){setReviews(data.reviews);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null);setReady(true)}
       }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load the moderation queue.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
-  },[session,refresh]);
+  },[session,refresh,offset]);
 
   async function signIn(event:React.FormEvent){
     event.preventDefault();
@@ -117,7 +119,7 @@ export default function ModerationPage(){
         <ToiletModerationQueue session={session} refresh={refresh}/>
         <OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="moderate"/>
         <h2 className="mt-6 text-xl font-bold">Pending reviews</h2>
-        <p className="mt-1 text-xs text-slate-500">Oldest first, up to 50 at a time. Refresh after moderation to load the next pending reviews.</p>
+        <p className="mt-1 text-xs text-slate-500">Oldest first, 3 per page.</p>
         {loading?<p role="status" className="mt-4">Loading pending reviews...</p>:ready&&reviews.length===0?<p className="panel mt-4">No pending reviews in this queue.</p>:null}
         <div className="mt-4 space-y-4">{reviews.map(review=><article key={review.id} className="panel">
           <h3 className="font-bold">{review.restroom_name?`${review.restroom_name} - `:''}{review.osm_type==='refuge'?'Refuge Restrooms':`OpenStreetMap ${review.osm_type}`} #{review.osm_id}</h3>
@@ -134,6 +136,10 @@ export default function ModerationPage(){
           <label className="mt-4 block text-sm font-semibold">Private moderator note (optional)<textarea disabled={busy} maxLength={2000} value={notes[review.id]||''} onChange={event=>setNotes(previous=>({...previous,[review.id]:event.target.value}))} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3"/></label>
           <div className="mt-3 flex gap-3"><button type="button" disabled={busy} onClick={()=>decide(review,'approved')} className="rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Approve</button><button type="button" disabled={busy} onClick={()=>decide(review,'rejected')} className="rounded-xl border border-red-300 px-4 py-3 font-bold text-red-800 disabled:opacity-50">Reject</button></div>
         </article>)}</div>
+        <div className="mt-4 flex gap-3">
+          {offset>0&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
+          {nextOffset!==null&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(nextOffset)}>Next reviews</button>}
+        </div>
       </>}
   </main>;
 }

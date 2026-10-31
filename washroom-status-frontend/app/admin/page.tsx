@@ -39,7 +39,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'Could not load owner responses.');
         if(!Array.isArray(data.responses)||!data.responses.every(isAdminOwnerResponse)||
-          (data.next_offset!==null&&data.next_offset!==page+50))throw new Error('Invalid admin response list.');
+          (data.next_offset!==null&&data.next_offset!==page+3))throw new Error('Invalid admin response list.');
         if(!controller.signal.aborted){setRows(data.responses);setNext(data.next_offset);setReady(true)}
       }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load owner responses.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
@@ -76,7 +76,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
       if(!isAdminOwnerResponse(result.response)||result.response.status!==(action==='save'?'draft':'published'))throw new Error('Invalid saved response. Refresh to verify the result.');
       if(!controller.signal.aborted){
         const row=result.response;
-        setRows(previous=>[row,...previous.filter(item=>item.id!==row.id)].slice(0,50));
+        setRows(previous=>[row,...previous.filter(item=>item.id!==row.id)].slice(0,3));
         if(action==='save'){setDraft(row);setDirty(false)}else{edit(null)}
         setMessage(action==='save'?'Draft saved. It is not public. Review it, then choose Publish saved draft.':'Owner response published. It is now visible in the restroom details.');
       }
@@ -113,7 +113,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
       <section className="mt-6" aria-label="Saved owner responses">
         <h2 className="text-xl font-bold">Saved owner responses</h2>
         <button type="button" disabled={busy} onClick={()=>setRefresh(value=>value+1)} className="pill mt-2">Refresh responses</button>
-        <p className="mt-2 text-xs text-slate-600">Newest updated first, 50 per page. Published responses are read-only; publish a new update to add further progress.</p>
+        <p className="mt-2 text-xs text-slate-600">Newest updated first, 3 per page. Published responses are read-only; publish a new update to add further progress.</p>
         {!rows.length&&<p className="mt-3 text-sm">No saved owner responses.</p>}
         {rows.map(row=><article key={row.id} className="panel mt-3">
           <h3 className="font-bold">{row.business_name} - {row.status}</h3>
@@ -126,7 +126,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
           {row.status==='draft'&&<button type="button" disabled={busy} className="pill mt-3" onClick={()=>edit(row)}>Edit draft</button>}
         </article>)}
         <div className="mt-4 flex gap-3">
-          {page>0&&<button disabled={busy} type="button" className="pill" onClick={()=>setPage(value=>Math.max(0,value-50))}>Previous page</button>}
+          {page>0&&<button disabled={busy} type="button" className="pill" onClick={()=>setPage(value=>Math.max(0,value-3))}>Previous page</button>}
           {next!==null&&<button disabled={busy} type="button" className="pill" onClick={()=>setPage(next)}>Next page</button>}
         </div>
       </section>

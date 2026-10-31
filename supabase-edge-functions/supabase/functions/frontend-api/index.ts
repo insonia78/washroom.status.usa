@@ -150,7 +150,7 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       console.error("frontend-api toilet publish failed", { status: response.status });
       throw new ApiError(503, "Toilet approval is unavailable. Refresh and try again.");
     }
-    if (table === "rpc/admin_create_owner_invite" || table === "rpc/owner_submit_reply" || table === "rpc/owner_reply_decide") {
+    if (table === "rpc/admin_create_owner_invite" || table === "rpc/owner_submit_reply" || table === "rpc/owner_reply_decide" || table === "rpc/admin_archive_owner_reply") {
       if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Access denied for this action");
       if (isRecord(error) && error.code === "22023" && typeof error.message === "string") throw new ApiError(422, error.message);
       console.error("frontend-api owner reply failed", { table, status: response.status });
@@ -404,9 +404,11 @@ async function moderateToilets(req: Request): Promise<Response> {
   if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
   const moderatorId = await requireAllowlistedUser(req, "moderator");
   if (req.method === "GET") {
+    const offset = new URL(req.url).searchParams.get("offset") ?? "0";
+    if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid offset");
     const rows: unknown = await (await database("toilet_submissions", new URLSearchParams({
       select: "id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,photo_paths",
-      status: "eq.pending", order: "created_at.asc,id.asc", limit: "50",
+      status: "eq.pending", order: "created_at.asc,id.asc", limit: "3", offset,
     }))).json();
     if (!Array.isArray(rows)) throw new ApiError(502, "Invalid toilet moderation queue response");
     const submissions = await Promise.all(rows.map(async row => {
@@ -414,7 +416,7 @@ async function moderateToilets(req: Request): Promise<Response> {
       const { photo_paths, ...details } = row;
       return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
     }));
-    return json(200, { submissions, limited_to: 50 });
+    return json(200, { submissions, limited_to: 3, next_offset: rows.length === 3 ? Number(offset) + 3 : null });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
@@ -459,9 +461,11 @@ async function moderation(req: Request): Promise<Response> {
   if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
   const userId = await requireAllowlistedUser(req, "moderator");
   if (req.method === "GET") {
+    const offset = new URL(req.url).searchParams.get("offset") ?? "0";
+    if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid offset");
     const pending: unknown = await (await database("reviews", new URLSearchParams({
       select: "id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,created_at,status,photo_paths",
-      status: "eq.pending", order: "created_at.asc,id.asc", limit: "50",
+      status: "eq.pending", order: "created_at.asc,id.asc", limit: "3", offset,
     }))).json();
     if (!Array.isArray(pending)) throw new ApiError(502, "Invalid moderation queue response");
     const reviewsWithPhotos = await Promise.all(pending.map(async review => {
@@ -469,7 +473,7 @@ async function moderation(req: Request): Promise<Response> {
       const { photo_paths, ...details } = review;
       return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
     }));
-    return json(200, { reviews: await withRestroomNames(reviewsWithPhotos), limited_to: 50 });
+    return json(200, { reviews: await withRestroomNames(reviewsWithPhotos), limited_to: 3, next_offset: pending.length === 3 ? Number(offset) + 3 : null });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
@@ -525,7 +529,7 @@ async function adminReviews(req: Request): Promise<Response> {
     select: "id,user_id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,status,created_at,archived_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
     status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
-    order: "created_at.desc,id.desc", limit: "50", offset,
+    order: "created_at.desc,id.desc", limit: "3", offset,
   }))).json();
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin review list");
   const reviewsWithPhotos = await Promise.all(rows.map(async review => {
@@ -533,7 +537,7 @@ async function adminReviews(req: Request): Promise<Response> {
     const { photo_paths, ...details } = review;
     return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
   }));
-  return json(200, { reviews: await withRestroomNames(reviewsWithPhotos), next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+  return json(200, { reviews: await withRestroomNames(reviewsWithPhotos), next_offset: rows.length === 3 ? Number(offset) + 3 : null });
 }
 
 async function adminToilets(req: Request): Promise<Response> {
@@ -581,7 +585,7 @@ async function adminToilets(req: Request): Promise<Response> {
     select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,archived_at,published_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
     status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
-    order: "created_at.desc,id.desc", limit: "50", offset,
+    order: "created_at.desc,id.desc", limit: "3", offset,
   }))).json();
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin toilet list");
   const toilets = await Promise.all(rows.map(async row => {
@@ -589,7 +593,7 @@ async function adminToilets(req: Request): Promise<Response> {
     const { photo_paths, ...details } = row;
     return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
   }));
-  return json(200, { toilets, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+  return json(200, { toilets, next_offset: rows.length === 3 ? Number(offset) + 3 : null });
 }
 
 async function readJson(req: Request): Promise<Record<string, unknown>> {
@@ -607,7 +611,7 @@ async function rpcRows(name: string, args: Record<string, unknown>): Promise<Rec
   return rows;
 }
 
-const ownerReplyColumns = "id,invite_id,review_id,osm_type,osm_id,owner_email,business_name,body,status,created_at,moderated_at,published_at";
+const ownerReplyColumns = "id,invite_id,review_id,osm_type,osm_id,owner_email,business_name,body,status,created_at,moderated_at,published_at,archived_at";
 
 // Admin: invite a business owner to answer one approved review through a magic link.
 async function adminOwnerInvites(req: Request): Promise<Response> {
@@ -702,6 +706,14 @@ async function ownerReplyStage(req: Request, stage: "moderate" | "publish"): Pro
   const actorId = await requireAllowlistedUser(req, stage === "moderate" ? "moderator" : "admin");
   if (req.method === "POST") {
     const body = await readJson(req);
+    if (stage === "publish" && typeof body.archived === "boolean" && typeof body.reply_id === "string" &&
+      uuidPattern.test(body.reply_id)) {
+      const archiveRows = await rpcRows("admin_archive_owner_reply", {
+        p_admin_id: actorId, p_id: body.reply_id, p_archived: body.archived,
+      });
+      if (!archiveRows.length) throw new ApiError(409, "This reply cannot be archived yet. Refresh.");
+      return json(200, { reply: archiveRows[0] });
+    }
     if (typeof body.reply_id !== "string" || !uuidPattern.test(body.reply_id) || typeof body.approve !== "boolean") {
       throw new ApiError(400, "Invalid owner reply decision");
     }
@@ -711,9 +723,15 @@ async function ownerReplyStage(req: Request, stage: "moderate" | "publish"): Pro
     if (!rows.length) throw new ApiError(409, "This reply is no longer waiting at this step. Refresh.");
     return json(200, { reply: rows[0] });
   }
+  const replyQuery = new URL(req.url).searchParams;
+  const offset = replyQuery.get("offset") ?? "0";
+  if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid offset");
+  const archivedParam = replyQuery.get("archived") === "1" ? "not.is.null" : "is.null";
   const rows: unknown = await (await database("owner_replies", new URLSearchParams({
-    select: ownerReplyColumns, status: stage === "moderate" ? "eq.pending" : "eq.moderated",
-    order: "created_at.asc", limit: "50",
+    select: ownerReplyColumns,
+    status: stage === "moderate" ? "eq.pending" : "in.(moderated,published,rejected)",
+    archived_at: archivedParam,
+    order: "created_at.asc,id.asc", limit: "3", offset,
   }))).json();
   if (!Array.isArray(rows) || !rows.every(isRecord)) throw new ApiError(502, "Invalid owner reply list");
   const reviewIds = rows.map(r => String(r.review_id)).filter(id => uuidPattern.test(id));
@@ -721,7 +739,10 @@ async function ownerReplyStage(req: Request, stage: "moderate" | "publish"): Pro
     select: "id,osm_type,osm_id,restroom_name,comment", id: `in.(${reviewIds.join(",")})`,
   }))).json() : [];
   const named = Array.isArray(reviews) ? await withRestroomNames(reviews.filter(isRecord)) : [];
-  return json(200, { replies: rows.map(r => ({ ...r, review: named.find(v => v.id === r.review_id) ?? null })) });
+  return json(200, {
+    replies: rows.map(r => ({ ...r, review: named.find(v => v.id === r.review_id) ?? null })),
+    next_offset: rows.length === 3 ? Number(offset) + 3 : null,
+  });
 }
 
 async function replyAction(adminId: string, action: string, id: string, fields: Record<string, unknown> = {}) {
@@ -746,10 +767,10 @@ async function adminReviewReplies(req: Request): Promise<Response> {
     const offset = query.get("offset") ?? "0";
     if (!reviewId || !uuidPattern.test(reviewId) || !/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid review or reply offset");
     const replies: unknown = await (await database("review_replies", new URLSearchParams({
-      select: replyColumns, review_id: `eq.${reviewId}`, order: "created_at.desc,id.desc", limit: "50", offset,
+      select: replyColumns, review_id: `eq.${reviewId}`, order: "created_at.desc,id.desc", limit: "3", offset,
     }))).json();
     if (!Array.isArray(replies)) throw new ApiError(502, "Invalid reply history");
-    return json(200, { replies, next_offset: replies.length === 50 ? Number(offset) + 50 : null });
+    return json(200, { replies, next_offset: replies.length === 3 ? Number(offset) + 3 : null });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
@@ -857,7 +878,8 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
     const params = ownerTarget(query, !admin);
     params.set("select", admin ? adminOwnerColumns : publicOwnerColumns);
     params.set("order", admin ? "updated_at.desc,id.desc" : "published_at.desc,id.desc");
-    params.set("limit", "50");
+    const pageSize = admin ? 3 : 50;
+    params.set("limit", String(pageSize));
     const offsetText = query.get("offset") ?? "0";
     if (!/^\d{1,8}$/.test(offsetText)) throw new ApiError(400, "Invalid response offset");
     params.set("offset", offsetText);
@@ -879,7 +901,7 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
         responses = rows.filter(row => isRecord(row) && (row.review_id === null || visible.has(row.review_id)));
       }
     }
-    return json(200, { responses, next_offset: rows.length === 50 ? Number(offsetText) + 50 : null });
+    return json(200, { responses, next_offset: rows.length === pageSize ? Number(offsetText) + pageSize : null });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }

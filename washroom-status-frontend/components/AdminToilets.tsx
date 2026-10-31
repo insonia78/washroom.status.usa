@@ -58,7 +58,7 @@ export default function AdminToilets({session}:{session:Session}){
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not load added toilets.');
       if(!Array.isArray(data.toilets)||!data.toilets.every(isAdminToilet)||
-        (data.next_offset!==null&&data.next_offset!==offset+50))throw new Error('Invalid admin toilet list.');
+        (data.next_offset!==null&&data.next_offset!==offset+3))throw new Error('Invalid admin toilet list.');
       if(!controller.signal.aborted){setRows(data.toilets.map((row:AdminToilet)=>({...row,published_at:row.published_at??null})));setNext(data.next_offset)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load added toilets.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
@@ -99,7 +99,7 @@ export default function AdminToilets({session}:{session:Session}){
           </div>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
-        {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous toilets</button>}
+        {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous toilets</button>}
         {next!==null&&<button type="button" className="pill" onClick={()=>setOffset(next)}>More toilets</button>}
       </div>
     </>}

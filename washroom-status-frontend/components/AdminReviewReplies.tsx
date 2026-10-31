@@ -32,7 +32,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not load replies.');
       if(!Array.isArray(data.replies)||!data.replies.every((row:unknown)=>isReviewReply(row)&&row.review_id===review.id)||
-        (data.next_offset!==null&&data.next_offset!==offset+50))throw new Error('Invalid reply history.');
+        (data.next_offset!==null&&data.next_offset!==offset+3))throw new Error('Invalid reply history.');
       if(!controller.signal.aborted){setRows(data.replies);setNext(data.next_offset);setReady(true)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load replies.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
@@ -62,7 +62,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
       if(!controller.signal.aborted){
         const reply:ReviewReply=result.reply;
         if(action==='save'){setComposing(false);setOffset(0)}
-        setRows(previous=>[reply,...previous.filter(item=>item.id!==reply.id)].slice(0,50));
+        setRows(previous=>[reply,...previous.filter(item=>item.id!==reply.id)].slice(0,3));
         setMessage(reply.status==='sent'?'Email accepted by the provider. This does not confirm inbox delivery.':
           reply.status==='draft'?'Private reply saved. It has not been emailed. Review the saved text, then send it.':
           'Reply saved. Check its delivery state in the history before retrying.');
@@ -91,7 +91,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
         {(row.status==='unknown'||row.status==='sending')&&<p className="mt-2 text-xs text-amber-900">Delivery may be in progress or uncertain. Refresh first and wait 60 seconds before retrying this same reply. Retries stop 23 hours after the first attempt to prevent duplicate emails.</p>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
-        {offset>0&&<button type="button" disabled={busy} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous replies</button>}
+        {offset>0&&<button type="button" disabled={busy} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous replies</button>}
         {next!==null&&<button type="button" disabled={busy} className="pill" onClick={()=>setOffset(next)}>More replies</button>}
       </div>
     </>}
@@ -130,7 +130,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not load reviews.');
       if(!Array.isArray(data.reviews)||!data.reviews.every(isAdminReview)||
-        (data.next_offset!==null&&data.next_offset!==offset+50))throw new Error('Invalid admin review list.');
+        (data.next_offset!==null&&data.next_offset!==offset+3))throw new Error('Invalid admin review list.');
       if(!controller.signal.aborted){setRows(data.reviews);setNext(data.next_offset)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load reviews.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
@@ -167,7 +167,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
         <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button></>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
-        {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous reviews</button>}
+        {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
         {next!==null&&<button type="button" className="pill" onClick={()=>setOffset(next)}>More reviews</button>}
       </div>
     </>}

@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 
-type Reply={id:string;owner_email:string;business_name:string;body:string;created_at:string;
+type Reply={id:string;status?:string;archived_at?:string|null;owner_email:string;business_name:string;body:string;created_at:string;
   review:{restroom_name?:string|null;osm_type:string;osm_id:number;comment?:string|null}|null};
 const record=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null;
 const isReply=(value:unknown):value is Reply=>record(value)&&typeof value.id==='string'&&typeof value.owner_email==='string'&&
@@ -15,19 +15,32 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [refresh,setRefresh]=useState(0);
+  const [showArchived,setShowArchived]=useState(false);
+  const [offset,setOffset]=useState(0);
+  const [nextOffset,setNextOffset]=useState<number|null>(null);
   const headers={Authorization:`Bearer ${session.access_token}`};
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');
-    fetch(endpoint,{headers,cache:'no-store',signal:controller.signal}).then(async response=>{
+    fetch(`${endpoint}?offset=${offset}${showArchived?'&archived=1':''}`,{headers,cache:'no-store',signal:controller.signal}).then(async response=>{
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not load owner replies.');
       if(!Array.isArray(data.replies)||!data.replies.every(isReply))throw new Error('Invalid owner reply list.');
-      if(!controller.signal.aborted)setRows(data.replies);
+      if(!controller.signal.aborted){setRows(data.replies);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null)}
     }).catch(err=>{if(!controller.signal.aborted)setError(err instanceof Error?err.message:'Could not load owner replies.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[session.access_token,refresh,endpoint]);
+  },[session.access_token,refresh,endpoint,showArchived,offset]);
+  const archive=async(row:Reply,archived:boolean)=>{
+    setError('');
+    try{
+      const response=await fetch(endpoint,{method:'POST',cache:'no-store',headers:{...headers,'Content-Type':'application/json'},
+        body:JSON.stringify({reply_id:row.id,archived})});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Could not archive the reply.');
+      setRefresh(value=>value+1);
+    }catch(err){setError(err instanceof Error?err.message:'Could not archive the reply.')}
+  };
   const decide=async(row:Reply,approve:boolean)=>{
     setError('');
     try{
@@ -43,6 +56,7 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
     <h2 className="text-xl font-bold">{title}</h2>
     <p className="mt-2 text-sm">{stage==='moderate'?'Replies from invited business owners wait here. Approve to send them to the administrator.':'Moderator-approved owner replies wait here. Final approval publishes the reply publicly.'}</p>
     <button type="button" className="pill mt-3" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh owner replies</button>
+    {stage==='publish'&&<label className="ml-3 text-sm"><input type="checkbox" checked={showArchived} onChange={event=>{setShowArchived(event.target.checked);setOffset(0)}}/> Show archived</label>}
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {loading?<p role="status" className="mt-3">Loading owner replies...</p>:!error&&!rows.length&&<p className="mt-3 text-sm">No owner replies waiting.</p>}
     <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
@@ -50,10 +64,18 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
       <p className="mt-1 text-xs text-slate-500">From {row.owner_email} on {new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</p>
       {row.review?.comment&&<p className="mt-2 text-sm"><span className="font-semibold">Original review:</span> {row.review.comment}</p>}
       <p className="mt-2 whitespace-pre-wrap text-sm"><span className="font-semibold">Owner reply:</span> {row.body}</p>
+      {stage==='publish'&&row.status&&<p className="mt-1 text-xs font-semibold uppercase">{row.status}{row.archived_at?' (archived)':''}</p>}
       <div className="mt-3 flex gap-2">
-        <button type="button" className="rounded-xl bg-teal-700 px-3 py-2 font-bold text-white" onClick={()=>void decide(row,true)}>{stage==='moderate'?'Approve and send to administration':'Give final approval and publish'}</button>
-        <button type="button" className="pill" onClick={()=>void decide(row,false)}>Reject</button>
+        {(stage==='moderate'||row.status==='moderated')&&<>
+          <button type="button" className="rounded-xl bg-teal-700 px-3 py-2 font-bold text-white" onClick={()=>void decide(row,true)}>{stage==='moderate'?'Approve and send to administration':'Give final approval and publish'}</button>
+          <button type="button" className="pill" onClick={()=>void decide(row,false)}>Reject</button>
+        </>}
+        {stage==='publish'&&row.status!=='moderated'&&<button type="button" className="pill" onClick={()=>void archive(row,!row.archived_at)}>{row.archived_at?'Unarchive':'Archive'}</button>}
       </div>
     </article>)}</div>
+    <div className="mt-4 flex gap-3">
+      {offset>0&&<button type="button" disabled={loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous replies</button>}
+      {nextOffset!==null&&<button type="button" disabled={loading} className="pill" onClick={()=>setOffset(nextOffset)}>Next replies</button>}
+    </div>
   </section>;
 }
