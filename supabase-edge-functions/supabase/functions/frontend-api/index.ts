@@ -140,9 +140,14 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       console.error("frontend-api review archive failed", { status: response.status });
       throw new ApiError(503, "Review archive is unavailable. Refresh and try again.");
     }
+    if (table === "rpc/admin_archive_toilet") {
+      if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Administrator access required");
+      console.error("frontend-api toilet archive failed", { status: response.status });
+      throw new ApiError(503, "Toilet archive is unavailable. Refresh and try again.");
+    }
     if (table === "toilet_submissions") {
       if (isRecord(error) && error.code === "P0001") {
-        throw new ApiError(429, "You have reached the limit of 3 toilet submissions per UTC day. Try again after midnight UTC.");
+        throw new ApiError(429, "You have reached the limit of 10 toilet submissions per UTC day. Try again after midnight UTC.");
       }
       console.error("frontend-api toilet submission failed", { status: response.status });
       throw new ApiError(503, "Toilet could not be saved. Please try again.");
@@ -493,6 +498,48 @@ async function adminReviews(req: Request): Promise<Response> {
   return json(200, { reviews: reviewsWithPhotos, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
 }
 
+async function adminToilets(req: Request): Promise<Response> {
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const adminId = await requireAllowlistedUser(req, "admin");
+  if (req.method === "POST") {
+    let body: unknown;
+    try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+    if (!isRecord(body) || typeof body.toilet_id !== "string" || !uuidPattern.test(body.toilet_id) ||
+      typeof body.archived !== "boolean") throw new ApiError(400, "Invalid archive request");
+    const rows: unknown = await (await database("rpc/admin_archive_toilet", new URLSearchParams(), {
+      method: "POST",
+      body: JSON.stringify({ p_admin_id: adminId, p_toilet_id: body.toilet_id, p_archived: body.archived }),
+    })).json();
+    if (!Array.isArray(rows) || rows.length > 1) throw new ApiError(502, "Invalid archive response");
+    if (!rows.length) throw new ApiError(404, "Toilet not found");
+    const row: unknown = rows[0];
+    if (!isRecord(row) || row.id !== body.toilet_id || (row.archived_at === null) === body.archived) {
+      throw new ApiError(502, "Invalid archive response");
+    }
+    return json(200, { toilet: row });
+  }
+  const query = new URL(req.url).searchParams;
+  const offset = query.get("offset") ?? "0";
+  if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid toilet offset");
+  const archived = query.get("archived") ?? "0";
+  if (archived !== "0" && archived !== "1") throw new ApiError(400, "Invalid archived filter");
+  const moderation = query.get("moderation") ?? "moderated";
+  if (moderation !== "moderated" && moderation !== "pending") throw new ApiError(400, "Invalid moderation filter");
+  const rows: unknown = await (await database("toilet_submissions", new URLSearchParams({
+    select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,archived_at,photo_paths",
+    archived_at: archived === "1" ? "not.is.null" : "is.null",
+    status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
+    order: "created_at.desc,id.desc", limit: "50", offset,
+  }))).json();
+  if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin toilet list");
+  const toilets = await Promise.all(rows.map(async row => {
+    if (!isRecord(row)) throw new ApiError(502, "Invalid admin toilet list");
+    const { photo_paths, ...details } = row;
+    return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
+  }));
+  return json(200, { toilets, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+}
+
 async function replyAction(adminId: string, action: string, id: string, fields: Record<string, unknown> = {}) {
   const rows: unknown = await (await database("rpc/admin_review_reply", new URLSearchParams(), {
     method: "POST", body: JSON.stringify({ ...fields, p_admin_id: adminId, p_action: action, p_id: id }),
@@ -703,6 +750,7 @@ export default {
       if (path === "/moderation/reviews") return await moderation(req);
       if (path === "/admin/owner-responses") return await ownerResponses(req, true);
       if (path === "/admin/reviews") return await adminReviews(req);
+      if (path === "/admin/toilets") return await adminToilets(req);
       if (path === "/admin/review-replies") return await adminReviewReplies(req);
       if (path === "/owner-responses") return await ownerResponses(req, false);
       if (path.startsWith("/auth/")) return await auth(req, path);
