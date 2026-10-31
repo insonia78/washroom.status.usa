@@ -18,6 +18,7 @@ const [currentLocationActive,setCurrentLocationActive]=useState(false);
 const [toiletCoordinates,setToiletCoordinates]=useState<[number,number]|null>(null);
 const [reviewRestroom,setReviewRestroom]=useState<Restroom|null>(null);
 const [searching,setSearching]=useState(false);
+const [searchVisible,setSearchVisible]=useState(false);
 const [warning,setWarning]=useState('');
 const [radiusMiles,setRadiusMiles]=useState('5');
 const mapArea=useRef<HTMLDivElement>(null);
@@ -117,18 +118,24 @@ async function search(e:React.FormEvent){
 const shown=sortByDistance(items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7')));
 const hasResults=!busy&&!error&&shown.length>0;
 const addToiletButton=currentLocationActive&&location&&!locating&&!searching?<button type="button" aria-haspopup="dialog" onClick={()=>setToiletCoordinates([...location])} className="shrink-0 rounded-xl bg-teal-700 px-3 py-3 text-sm font-bold text-white">Add a toilet</button>:null;
-const radiusControl=<label className="flex items-center gap-2 text-sm font-semibold">Search radius<select aria-describedby="radius-search-help" value={radiusMiles} onChange={event=>{focusAfterSearch.current=true;setRadiusMiles(event.target.value)}} className="rounded-xl border border-slate-300 bg-white px-3 py-3">{['1','2','5','10'].map(miles=><option key={miles} value={miles}>{miles} {miles==='1'?'mile':'miles'}</option>)}</select></label>;
+const radiusControl=<label className="flex flex-col items-start gap-1 text-sm font-semibold sm:flex-row sm:items-center sm:gap-2">Search radius<select aria-describedby="radius-search-help" value={radiusMiles} onChange={event=>{focusAfterSearch.current=true;setRadiusMiles(event.target.value)}} className="rounded-xl border border-slate-300 bg-white px-3 py-3">{['1','2','5','10'].map(miles=><option key={miles} value={miles}>{miles} {miles==='1'?'mile':'miles'}</option>)}</select></label>;
 return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-700 p-3 text-2xl text-white">🚻</span><div><h1 className="text-2xl font-black tracking-tight">Washroom Status USA</h1><p className="text-sm text-slate-500">Find clean restrooms. Travel confidently.</p></div></div><a className="header-brand" href="https://codyza.com" target="_blank" rel="noopener noreferrer"><span className="footer-credit">Powered by</span><span className="header-brand-name">Codyza.com</span></a></header>
 <div ref={mapArea} className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
-{locationError&&<p role="alert" className="order-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 lg:order-4 lg:col-span-2">{locationError}</p>}
-<section className="panel relative z-20 order-2 lg:order-1 lg:col-span-2"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2">
-<AddressSearch value={city} onChange={value=>{setCity(value);setCurrentLocationActive(false);locationRequest.current++;setLocating(false)}} searching={searching} onSelect={suggestion=>{setCurrentLocationActive(false);focusAfterSearch.current=true;focusMapArea();locationRequest.current++;setLocating(false);setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
+<section aria-label="Restroom controls" className="panel order-first lg:col-span-2">
+<div className="flex flex-wrap items-center gap-2">
+{radiusControl}{addToiletButton}
+<button type="button" aria-expanded={searchVisible} aria-controls="toilet-address-search" onClick={()=>setSearchVisible(visible=>!visible)} className="pill text-sm font-semibold">Search a toilet</button>
+<button type="button" onClick={locate} disabled={locating} className="pill disabled:opacity-50" aria-label="Use my location" aria-busy={locating}><LocateFixed className={locating?'animate-pulse motion-reduce:animate-none':''}/></button>
 {currentLocationActive&&<span className="self-center text-sm font-semibold text-teal-800">Current location</span>}
-<div className="hidden lg:block">{addToiletButton}</div>
-<div className="hidden lg:block">{radiusControl}</div>
-<button type="button" onClick={locate} disabled={locating} className="pill disabled:opacity-50" aria-label="Use my location" aria-busy={locating}><LocateFixed className={locating?'animate-pulse motion-reduce:animate-none':''}/></button></form>{locating&&<p role="status" className="mt-2 text-sm text-teal-800">Finding your location. Allow location access if prompted.</p>}<div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div></section>
+</div>
+{locating&&<p role="status" className="mt-2 text-sm text-teal-800">Finding your location. Allow location access if prompted.</p>}
+<div className="mt-4 flex flex-wrap gap-2">{[['all','All restrooms'],['accessible','♿ Accessible'],['free','Free'],['always','24/7']].map(([id,label])=><button key={id} className="pill text-sm" aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}</button>)}</div>
+</section>
+{locationError&&<p role="alert" className="order-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 lg:order-4 lg:col-span-2">{locationError}</p>}
+<section id="toilet-address-search" hidden={!searchVisible} className="panel relative z-20 order-0 lg:order-1 lg:col-span-2"><h2 className="mb-3 text-xl font-bold">Find a public restroom</h2><form onSubmit={search} className="flex flex-wrap gap-2">
+<AddressSearch value={city} onChange={value=>{setCity(value);setCurrentLocationActive(false);locationRequest.current++;setLocating(false)}} searching={searching} onSelect={suggestion=>{setCurrentLocationActive(false);focusAfterSearch.current=true;focusMapArea();locationRequest.current++;setLocating(false);setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
+</form></section>
 <div className="order-1 min-w-0 lg:order-2">
-<div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 lg:hidden">{radiusControl}{addToiletButton}</div>
 <p id="radius-search-help" className="mb-2 text-xs text-slate-500">{hasSearchOrigin?'Searching':'Search'} within {radiusMiles} {radiusMiles==='1'?'mile':'miles'}. {hasSearchOrigin?'Radius changes automatically reload restrooms and imported gas stations.':'Choose a location to find nearby restrooms and imported gas stations.'}</p>
 <div className="relative isolate" aria-busy={searching||busy}>
   <OpenFreeMap ref={mapRef} center={center} zoom={zoom} overview={!hasSearchOrigin} location={location} items={items} filter={filter} onSelect={handleSelect}/>

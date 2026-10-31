@@ -2,6 +2,12 @@
 
 ## Email magic-link sign-in for contributions
 
+The main controls show Search radius and, when current GPS location is active,
+Add a toilet first. **Search a toilet** toggles the address/ZIP search form,
+collapsed by default on mobile and desktop. The map, nearby results, location
+button and filters remain available while address search is collapsed. Toggling
+does not clear the selected location, radius or typed address.
+
 **Add review** and **Add a toilet** require a verified Supabase session and offer
 an email address field and **Send sign-in link**. Gmail and other email providers
 work; no Google OAuth client ID or secret is needed. Searches and approved review reads remain public.
