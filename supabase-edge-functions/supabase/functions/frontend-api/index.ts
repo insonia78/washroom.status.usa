@@ -529,8 +529,11 @@ async function adminReviewReplies(req: Request): Promise<Response> {
     return json(200, { reply });
   }
   // Configuration is checked before claiming a delivery or contacting the recipient.
-  const apiKey = config("RESEND_API_KEY");
-  const from = config("REVIEW_REPLY_FROM");
+  const useGmail = Deno.env.get("EMAIL_PROVIDER")?.trim().toLowerCase() === "gmail";
+  const apiKey = useGmail ? "" : config("RESEND_API_KEY");
+  const gmailUser = useGmail ? config("GMAIL_USER") : "";
+  const gmailPassword = useGmail ? config("GMAIL_APP_PASSWORD") : "";
+  const from = useGmail ? (Deno.env.get("REVIEW_REPLY_FROM")?.trim() || gmailUser) : config("REVIEW_REPLY_FROM");
   const reply = await replyAction(adminId, "claim", replyId);
   if (reply.status === "sent") return json(200, { reply });
   if (reply.status !== "sending" || typeof reply.recipient_user_id !== "string" ||
@@ -557,13 +560,28 @@ async function adminReviewReplies(req: Request): Promise<Response> {
     await finish("failed");
     throw new ApiError(422, "The reviewer does not have a verified email account. No email was sent.");
   }
+  const subject = "A reply to your Washroom Status USA review";
+  const text = `An administrator replied to your review.\n\n${reply.body}\n\nWashroom Status USA\nThis is a private reply, not a public review response.`;
+  if (useGmail) {
+    // SMTP gives no idempotency key, so any failure is treated as uncertain to avoid duplicate sends.
+    try {
+      const nodemailer = (await import("npm:nodemailer@6.9.16")).default;
+      const transport = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true,
+        auth: { user: gmailUser, pass: gmailPassword } });
+      await transport.sendMail({ from, to: recipient.email, subject, text });
+    } catch (error) {
+      await finish("unknown");
+      console.error("frontend-api gmail send failed", { reason: error instanceof Error ? error.message.replaceAll(/[\w.+-]+@[\w.-]+/g, "[email]") : "unknown" });
+      throw new ApiError(503, "Email provider did not confirm the send. Reply saved. Check email configuration and retry this same saved reply.");
+    }
+    return json(200, { reply: await finish("sent", `gmail/${replyId}`) });
+  }
   let delivered: Response;
   try {
     delivered = await upstream("https://api.resend.com/emails", {
       method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
         "Idempotency-Key": `review-reply/${replyId}` },
-      body: JSON.stringify({ from, to: [recipient.email], subject: "A reply to your Washroom Status USA review",
-        text: `An administrator replied to your review.\n\n${reply.body}\n\nWashroom Status USA\nThis is a private reply, not a public review response.` }),
+      body: JSON.stringify({ from, to: [recipient.email], subject, text }),
     });
   } catch {
     await finish("unknown");
