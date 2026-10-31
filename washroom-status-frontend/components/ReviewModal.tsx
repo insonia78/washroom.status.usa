@@ -2,7 +2,7 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import {X} from 'lucide-react';
 import type {Restroom} from '@/components/RestroomDetails';
-import {useContributionAuth} from '@/lib/contribution-auth';
+import {clearContributionContext,useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
 import {acceptedPhotoTypes,maxPhotoInputBytes,maxPhotoUploadBytes,preparePhoto} from '@/lib/photo-preparation';
 
@@ -40,6 +40,14 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
     };
   },[]);
 
+  useEffect(()=>{
+    if(!submitted)return;
+    clearContributionContext();
+    const timer=window.setTimeout(onClose,5000);
+    return()=>window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[submitted]);
+
   async function submit(event:React.FormEvent){
     event.preventDefault();
     if(!rating||!availability||!cleanlinessStatus){setMessage('Answer all three review questions.');return}
@@ -70,7 +78,7 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
       if(!response.ok)throw new Error(typeof data==='object'&&data!==null&&'error' in data&&typeof data.error==='string'?data.error:'Submission failed');
       if(response.status!==201||typeof data!=='object'||data===null||!('status' in data)||data.status!=='pending')throw new Error('The server did not confirm your review. Please try again.');
       setSubmitted(true);
-      setMessage('Thanks! Your review is awaiting moderation.');
+      setMessage('Thank you for your review! It is awaiting moderation. Returning to the main page in 5 seconds...');
     }catch(error){
       setMessage(error instanceof Error?error.message:'Submission failed');
     }finally{setSending(false)}
@@ -90,7 +98,7 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
       <button type="button" autoFocus onClick={onClose} aria-label="Close review modal" className="pill"><X size={18}/></button>
     </div>
     <p id={descriptionId} className="mt-3 text-sm text-slate-600">Sign in to add a review. Reports are screened before publication. An administrator may send a private reply to your verified account email. The admin reply panel shows your user ID, not your email address. Describe your visit without including names or private information. Availability reports are not live verification.</p>
-    {!submitted&&<ContributionSignIn auth={auth}/>}
+    {!submitted&&<ContributionSignIn auth={auth} context={{kind:'review',restroom}}/>}
     {!submitted&&
       <form onSubmit={submit} className="mt-4 space-y-4"><fieldset disabled={locked} className="space-y-4">
         <fieldset disabled={sending}><legend className="text-sm font-medium">Restroom Availability: Was it available during your visit? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['open','Open'],['closed','Closed'],['temporarily_unavailable','Temporarily unavailable'],['unverified','Unverified']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-availability`} value={value} checked={availability===value} onChange={()=>setAvailability(value)} className="mr-2"/>{label}</label>)}</div></fieldset>

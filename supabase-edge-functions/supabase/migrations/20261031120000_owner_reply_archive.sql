@@ -25,6 +25,8 @@ $$;
 revoke all on function app_locations.admin_archive_owner_reply(uuid, uuid, boolean) from public, anon, authenticated;
 grant execute on function app_locations.admin_archive_owner_reply(uuid, uuid, boolean) to service_role;
 
+grant select, update on app_locations.owner_replies to service_role;
+
 notify pgrst, 'reload schema';
 
 commit;

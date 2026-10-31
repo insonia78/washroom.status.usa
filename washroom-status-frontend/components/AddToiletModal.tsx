@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useId,useRef,useState} from 'react';
 import {X} from 'lucide-react';
-import {useContributionAuth} from '@/lib/contribution-auth';
+import {clearContributionContext,useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
 import {acceptedPhotoTypes,maxPhotoInputBytes,preparePhoto} from '@/lib/photo-preparation';
 
@@ -34,6 +34,14 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
       if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus({preventScroll:true});
     };
   },[]);
+
+  useEffect(()=>{
+    if(!submitted)return;
+    clearContributionContext();
+    const timer=window.setTimeout(onClose,5000);
+    return()=>window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[submitted]);
 
   async function submit(event:React.FormEvent){
     event.preventDefault();
@@ -85,7 +93,7 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
     </div>
     <p id={descriptionId} className="mt-3 text-sm text-slate-600">Add a public toilet at your current location. Sign-in is required. Each account can submit up to 10 toilets per UTC day (resets at midnight UTC). Your submission is saved privately for moderation, not published immediately. Do not include private information. If you attach photos, at least one must clearly show the business/restroom name or identifying sign; submissions without this evidence may be rejected.</p>
     <p className="mt-2 text-sm font-semibold text-teal-800">Current location: {coordinates[1].toFixed(5)}, {coordinates[0].toFixed(5)}</p>
-    {!submitted&&<ContributionSignIn auth={auth}/>}
+    {!submitted&&<ContributionSignIn auth={auth} context={{kind:'toilet',coordinates}}/>}
     {!submitted?<form onSubmit={submit} className="mt-4 space-y-4" aria-busy={sending}>
       <fieldset disabled={sending||preparingPhotos||checking||!session} className="space-y-4">
         <label className="block text-sm font-medium">Toilet name (required)<input autoFocus required maxLength={120} value={name} onChange={event=>setName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3" placeholder="For example, Riverside Park public toilets"/></label>
@@ -113,7 +121,7 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
         </div>
         <button disabled={!name.trim()||sending||preparingPhotos||checking||!session} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Saving...':'Submit for moderation'}</button>
       </fieldset>
-    </form>:<div className="mt-4"><p role="status" className="rounded-xl bg-teal-50 p-3 text-teal-900">Thanks! Your toilet was saved and is awaiting moderation. It will not appear in nearby results yet.</p><button type="button" onClick={onClose} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Done</button></div>}
+    </form>:<div className="mt-4"><p role="status" className="rounded-xl bg-teal-50 p-3 text-teal-900">Thank you for your addition! Your toilet was saved and is awaiting moderation. It will not appear in nearby results yet. Returning to the main page in 5 seconds...</p><button type="button" onClick={onClose} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Done</button></div>}
     {error&&<p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
   </dialog>;
 }

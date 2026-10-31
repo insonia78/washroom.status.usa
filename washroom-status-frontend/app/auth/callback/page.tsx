@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {browserSupabase} from '@/lib/supabase';
+import {readContributionContext} from '@/lib/contribution-auth';
 
 export default function AuthCallback(){
   const [error,setError]=useState('');
@@ -16,7 +17,7 @@ export default function AuthCallback(){
     supabase.auth.getSession().then(({data,error})=>{
       if(error)throw error;
       if(!data.session)throw new Error('Email sign-in did not complete. Return to search and request a new link.');
-      if(active){setComplete(true);window.history.replaceState(null,'','/auth/callback')}
+      if(active){setComplete(true);      window.history.replaceState(null,'','/auth/callback');if(readContributionContext())window.location.replace('/contribute')}
     }).catch(error=>{if(active){setError(error instanceof Error?error.message:'Could not complete sign-in.');window.history.replaceState(null,'','/auth/callback')}});
     return()=>{active=false};
   },[]);

@@ -2,6 +2,21 @@
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from './supabase';
+import type {Restroom} from '@/components/RestroomDetails';
+
+export type ContributionContext={kind:'review';restroom:Restroom}|{kind:'toilet';coordinates:[number,number]};
+const contextKey='washroom-contribution-context';
+const contextMaxAgeMs=60*60*1000;
+export function readContributionContext():ContributionContext|null{
+  try{
+    const raw=window.localStorage.getItem(contextKey);
+    if(!raw)return null;
+    const saved=JSON.parse(raw) as {savedAt?:number;context?:ContributionContext};
+    if(typeof saved.savedAt!=='number'||Date.now()-saved.savedAt>contextMaxAgeMs||!saved.context)return null;
+    return saved.context;
+  }catch{return null}
+}
+export function clearContributionContext(){try{window.localStorage.removeItem(contextKey)}catch{}}
 
 export function useContributionAuth(){
   const supabase=browserSupabase();
@@ -24,17 +39,18 @@ export function useContributionAuth(){
     return()=>{active=false;subscription.unsubscribe()};
   },[supabase]);
 
-  async function signIn(email:string){
+  async function signIn(email:string,context?:ContributionContext){
     if(signingIn)return;
     if(!supabase){setAuthError('Sign-in is not configured. Please contact the site administrator.');return}
     setSigningIn(true);setAuthError('');setAuthMessage('');
     try{
+      if(context)window.localStorage.setItem(contextKey,JSON.stringify({savedAt:Date.now(),context}));
       const {error}=await supabase.auth.signInWithOtp({
         email:email.trim(),
         options:{emailRedirectTo:`${window.location.origin}/auth/callback`},
       });
       if(error)throw error;
-      setAuthMessage('Check your email for a sign-in link. Gmail and other email providers work. After signing in, reopen this form if needed.');
+      setAuthMessage('Check your email for a sign-in link. Gmail and other email providers work. The link opens your questionnaire.');
     }catch(error){setAuthError(error instanceof Error?error.message:'Could not send the sign-in link.')}
     finally{setSigningIn(false)}
   }
