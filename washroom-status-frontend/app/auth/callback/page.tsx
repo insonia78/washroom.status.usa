@@ -2,12 +2,16 @@
 import {useEffect,useState} from 'react';
 import {browserSupabase} from '@/lib/supabase';
 import {readContributionContext} from '@/lib/contribution-auth';
+import ContributionFlow from '@/components/ContributionFlow';
 
 export default function AuthCallback(){
   const [error,setError]=useState('');
   const [complete,setComplete]=useState(false);
+  const [flow,setFlow]=useState(false);
+  const [pending,setPending]=useState(true);
   useEffect(()=>{
     let active=true;
+    if(!readContributionContext())setPending(false);
     const supabase=browserSupabase();
     const query=new URLSearchParams(window.location.search);
     const hash=new URLSearchParams(window.location.hash.slice(1));
@@ -17,10 +21,12 @@ export default function AuthCallback(){
     supabase.auth.getSession().then(({data,error})=>{
       if(error)throw error;
       if(!data.session)throw new Error('Email sign-in did not complete. Return to search and request a new link.');
-      if(active){setComplete(true);      window.history.replaceState(null,'','/auth/callback');if(readContributionContext())window.location.replace('/contribute')}
+      if(active){setComplete(true);      window.history.replaceState(null,'','/auth/callback');if(readContributionContext()){setFlow(true);window.history.replaceState(null,'','/contribute')}}
     }).catch(error=>{if(active){setError(error instanceof Error?error.message:'Could not complete sign-in.');window.history.replaceState(null,'','/auth/callback')}});
     return()=>{active=false};
   },[]);
+  if(flow)return <ContributionFlow/>;
+  if(pending&&!error)return <main className="mx-auto max-w-lg px-4 py-10"><p role="status">Opening your questionnaire...</p></main>;
   return <main className="mx-auto max-w-lg px-4 py-10"><h1 className="text-2xl font-bold">Email sign-in</h1>
     {error?<p role="alert" className="mt-4 text-red-700">{error}</p>:complete?
       <p role="status" className="mt-4 text-teal-800">You are signed in. Return to search, select your restroom or current location, and reopen Add review or Add a toilet.</p>:
