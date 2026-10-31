@@ -57,8 +57,10 @@ Deno.test("moderation requires verified allowlisted users and atomic pending dec
         assert(url.searchParams.get("status") === "eq.pending" && url.searchParams.get("limit") === "50" &&
           url.searchParams.get("order") === "created_at.asc,id.asc", "Bounded pending queue");
         assert(!url.searchParams.get("select")?.includes("*"), "Use explicit columns, never private notes");
+        assert(url.searchParams.get("select")?.includes("availability") && url.searchParams.get("select")?.includes("cleanliness_status"),
+          "Return every structured review answer to moderators");
         assert(!url.searchParams.has("osm_type"), "Moderation includes every listing source");
-        return Response.json([{ id, osm_type: "refuge", osm_id: 123 }]);
+        return Response.json([{ id, osm_type: "refuge", osm_id: 123, photo_paths: [] }]);
       };
       const response = await api.fetch(request());
       const result = await response.json();

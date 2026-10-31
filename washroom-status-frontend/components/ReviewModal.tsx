@@ -17,6 +17,7 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
   const [cleanlinessStatus,setCleanlinessStatus]=useState('');
   const [issues,setIssues]=useState<string[]>([]);
   const [comment,setComment]=useState('');
+  const [photos,setPhotos]=useState<File[]>([]);
   const [message,setMessage]=useState('');
   const [sending,setSending]=useState(false);
   const [submitted,setSubmitted]=useState(false);
@@ -40,15 +41,21 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
   async function submit(event:React.FormEvent){
     event.preventDefault();
     if(!rating||!availability||!cleanlinessStatus){setMessage('Answer all three review questions.');return}
+    if(photos.length>3||photos.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<=0||file.size>5*1024*1024)){
+      setMessage('Choose up to 3 JPEG, PNG, or WebP photos, each no larger than 5 MB.');return;
+    }
     if(sending)return;
     setSending(true);
     setMessage('');
     try{
       const token=await auth.accessToken();
+      const form=new FormData();
+      form.set('review',JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment}));
+      photos.forEach(photo=>form.append('photos',photo));
       const response=await fetch('/api/reviews',{
         method:'POST',
-        headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
-        body:JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment})
+        headers:{Authorization:`Bearer ${token}`},
+        body:form
       });
       const data=await response.json();
       if(response.status===401)auth.clearSession();
@@ -83,6 +90,19 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
         <fieldset disabled={sending}><legend className="text-sm font-medium">Clean or Dirty Status: What condition was it in? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['excellent','Excellent'],['clean','Clean'],['average','Average'],['poor','Poor'],['very_dirty','Very Dirty']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-condition`} value={value} checked={cleanlinessStatus===value} onChange={()=>setCleanlinessStatus(value)} className="mr-2"/>{label}</label>)}</div></fieldset>
         <fieldset disabled={sending}><legend className="text-sm font-medium">Problems noticed (optional)</legend><div className="mt-2 flex flex-wrap gap-2">{issueOptions.map(([key,label])=><label key={key} className="pill text-xs"><input type="checkbox" checked={issues.includes(key)} onChange={event=>setIssues(previous=>event.target.checked?[...previous,key]:previous.filter(value=>value!==key))} className="mr-2"/>{label}</label>)}</div></fieldset>
         <label className="block text-sm font-medium">Details (optional)<textarea disabled={sending} maxLength={1000} value={comment} onChange={event=>setComment(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Describe what you observed without identifying other restroom users"/></label>
+        <div><label className="block text-sm font-medium">Photos (optional, up to 3; 5 MB each)<input disabled={sending} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={event=>{
+          const selected=[...(event.currentTarget.files??[])];
+          event.currentTarget.value='';
+          setMessage('');
+          const next=[...photos,...selected];
+          if(next.length>3){setMessage('Choose no more than 3 photos.');return}
+          if(next.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<=0||file.size>5*1024*1024)){
+            setMessage('Photos must be JPEG, PNG, or WebP files no larger than 5 MB each.');return;
+          }
+          setPhotos(next);
+        }} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm"/></label>
+          {photos.length>0&&<ul className="mt-2 space-y-1 text-xs">{photos.map((photo,index)=><li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2"><span className="truncate">{photo.name}</span><button type="button" disabled={sending} onClick={()=>setPhotos(previous=>previous.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button></li>)}</ul>}
+        </div>
         <button disabled={sending||!rating||!availability||!cleanlinessStatus} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Submitting...':'Submit for moderation'}</button>
       </fieldset></form>}
     {message&&<p role="status" className="mt-4 text-sm text-slate-700">{message}</p>}

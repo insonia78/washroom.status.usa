@@ -1,6 +1,7 @@
 export type AdminReview={
   id:string;user_id:string|null;osm_type:string;osm_id:number;rating:number;
-  comment:string;status:'pending'|'approved'|'rejected';created_at:string;
+  availability:string|null;cleanliness_status:string|null;issues:string[];comment:string;
+  photo_urls:string[];status:'pending'|'approved'|'rejected';created_at:string;
 };
 export type ReviewReply={
   id:string;review_id:string;recipient_user_id:string|null;body:string;
@@ -17,7 +18,11 @@ export function isAdminReview(value:unknown):value is AdminReview{
     typeof value.osm_type==='string'&&['node','way','relation','refuge'].includes(value.osm_type)&&
     typeof value.osm_id==='number'&&Number.isSafeInteger(value.osm_id)&&value.osm_id>0&&
     typeof value.rating==='number'&&Number.isInteger(value.rating)&&value.rating>=1&&value.rating<=5&&
+    (value.availability===null||typeof value.availability==='string')&&
+    (value.cleanliness_status===null||typeof value.cleanliness_status==='string')&&
+    Array.isArray(value.issues)&&value.issues.every(issue=>typeof issue==='string')&&
     typeof value.comment==='string'&&typeof value.status==='string'&&
+    Array.isArray(value.photo_urls)&&value.photo_urls.every(url=>typeof url==='string')&&
     ['pending','approved','rejected'].includes(value.status)&&date(value.created_at);
 }
 export function isReviewReply(value:unknown):value is ReviewReply{

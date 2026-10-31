@@ -14,9 +14,92 @@ class ApiError extends Error {
 const json = (status: number, body: unknown) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
+const reviewPhotoBucket = "review-photos";
+const reviewPhotoLimit = 3;
+const reviewPhotoMaxBytes = 5 * 1024 * 1024;
+const reviewPhotoTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const reviewPhotoPathPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/i;
+
 // Narrows unknown values to plain object records before field access.
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+function storageObjectUrl(path: string): URL {
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return new URL(`/storage/v1/object/${reviewPhotoBucket}/${encoded}`, config("SUPABASE_URL"));
+}
+
+async function hasMatchingImageSignature(file: File): Promise<boolean> {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (file.type === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (file.type === "image/png") return [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) => bytes[index] === byte);
+  return file.type === "image/webp" && new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" &&
+    new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
+}
+
+async function uploadReviewPhoto(path: string, file: File): Promise<void> {
+  const response = await upstream(storageObjectUrl(path), {
+    method: "POST",
+    headers: {
+      apikey: config("SUPABASE_SERVICE_ROLE_KEY"),
+      Authorization: `Bearer ${config("SUPABASE_SERVICE_ROLE_KEY")}`,
+      "Content-Type": file.type,
+      "x-upsert": "false",
+    },
+    body: await file.arrayBuffer(),
+  });
+  if (!response.ok) {
+    console.error("frontend-api review photo upload failed", { status: response.status });
+    throw new ApiError(503, "Review photos could not be uploaded. Please try again.");
+  }
+}
+
+async function deleteReviewPhotos(paths: string[]): Promise<void> {
+  if (!paths.length) return;
+  const response = await upstream(new URL(`/storage/v1/object/${reviewPhotoBucket}`, config("SUPABASE_URL")), {
+    method: "DELETE",
+    headers: {
+      apikey: config("SUPABASE_SERVICE_ROLE_KEY"),
+      Authorization: `Bearer ${config("SUPABASE_SERVICE_ROLE_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prefixes: paths }),
+  });
+  if (!response.ok) {
+    console.error("frontend-api review photo cleanup failed", { status: response.status });
+  }
+}
+
+async function signedReviewPhotos(paths: unknown): Promise<string[]> {
+  if (!Array.isArray(paths) || paths.length > reviewPhotoLimit ||
+    !paths.every(path => typeof path === "string" && reviewPhotoPathPattern.test(path))) {
+    throw new ApiError(502, "Invalid review photo database response");
+  }
+  return await Promise.all(paths.map(async path => {
+    const encoded = path.split("/").map(encodeURIComponent).join("/");
+    const response = await upstream(new URL(`/storage/v1/object/sign/${reviewPhotoBucket}/${encoded}`, config("SUPABASE_URL")), {
+      method: "POST",
+      headers: {
+        apikey: config("SUPABASE_SERVICE_ROLE_KEY"),
+        Authorization: `Bearer ${config("SUPABASE_SERVICE_ROLE_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ expiresIn: 86400 }),
+    });
+    if (!response.ok) {
+      console.error("frontend-api review photo signing failed", { status: response.status });
+      throw new ApiError(503, "Review photos are temporarily unavailable");
+    }
+    const result: unknown = await response.json();
+    if (!isRecord(result) || typeof result.signedURL !== "string") {
+      throw new ApiError(502, "Invalid signed review photo response");
+    }
+    const signedURL = result.signedURL.startsWith("/object/")
+      ? new URL(`/storage/v1${result.signedURL}`, config("SUPABASE_URL")).toString()
+      : new URL(result.signedURL, `${config("SUPABASE_URL")}/storage/v1/`).toString();
+    return signedURL;
+  }));
+}
 
 // Reads a required environment variable or reports a configuration error.
 function config(name: string): string {
@@ -121,16 +204,20 @@ async function reviews(req: Request): Promise<Response> {
     const id = Number(query.get("osm_id"));
     if (!validRestroom(type, id)) throw new ApiError(400, "Invalid restroom");
     const latest = query.get("latest");
-    if (latest !== null && latest !== "1") throw new ApiError(400, "Invalid latest comment query");
+    if (latest !== null && latest !== "1") throw new ApiError(400, "Invalid latest review query");
     const params = new URLSearchParams({
-      select: "id,rating,availability,cleanliness_status,issues,comment,created_at", osm_type: `eq.${type}`,
+      select: "id,rating,availability,cleanliness_status,issues,comment,created_at,photo_paths", osm_type: `eq.${type}`,
       osm_id: `eq.${id}`, status: "eq.approved", order: "created_at.desc,id.desc", limit: latest ? "1" : "50",
     });
-    if (latest) params.set("comment", "neq.");
     const data: unknown = await (await database("reviews", params)).json();
     if (!Array.isArray(data) || !data.every(row => isRecord(row) && typeof row.rating === "number")) {
       throw new ApiError(502, "Invalid reviews database response");
     }
+    const reviewsWithPhotos = await Promise.all(data.map(async row => {
+      if (!isRecord(row)) throw new ApiError(502, "Invalid reviews database response");
+      const { photo_paths, ...review } = row;
+      return { ...review, photo_urls: await signedReviewPhotos(photo_paths) };
+    }));
     const summary: unknown = await (await database("rpc/approved_review_summary", new URLSearchParams(), {
       method: "POST", body: JSON.stringify({ p_osm_type: type, p_osm_id: id }),
     })).json();
@@ -140,14 +227,28 @@ async function reviews(req: Request): Promise<Response> {
         typeof summary[0].average !== "number" || !Number.isFinite(summary[0].average) || summary[0].average < 1 || summary[0].average > 5)) {
       throw new ApiError(502, "Invalid review summary database response");
     }
-    return json(200, { reviews: data, count: data.length, average: summary[0].average, review_count: summary[0].review_count, limited_to: latest ? 1 : 50 });
+    return json(200, { reviews: reviewsWithPhotos, count: data.length, average: summary[0].average, review_count: summary[0].review_count, limited_to: latest ? 1 : 50 });
   }
   if (req.method !== "POST") throw new ApiError(405, "Method not allowed");
   let body: unknown;
+  let photos: File[] = [];
   try {
-    body = await req.json();
-  } catch {
-    throw new ApiError(400, "Invalid JSON");
+    if (req.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
+      const form = await req.formData();
+      const payload = form.get("review");
+      if (typeof payload !== "string") throw new ApiError(400, "Invalid review fields");
+      body = JSON.parse(payload);
+      const values = form.getAll("photos");
+      if (values.length > reviewPhotoLimit || values.some(value => typeof value === "string" || !(value instanceof File))) {
+        throw new ApiError(400, "Choose up to 3 image files.");
+      }
+      photos = values as File[];
+    } else {
+      body = await req.json();
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(400, "Invalid review fields");
   }
   if (!isRecord(body)) throw new ApiError(400, "Invalid review fields");
   const { osm_type, osm_id, rating, availability, cleanliness_status, issues, comment } = body;
@@ -158,7 +259,9 @@ async function reviews(req: Request): Promise<Response> {
     typeof cleanliness_status !== "string" || !["excellent", "clean", "average", "poor", "very_dirty"].includes(cleanliness_status) ||
     !Array.isArray(issues) || issues.length > 6 ||
     issues.some(value => typeof value !== "string" || !allowedIssues.includes(value)) ||
-    typeof comment !== "string" || comment.length > 1000) {
+    typeof comment !== "string" || comment.length > 1000 ||
+    photos.some(file => !reviewPhotoTypes.has(file.type) || file.size <= 0 || file.size > reviewPhotoMaxBytes) ||
+    !(await Promise.all(photos.map(hasMatchingImageSignature))).every(Boolean)) {
     throw new ApiError(400, "Invalid review fields");
   }
   const userId = await requireAuthenticatedUser(req);
@@ -172,10 +275,23 @@ async function reviews(req: Request): Promise<Response> {
     if (!Array.isArray(locations)) throw new ApiError(502, "Invalid restroom database response");
   }
   if (!locations.length) throw new ApiError(422, "Restroom is not in the verified location list. Refresh the search and try again.");
-  await database("reviews", new URLSearchParams(), {
-    method: "POST",
-    body: JSON.stringify({ osm_type, osm_id, rating, availability, cleanliness_status, issues, comment: comment.trim(), user_id: userId, status: "pending" }),
+  const photoPaths = photos.map(file => {
+    const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+    return `${userId}/${crypto.randomUUID()}.${extension}`;
   });
+  try {
+    for (const [index, file] of photos.entries()) await uploadReviewPhoto(photoPaths[index], file);
+    await database("reviews", new URLSearchParams(), {
+      method: "POST",
+      body: JSON.stringify({
+        osm_type, osm_id, rating, availability, cleanliness_status, issues, comment: comment.trim(),
+        photo_paths: photoPaths, user_id: userId, status: "pending",
+      }),
+    });
+  } catch (error) {
+    await deleteReviewPhotos(photoPaths);
+    throw error;
+  }
   return json(201, { message: "Review submitted for moderation", status: "pending" });
 }
 
@@ -262,11 +378,16 @@ async function moderation(req: Request): Promise<Response> {
   const userId = await requireAllowlistedUser(req, "moderator");
   if (req.method === "GET") {
     const pending: unknown = await (await database("reviews", new URLSearchParams({
-      select: "id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,created_at,status",
+      select: "id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,created_at,status,photo_paths",
       status: "eq.pending", order: "created_at.asc,id.asc", limit: "50",
     }))).json();
     if (!Array.isArray(pending)) throw new ApiError(502, "Invalid moderation queue response");
-    return json(200, { reviews: pending, limited_to: 50 });
+    const reviewsWithPhotos = await Promise.all(pending.map(async review => {
+      if (!isRecord(review)) throw new ApiError(502, "Invalid moderation queue response");
+      const { photo_paths, ...details } = review;
+      return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
+    }));
+    return json(200, { reviews: reviewsWithPhotos, limited_to: 50 });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
@@ -297,11 +418,16 @@ async function adminReviews(req: Request): Promise<Response> {
   const offset = new URL(req.url).searchParams.get("offset") ?? "0";
   if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid review offset");
   const rows: unknown = await (await database("reviews", new URLSearchParams({
-    select: "id,user_id,osm_type,osm_id,rating,comment,status,created_at",
+    select: "id,user_id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,status,created_at,photo_paths",
     order: "created_at.desc,id.desc", limit: "50", offset,
   }))).json();
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin review list");
-  return json(200, { reviews: rows, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+  const reviewsWithPhotos = await Promise.all(rows.map(async review => {
+    if (!isRecord(review)) throw new ApiError(502, "Invalid admin review list");
+    const { photo_paths, ...details } = review;
+    return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
+  }));
+  return json(200, { reviews: reviewsWithPhotos, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
 }
 
 async function replyAction(adminId: string, action: string, id: string, fields: Record<string, unknown> = {}) {

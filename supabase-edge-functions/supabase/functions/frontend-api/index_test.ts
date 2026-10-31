@@ -36,7 +36,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
         assert(url.pathname === "/rest/v1/reviews", "Expected reviews database");
         assert(url.searchParams.get("status") === "eq.approved" && url.searchParams.get("limit") === "50", "Preserve moderation and result limit");
         assert(new Headers(init?.headers).get("apikey") === values.SUPABASE_SERVICE_ROLE_KEY, "Service role stays in backend");
-        return Response.json([{ id: "a", rating: 4 }, { id: "b", rating: 2 }]);
+        return Response.json([{ id: "a", rating: 4, photo_paths: [] }, { id: "b", rating: 2, photo_paths: [] }]);
       };
       const response = await api.fetch(request("/reviews?osm_type=node&osm_id=123"));
       const result = await response.json();

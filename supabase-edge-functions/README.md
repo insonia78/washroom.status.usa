@@ -12,8 +12,11 @@ sessions. Public approved review reads and place searches remain unsigned.
 Deploy the updated `frontend-api` with the frontend's email magic-link forms;
 enable the Email provider, configure SMTP and allow application callback URLs
 using [the frontend setup](../washroom-status-frontend/README.md#email-magic-link-sign-in-for-contributions).
-No additional migration is needed for contribution sign-in itself. Old anonymous
-review rows remain intact. Private admin email replies require the migration below.
+Old anonymous review rows remain intact. Apply
+`20261031020000_review_photos.sql` to add the private `review-photos` bucket and
+review photo paths. Reviews accept up to three JPEG, PNG, or WebP images, each
+up to 5 MB; only approved-review endpoints and authorized administration return
+short-lived signed photo URLs. Private admin email replies require the migration below.
 
 ## Private admin review replies
 

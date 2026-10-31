@@ -1,6 +1,7 @@
 export type PendingReview={
   id:string;osm_type:string;osm_id:number;rating:number;availability:string|null;
-  cleanliness_status:string|null;issues:string[];comment:string;created_at:string;status:'pending';
+  cleanliness_status:string|null;issues:string[];comment:string;created_at:string;
+  photo_urls:string[];status:'pending';
 };
 
 export type PendingToilet={
@@ -28,5 +29,6 @@ export function isPendingReview(value:unknown):value is PendingReview{
     (review.availability===null||typeof review.availability==='string')&&
     (review.cleanliness_status===null||typeof review.cleanliness_status==='string')&&
     Array.isArray(review.issues)&&review.issues.every(issue=>typeof issue==='string')&&
-    typeof review.comment==='string'&&typeof review.created_at==='string'&&Number.isFinite(Date.parse(review.created_at))&&review.status==='pending';
+    typeof review.comment==='string'&&typeof review.created_at==='string'&&Number.isFinite(Date.parse(review.created_at))&&
+    Array.isArray(review.photo_urls)&&review.photo_urls.every(url=>typeof url==='string')&&review.status==='pending';
 }

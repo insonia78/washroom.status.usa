@@ -12,7 +12,17 @@ const category=restroom.category==='fuel'?'Gas station':restroom.category==='sup
 if(!category)return 'Mapped restroom';
 return `${category} · ${restroom.toilets==='yes'?'Toilets listed':restroom.toilets==='no'?'No toilets listed':'Restroom availability unconfirmed'}`;
 }
-type Review={id:string;rating:number;availability?:string|null;cleanliness_status?:string|null;issues:string[];comment:string;created_at:string};
+type Review={id:string;rating:number;availability?:string|null;cleanliness_status?:string|null;issues:string[];comment:string;created_at:string;photo_urls:string[]};
+function isReview(value:unknown):value is Review{
+  if(typeof value!=='object'||value===null)return false;
+  const review=value as Record<string,unknown>;
+  return typeof review.id==='string'&&typeof review.rating==='number'&&Number.isInteger(review.rating)&&review.rating>=1&&review.rating<=5&&
+    (review.availability===null||typeof review.availability==='string')&&
+    (review.cleanliness_status===null||typeof review.cleanliness_status==='string')&&
+    Array.isArray(review.issues)&&review.issues.every((issue:unknown)=>typeof issue==='string')&&
+    typeof review.comment==='string'&&typeof review.created_at==='string'&&Number.isFinite(Date.parse(review.created_at))&&
+    Array.isArray(review.photo_urls)&&review.photo_urls.every((url:unknown)=>typeof url==='string');
+}
 export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom:Restroom;onClose:()=>void;onAddReview:()=>void}){
   const [reviews,setReviews]=useState<Review[]>([]);
   const [average,setAverage]=useState<number|null>(null);
@@ -30,7 +40,7 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
     fetch(`/api/reviews?osm_type=${restroom.osm_type}&osm_id=${restroom.id}`).then(async response=>{
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'Could not load reviews');
-        if(!Array.isArray(data.reviews))throw new Error('Invalid reviews response');
+        if(!Array.isArray(data.reviews)||!data.reviews.every(isReview))throw new Error('Invalid reviews response');
         if(!Number.isSafeInteger(data.review_count)||data.review_count<0||
           (data.review_count===0?data.average!==null:typeof data.average!=='number'||!Number.isFinite(data.average)||data.average<1||data.average>5))throw new Error('Invalid review grade response.');
         return data;
@@ -61,10 +71,12 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
         <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{isRefugeRestroom?'Facilities from Refuge Restrooms':'Facilities from OSM'}</p><p className="font-bold">{restroom.wheelchair==='yes'?'Wheelchair access listed':'Accessibility unknown'}</p><p className="text-xs text-slate-500">{restroom.fee==='no'?'Free access listed':'Fee unknown'} · {restroom.opening_hours||'Hours unknown'}</p></div>
       </div>
       <p className="mt-3 flex items-center gap-2 text-xs text-slate-600"><ShieldCheck size={16}/> Ratings reflect approved community reports, not independent inspections. New reports may take time to appear.</p>
-      <div className="mt-6"><h3 className="text-lg font-bold">Community reviews</h3>{message?<p role="alert" className="mt-2 text-sm text-amber-800">{message}</p>:loading?<p className="mt-2 text-sm">Loading reviews…</p>:reviews.length===0?<p className="mt-2 text-sm text-slate-500">No approved reviews yet. Be the first to submit one.</p>:<div className="mt-3 space-y-3">{reviews.map(review=><article key={review.id} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between gap-2"><strong>{'★'.repeat(review.rating)}{'☆'.repeat(5-review.rating)}</strong><time className="text-xs text-slate-500" dateTime={review.created_at}>{new Date(review.created_at).toLocaleDateString('en-US')}</time></div>
+      <div className="mt-6"><h3 className="text-lg font-bold">Community reviews</h3>{message?<p role="alert" className="mt-2 text-sm text-amber-800">{message}</p>:loading?<p className="mt-2 text-sm">Loading reviews…</p>:reviews.length===0?<p className="mt-2 text-sm text-slate-500">No approved reviews yet. Be the first to submit one.</p>:<div className="mt-3 space-y-3">{reviews.map(review=><article key={review.id} className="rounded-xl border border-slate-200 p-3"><div className="flex justify-between gap-2"><strong>{'★'.repeat(review.rating)}{'☆'.repeat(5-review.rating)}</strong><time className="text-xs text-slate-500" dateTime={review.created_at}>{new Date(review.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></div>
         {review.availability&&<p className="mt-2 text-xs capitalize text-slate-500">Availability reported at visit: {review.availability.replaceAll('_',' ')}</p>}
         {review.cleanliness_status&&<p className="mt-1 text-xs capitalize text-slate-500">Clean or dirty status: {review.cleanliness_status.replaceAll('_',' ')}</p>}
-        {review.comment&&<p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.comment}</p>}{review.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {review.issues.join(', ').replaceAll('_',' ')}</p>}<p className="mt-2 break-all text-xs text-slate-500">Review ID: {review.id}</p></article>)}</div>}</div>
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.comment||'No written comment.'}</p>{review.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {review.issues.join(', ').replaceAll('_',' ')}</p>}
+        {review.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{review.photo_urls.map((url,index)=><a key={`${review.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
+        <p className="mt-2 break-all text-xs text-slate-500">Review ID: {review.id}</p></article>)}</div>}</div>
     <OwnerResponses key={`${restroom.osm_type}-${restroom.id}`} restroom={restroom}/>
   </section>;
 }

@@ -129,9 +129,16 @@ export default function AdminReviewReplies({session}:{session:Session}){
       {!rows.length&&<p className="mt-3 text-sm">No reviews found.</p>}
       <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
         <h3 className="font-bold">{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status}</h3>
+        <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>
         <p className="mt-1 break-all text-xs">Review ID: {row.id}</p>
         <p className="mt-1 break-all text-xs">User ID: {row.user_id??'No account (anonymous or deleted)'}</p>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <div><dt className="font-semibold">Availability at visit</dt><dd className="capitalize">{row.availability?.replaceAll('_',' ')||'Not provided (older review)'}</dd></div>
+          <div><dt className="font-semibold">Clean or Dirty Status</dt><dd className="capitalize">{row.cleanliness_status?.replaceAll('_',' ')||'Not provided (older review)'}</dd></div>
+          <div><dt className="font-semibold">Reported issues</dt><dd>{row.issues.length?row.issues.join(', ').replaceAll('_',' '):'None reported'}</dd></div>
+        </dl>
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.comment||'No written comment.'}</p>
+        {row.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
         <button type="button" className="pill mt-3" onClick={()=>setSelected(row)}>Open private replies</button>
       </article>)}</div>
       <div className="mt-3 flex gap-2">

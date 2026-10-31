@@ -5,7 +5,7 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("signed-in reviews validate radio questions and expose only approved latest comments", async (t) => {
+Deno.test("signed-in reviews validate radio questions and expose complete approved reviews", async (t) => {
   const values = { GATEWAY_INTERNAL_SECRET: "test-secret", SUPABASE_URL: "https://project.example", SUPABASE_SERVICE_ROLE_KEY: "test-service", SUPABASE_ANON_KEY: "test-anon" };
   const previous = new Map(Object.keys(values).map(key => [key, Deno.env.get(key)]));
   const originalFetch = globalThis.fetch;
@@ -50,6 +50,30 @@ Deno.test("signed-in reviews validate radio questions and expose only approved l
       };
       const response = await api.fetch(request("", { ...review, status: "approved", user_id: "forged" }));
       assert(response.status === 201 && calls === 3, "Verify authentication before inserting");
+    });
+    await t.step("photo submissions upload private images and save at most three storage paths", async () => {
+      const form = new FormData();
+      form.set("review", JSON.stringify(review));
+      form.append("photos", new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "restroom.png", { type: "image/png" }));
+      globalThis.fetch = async (input, init) => {
+        const url = new URL(String(input));
+        if (url.pathname === "/auth/v1/user") return Response.json({ id: "verified-user", email_confirmed_at: "2026-01-01" });
+        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 456 }]);
+        if (url.pathname.startsWith("/storage/v1/object/review-photos/")) {
+          assert(init?.method === "POST" && new Headers(init.headers).get("content-type") === "image/png", "Upload image to the private bucket");
+          return Response.json({ Key: "stored" });
+        }
+        assert(url.pathname === "/rest/v1/reviews" && init?.method === "POST", "Save review after storing its photo");
+        const payload = JSON.parse(String(init.body));
+        assert(payload.photo_paths.length === 1 && /^verified-user\/[0-9a-f-]+\.png$/i.test(payload.photo_paths[0]), "Save only generated storage paths");
+        return new Response(null, { status: 201 });
+      };
+      const response = await api.fetch(new Request("https://project.example/frontend-api/reviews", {
+        method: "POST",
+        headers: { ...buildGatewayHeaders(values.GATEWAY_INTERNAL_SECRET), Authorization: "Bearer user-token" },
+        body: form,
+      }));
+      assert(response.status === 201, "Accept valid photo review");
     });
     await t.step("all three questions and permitted radio values are required", async () => {
       globalThis.fetch = async () => { throw new Error("Invalid payload must not reach upstream"); };
@@ -111,7 +135,7 @@ Deno.test("signed-in reviews validate radio questions and expose only approved l
             }
             assert(url.searchParams.get("osm_type") === `eq.${type}` && url.searchParams.get("osm_id") === "eq.456", "Keep feed isolated by source");
             assert(url.searchParams.get("status") === "eq.approved", "Only approved reviews");
-            return Response.json([{ id: type, rating: 4, comment: type }]);
+            return Response.json([{ id: type, rating: 4, comment: type, photo_paths: [] }]);
           };
           const response = await api.fetch(request(`?osm_type=${type}&osm_id=456${suffix}`));
           const body = await response.json();
@@ -129,7 +153,7 @@ Deno.test("signed-in reviews validate radio questions and expose only approved l
       };
       assert((await api.fetch(request("", { ...review, osm_type: "refuge" }))).status === 422, "Reject source collisions");
     });
-    await t.step("latest comment query sorts by timestamp and excludes empty and unapproved comments", async () => {
+    await t.step("latest review includes radio answers when there is no written comment", async () => {
       globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
         if (url.pathname === "/rest/v1/rpc/approved_review_summary") {
@@ -139,18 +163,20 @@ Deno.test("signed-in reviews validate radio questions and expose only approved l
         }
         assert(url.searchParams.get("osm_type") === "eq.way" && url.searchParams.get("osm_id") === "eq.456", "Keep restroom identity");
         assert(url.searchParams.get("status") === "eq.approved", "Never expose pending comments");
-        assert(url.searchParams.get("limit") === "1" && url.searchParams.get("comment") === "neq.", "Only latest non-empty comment");
+        assert(url.searchParams.get("limit") === "1" && !url.searchParams.has("comment"), "Select the latest review even without text");
         assert(url.searchParams.get("order") === "created_at.desc,id.desc", "Newest first, stable tie-breaker");
-        return Response.json([{ id: "latest", rating: 4, comment: "Clean today", created_at: "2026-10-26T18:00:00Z" }]);
+        return Response.json([{ id: "latest", rating: 4, availability: "open", cleanliness_status: "clean", issues: [], comment: "", created_at: "2026-10-26T18:00:00Z", photo_paths: [] }]);
       };
       const response = await api.fetch(request("?osm_type=way&osm_id=456&latest=1"));
       const result = await response.json();
-      assert(response.status === 200 && result.reviews[0].id === "latest" && result.limited_to === 1, "Return newest comment");
-      assert(result.review_count === 102 && result.average === 3.5, "Grade uses all approved reviews, not only the newest comment or latest fifty");
+      assert(response.status === 200 && result.reviews[0].id === "latest" && result.limited_to === 1, "Return newest review");
+      assert(result.reviews[0].comment === "" && result.reviews[0].availability === "open" && result.reviews[0].cleanliness_status === "clean",
+        "Preserve structured answers without requiring a comment");
+      assert(result.review_count === 102 && result.average === 3.5, "Grade uses all approved reviews, not only the newest review or latest fifty");
       globalThis.fetch = async input => new URL(String(input)).pathname.includes("/rpc/") ?
         Response.json([{ review_count: 0, average: null }]) : Response.json([]);
       const empty = await api.fetch(request("?osm_type=way&osm_id=456&latest=1"));
-      assert((await empty.json()).reviews.length === 0, "No comments stays an empty result");
+      assert((await empty.json()).reviews.length === 0, "No reviews stays an empty result");
       assert((await api.fetch(request("?osm_type=way&osm_id=456&latest=bad"))).status === 400, "Reject invalid latest query");
     });
     await t.step("invalid grade summaries remain explicit errors", async () => {
