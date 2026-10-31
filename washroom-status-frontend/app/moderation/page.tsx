@@ -4,6 +4,7 @@ import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
 import {isPendingReview,type PendingReview} from '@/lib/moderation';
 import ToiletModerationQueue from '@/components/ToiletModerationQueue';
+import OwnerReplyQueue from '@/components/OwnerReplyQueue';
 
 export default function ModerationPage(){
   const supabase=browserSupabase();
@@ -114,6 +115,7 @@ export default function ModerationPage(){
           <button type="button" onClick={signOut} disabled={busy} className="pill disabled:opacity-50">Sign out</button>
         </div>
         <ToiletModerationQueue session={session} refresh={refresh}/>
+        <OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="moderate"/>
         <h2 className="mt-6 text-xl font-bold">Pending reviews</h2>
         <p className="mt-1 text-xs text-slate-500">Oldest first, up to 50 at a time. Refresh after moderation to load the next pending reviews.</p>
         {loading?<p role="status" className="mt-4">Loading pending reviews...</p>:ready&&reviews.length===0?<p className="panel mt-4">No pending reviews in this queue.</p>:null}

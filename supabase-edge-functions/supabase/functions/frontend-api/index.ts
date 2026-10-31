@@ -150,6 +150,12 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       console.error("frontend-api toilet publish failed", { status: response.status });
       throw new ApiError(503, "Toilet approval is unavailable. Refresh and try again.");
     }
+    if (table === "rpc/admin_create_owner_invite" || table === "rpc/owner_submit_reply" || table === "rpc/owner_reply_decide") {
+      if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Access denied for this action");
+      if (isRecord(error) && error.code === "22023" && typeof error.message === "string") throw new ApiError(422, error.message);
+      console.error("frontend-api owner reply failed", { table, status: response.status });
+      throw new ApiError(503, "Owner replies are temporarily unavailable");
+    }
     if (table === "toilet_submissions") {
       if (isRecord(error) && error.code === "P0001") {
         throw new ApiError(429, "You have reached the limit of 10 toilet submissions per UTC day. Try again after midnight UTC.");
@@ -366,6 +372,10 @@ async function auth(req: Request, path: string): Promise<Response> {
 }
 
 async function requireAuthenticatedUser(req: Request): Promise<string> {
+  return (await requireVerifiedAccount(req)).id;
+}
+
+async function requireVerifiedAccount(req: Request): Promise<{ id: string; email: string }> {
   const authorization = req.headers.get("authorization");
   if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) throw new ApiError(401, "Sign in to continue");
   const response = await upstream(new URL("/auth/v1/user", config("SUPABASE_URL")), {
@@ -377,7 +387,7 @@ async function requireAuthenticatedUser(req: Request): Promise<string> {
   }
   const user: unknown = await response.json();
   if (!isRecord(user) || typeof user.id !== "string" || !user.email_confirmed_at || user.is_anonymous === true) throw new ApiError(403, "A verified account is required");
-  return user.id;
+    return { id: user.id, email: typeof user.email === "string" ? user.email.toLowerCase() : "" };
 }
 
 async function requireAllowlistedUser(req: Request, role: "moderator" | "admin"): Promise<string> {
@@ -580,6 +590,133 @@ async function adminToilets(req: Request): Promise<Response> {
     return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
   }));
   return json(200, { toilets, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+}
+
+async function readJson(req: Request): Promise<Record<string, unknown>> {
+  let body: unknown;
+  try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+  if (!isRecord(body)) throw new ApiError(400, "Invalid request");
+  return body;
+}
+
+async function rpcRows(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>[]> {
+  const rows: unknown = await (await database(`rpc/${name}`, new URLSearchParams(), {
+    method: "POST", body: JSON.stringify(args),
+  })).json();
+  if (!Array.isArray(rows) || !rows.every(isRecord)) throw new ApiError(502, "Invalid owner reply response");
+  return rows;
+}
+
+const ownerReplyColumns = "id,invite_id,review_id,osm_type,osm_id,owner_email,business_name,body,status,created_at,moderated_at,published_at";
+
+// Admin: invite a business owner to answer one approved review through a magic link.
+async function adminOwnerInvites(req: Request): Promise<Response> {
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const adminId = await requireAllowlistedUser(req, "admin");
+  if (req.method === "GET") {
+    const rows: unknown = await (await database("owner_invites", new URLSearchParams({
+      select: "id,email,review_id,created_at", order: "created_at.desc", limit: "50",
+    }))).json();
+    if (!Array.isArray(rows)) throw new ApiError(502, "Invalid invite list");
+    return json(200, { invites: rows });
+  }
+  const body = await readJson(req);
+  if (typeof body.email !== "string" || typeof body.review_id !== "string" || !uuidPattern.test(body.review_id)) {
+    throw new ApiError(400, "Provide the owner email and an approved review");
+  }
+  let redirectTo = "";
+  if (typeof body.redirect_to === "string") {
+    try {
+      const target = new URL(body.redirect_to);
+      if (["http:", "https:"].includes(target.protocol) && target.pathname === "/owner") redirectTo = target.toString();
+    } catch { /* ignored */ }
+  }
+  const rows = await rpcRows("admin_create_owner_invite", {
+    p_admin_id: adminId, p_email: body.email.trim(), p_review_id: body.review_id,
+  });
+  if (rows.length !== 1) throw new ApiError(502, "Invalid invite response");
+  const otpUrl = new URL("/auth/v1/otp", config("SUPABASE_URL"));
+  if (redirectTo) otpUrl.searchParams.set("redirect_to", redirectTo);
+  const sent = await upstream(otpUrl, {
+    method: "POST",
+    headers: { apikey: config("SUPABASE_ANON_KEY"), "Content-Type": "application/json" },
+    body: JSON.stringify({ email: String(rows[0].email), create_user: true }),
+  });
+  if (!sent.ok) {
+    console.error("frontend-api owner magic link failed", { status: sent.status });
+    throw new ApiError(502, "Invite saved, but the magic link could not be sent. Check Supabase Auth email settings and send it again.");
+  }
+  return json(200, { invite: rows[0], magic_link_sent: true });
+}
+
+// Owner: list invited reviews with the owner's own replies.
+async function ownerReviews(req: Request): Promise<Response> {
+  if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
+  const account = await requireVerifiedAccount(req);
+  if (!account.email) throw new ApiError(403, "A verified email is required");
+  const invites: unknown = await (await database("owner_invites", new URLSearchParams({
+    select: "id,review_id", email: `eq.${account.email}`, order: "created_at.desc", limit: "50",
+  }))).json();
+  if (!Array.isArray(invites) || !invites.every(isRecord)) throw new ApiError(502, "Invalid invite list");
+  if (!invites.length) return json(200, { items: [] });
+  const ids = invites.map(i => String(i.review_id)).filter(id => uuidPattern.test(id));
+  const reviews: unknown = await (await database("reviews", new URLSearchParams({
+    select: "id,osm_type,osm_id,restroom_name,rating,comment,status,created_at", id: `in.(${ids.join(",")})`, status: "eq.approved",
+  }))).json();
+  const replies: unknown = await (await database("owner_replies", new URLSearchParams({
+    select: ownerReplyColumns, owner_email: `eq.${account.email}`, order: "created_at.desc",
+  }))).json();
+  if (!Array.isArray(reviews) || !Array.isArray(replies)) throw new ApiError(502, "Invalid owner review list");
+  const named = await withRestroomNames(reviews.filter(isRecord));
+  const items = invites.flatMap(invite => {
+    const review = named.find(r => r.id === invite.review_id);
+    if (!review) return [];
+    return [{ invite_id: invite.id, review, replies: replies.filter(r => isRecord(r) && r.invite_id === invite.id) }];
+  });
+  return json(200, { items });
+}
+
+// Owner: submit a reply; it enters moderation (step 1).
+async function ownerReplies(req: Request): Promise<Response> {
+  if (req.method !== "POST") throw new ApiError(405, "Method not allowed");
+  const account = await requireVerifiedAccount(req);
+  const body = await readJson(req);
+  if (typeof body.invite_id !== "string" || !uuidPattern.test(body.invite_id) ||
+    typeof body.business_name !== "string" || typeof body.body !== "string") throw new ApiError(400, "Invalid owner reply");
+  const rows = await rpcRows("owner_submit_reply", {
+    p_user_id: account.id, p_email: account.email, p_invite_id: body.invite_id,
+    p_business_name: body.business_name, p_body: body.body,
+  });
+  if (rows.length !== 1) throw new ApiError(502, "Invalid owner reply response");
+  return json(201, { reply: rows[0] });
+}
+
+// Step 1 (moderator) and step 2 (administrator) share the same list and decision logic.
+async function ownerReplyStage(req: Request, stage: "moderate" | "publish"): Promise<Response> {
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const actorId = await requireAllowlistedUser(req, stage === "moderate" ? "moderator" : "admin");
+  if (req.method === "POST") {
+    const body = await readJson(req);
+    if (typeof body.reply_id !== "string" || !uuidPattern.test(body.reply_id) || typeof body.approve !== "boolean") {
+      throw new ApiError(400, "Invalid owner reply decision");
+    }
+    const rows = await rpcRows("owner_reply_decide", {
+      p_actor_id: actorId, p_id: body.reply_id, p_stage: stage, p_approve: body.approve,
+    });
+    if (!rows.length) throw new ApiError(409, "This reply is no longer waiting at this step. Refresh.");
+    return json(200, { reply: rows[0] });
+  }
+  const rows: unknown = await (await database("owner_replies", new URLSearchParams({
+    select: ownerReplyColumns, status: stage === "moderate" ? "eq.pending" : "eq.moderated",
+    order: "created_at.asc", limit: "50",
+  }))).json();
+  if (!Array.isArray(rows) || !rows.every(isRecord)) throw new ApiError(502, "Invalid owner reply list");
+  const reviewIds = rows.map(r => String(r.review_id)).filter(id => uuidPattern.test(id));
+  const reviews: unknown = reviewIds.length ? await (await database("reviews", new URLSearchParams({
+    select: "id,osm_type,osm_id,restroom_name,comment", id: `in.(${reviewIds.join(",")})`,
+  }))).json() : [];
+  const named = Array.isArray(reviews) ? await withRestroomNames(reviews.filter(isRecord)) : [];
+  return json(200, { replies: rows.map(r => ({ ...r, review: named.find(v => v.id === r.review_id) ?? null })) });
 }
 
 async function replyAction(adminId: string, action: string, id: string, fields: Record<string, unknown> = {}) {
@@ -794,6 +931,11 @@ export default {
       if (path === "/admin/reviews") return await adminReviews(req);
       if (path === "/admin/toilets") return await adminToilets(req);
       if (path === "/admin/review-replies") return await adminReviewReplies(req);
+      if (path === "/admin/owner-invites") return await adminOwnerInvites(req);
+      if (path === "/admin/owner-replies") return await ownerReplyStage(req, "publish");
+      if (path === "/moderation/owner-replies") return await ownerReplyStage(req, "moderate");
+      if (path === "/owner/reviews") return await ownerReviews(req);
+      if (path === "/owner/replies") return await ownerReplies(req);
       if (path === "/owner-responses") return await ownerResponses(req, false);
       if (path.startsWith("/auth/")) return await auth(req, path);
       if (req.method !== "GET") throw new ApiError(405, "Method not allowed");

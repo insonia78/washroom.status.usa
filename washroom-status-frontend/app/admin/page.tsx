@@ -5,6 +5,8 @@ import {browserSupabase} from '@/lib/supabase';
 import {isAdminOwnerResponse,isEvidenceUrl,type AdminOwnerResponse} from '@/lib/owner-responses';
 import AdminReviewReplies from '@/components/AdminReviewReplies';
 import AdminToilets from '@/components/AdminToilets';
+import AdminOwnerInvites from '@/components/AdminOwnerInvites';
+import OwnerReplyQueue from '@/components/OwnerReplyQueue';
 
 type Fields={osm_type:string;osm_id:string;review_id:string;business_name:string;body:string;completed_on:string;evidence_url:string;verification_note:string};
 const emptyFields:Fields={osm_type:'node',osm_id:'',review_id:'',business_name:'',body:'',completed_on:'',evidence_url:'',verification_note:''};
@@ -182,6 +184,8 @@ export default function AdminPage(){
       <AdminReviewReplies key={`replies:${session.access_token}`} session={session}/>
       <AdminToilets key={`toilets:${session.access_token}`} session={session}/>
       <OwnerResponseDashboard key={session.access_token} session={session}/>
+      <AdminOwnerInvites key={`invites:${session.access_token}`} session={session}/>
+      <OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="publish"/>
     </>:<form onSubmit={signIn} className="panel mt-5 max-w-md">
       <h2 className="text-xl font-bold">Administrator sign-in</h2>
       <label className="mt-4 block text-sm font-semibold">Email<input required type="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
