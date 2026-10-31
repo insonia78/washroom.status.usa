@@ -141,8 +141,12 @@ export default function AdminReviewReplies({session}:{session:Session}){
     <p className="mt-2 text-sm">Administrator access only. Reviewer identities are shown as user IDs, never email addresses. Private email replies are separate from public owner responses.</p>
     <button type="button" className="pill mt-3" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reviews</button>
     <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowArchived(value=>!value);setOffset(0);setSelected(null)}}>{showArchived?'Show active reviews':'Show archived reviews'}</button>
-    <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowPending(value=>!value);setOffset(0);setSelected(null)}}>{showPending?'Show moderated reviews':'Show reviews not moderated yet'}</button>
-    {showPending&&<p className="mt-2 text-sm text-amber-900">These reviews have not been moderated yet. A moderator must approve or reject them before they appear in the main administrator list.</p>}
+    <div role="tablist" aria-label="Review workflow steps" className="mt-3 flex flex-wrap gap-2">
+      <button type="button" role="tab" aria-selected={showPending} className={`pill ${showPending?'font-bold underline':''}`} disabled={loading} onClick={()=>{setShowPending(true);setOffset(0);setSelected(null)}}>Step 1: Under review and moderation</button>
+      <button type="button" role="tab" aria-selected={!showPending} className={`pill ${!showPending?'font-bold underline':''}`} disabled={loading} onClick={()=>{setShowPending(false);setOffset(0);setSelected(null)}}>Step 2: Administration - waiting approval and review</button>
+    </div>
+    {showPending&&<p className="mt-2 text-sm text-amber-900">Step 1: these reviews are with the moderators and have not been moderated yet. Once a moderator approves or rejects a review it moves to Step 2.</p>}
+    {!showPending&&<p className="mt-2 text-sm">Step 2: moderated reviews are in the administration bucket. Review, reply to, or archive them here.</p>}
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {loading?<p role="status" className="mt-3">Checking admin access and loading reviews...</p>:!error&&<>
       {!rows.length&&<p className="mt-3 text-sm">No reviews found.</p>}

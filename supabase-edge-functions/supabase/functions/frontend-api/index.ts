@@ -145,6 +145,11 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       console.error("frontend-api toilet archive failed", { status: response.status });
       throw new ApiError(503, "Toilet archive is unavailable. Refresh and try again.");
     }
+    if (table === "rpc/admin_publish_toilet") {
+      if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Administrator access required");
+      console.error("frontend-api toilet publish failed", { status: response.status });
+      throw new ApiError(503, "Toilet approval is unavailable. Refresh and try again.");
+    }
     if (table === "toilet_submissions") {
       if (isRecord(error) && error.code === "P0001") {
         throw new ApiError(429, "You have reached the limit of 10 toilet submissions per UTC day. Try again after midnight UTC.");
@@ -504,6 +509,20 @@ async function adminToilets(req: Request): Promise<Response> {
   if (req.method === "POST") {
     let body: unknown;
     try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+    if (isRecord(body) && typeof body.toilet_id === "string" && uuidPattern.test(body.toilet_id) &&
+      typeof body.publish === "boolean") {
+      const published: unknown = await (await database("rpc/admin_publish_toilet", new URLSearchParams(), {
+        method: "POST",
+        body: JSON.stringify({ p_admin_id: adminId, p_toilet_id: body.toilet_id, p_publish: body.publish }),
+      })).json();
+      if (!Array.isArray(published) || published.length > 1) throw new ApiError(502, "Invalid approval response");
+      if (!published.length) throw new ApiError(409, "Only moderator-approved toilets can be given final approval");
+      const result: unknown = published[0];
+      if (!isRecord(result) || result.id !== body.toilet_id || (result.published_at === null) === body.publish) {
+        throw new ApiError(502, "Invalid approval response");
+      }
+      return json(200, { toilet: result });
+    }
     if (!isRecord(body) || typeof body.toilet_id !== "string" || !uuidPattern.test(body.toilet_id) ||
       typeof body.archived !== "boolean") throw new ApiError(400, "Invalid archive request");
     const rows: unknown = await (await database("rpc/admin_archive_toilet", new URLSearchParams(), {
@@ -526,7 +545,7 @@ async function adminToilets(req: Request): Promise<Response> {
   const moderation = query.get("moderation") ?? "moderated";
   if (moderation !== "moderated" && moderation !== "pending") throw new ApiError(400, "Invalid moderation filter");
   const rows: unknown = await (await database("toilet_submissions", new URLSearchParams({
-    select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,archived_at,photo_paths",
+    select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,archived_at,published_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
     status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
     order: "created_at.desc,id.desc", limit: "50", offset,
