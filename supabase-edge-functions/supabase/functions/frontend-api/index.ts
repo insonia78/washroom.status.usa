@@ -422,6 +422,27 @@ async function moderateToilets(req: Request): Promise<Response> {
   return json(200, { submission: rows[0] });
 }
 
+// Adds restroom_name to reviews from the restrooms table; Refuge listings have no local name.
+async function withRestroomNames(rows: unknown[]): Promise<Record<string, unknown>[]> {
+  const ids = [...new Set(rows.flatMap(row => isRecord(row) && row.osm_type !== "refuge" &&
+    Number.isSafeInteger(row.osm_id) ? [Number(row.osm_id)] : []))];
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const found: unknown = await (await database("restrooms", new URLSearchParams({
+      select: "osm_type,osm_id,name", osm_id: `in.(${ids.join(",")})`, limit: "1000",
+    }))).json();
+    if (Array.isArray(found)) {
+      for (const item of found) {
+        if (isRecord(item) && typeof item.name === "string" && item.name) names.set(`${item.osm_type}:${item.osm_id}`, item.name);
+      }
+    }
+  }
+  return rows.map(row => {
+    const review = row as Record<string, unknown>;
+    return { ...review, restroom_name: names.get(`${review.osm_type}:${review.osm_id}`) ?? null };
+  });
+}
+
 async function moderation(req: Request): Promise<Response> {
   if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
   const userId = await requireAllowlistedUser(req, "moderator");
@@ -436,7 +457,7 @@ async function moderation(req: Request): Promise<Response> {
       const { photo_paths, ...details } = review;
       return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
     }));
-    return json(200, { reviews: reviewsWithPhotos, limited_to: 50 });
+    return json(200, { reviews: await withRestroomNames(reviewsWithPhotos), limited_to: 50 });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
@@ -500,7 +521,7 @@ async function adminReviews(req: Request): Promise<Response> {
     const { photo_paths, ...details } = review;
     return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
   }));
-  return json(200, { reviews: reviewsWithPhotos, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+  return json(200, { reviews: await withRestroomNames(reviewsWithPhotos), next_offset: rows.length === 50 ? Number(offset) + 50 : null });
 }
 
 async function adminToilets(req: Request): Promise<Response> {

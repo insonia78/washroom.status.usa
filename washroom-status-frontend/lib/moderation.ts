@@ -1,7 +1,7 @@
 export type PendingReview={
   id:string;osm_type:string;osm_id:number;rating:number;availability:string|null;
   cleanliness_status:string|null;issues:string[];comment:string;created_at:string;
-  photo_urls:string[];status:'pending';
+  photo_urls:string[];status:'pending';restroom_name?:string|null;
 };
 
 export type PendingToilet={

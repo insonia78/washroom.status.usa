@@ -14,7 +14,7 @@ const isAdminToilet=(value:unknown):value is AdminToilet=>record(value)&&typeof 
   Array.isArray(value.photo_urls)&&value.photo_urls.every(url=>typeof url==='string')&&
   typeof value.status==='string'&&['pending','approved','rejected'].includes(value.status)&&
   typeof value.created_at==='string'&&(value.archived_at===null||typeof value.archived_at==='string')&&
-  (value.published_at===null||typeof value.published_at==='string');
+  (value.published_at===undefined||value.published_at===null||typeof value.published_at==='string');
 
 export default function AdminToilets({session}:{session:Session}){
   const [rows,setRows]=useState<AdminToilet[]>([]);
@@ -59,7 +59,7 @@ export default function AdminToilets({session}:{session:Session}){
       if(!response.ok)throw new Error(data.error||'Could not load added toilets.');
       if(!Array.isArray(data.toilets)||!data.toilets.every(isAdminToilet)||
         (data.next_offset!==null&&data.next_offset!==offset+50))throw new Error('Invalid admin toilet list.');
-      if(!controller.signal.aborted){setRows(data.toilets);setNext(data.next_offset)}
+      if(!controller.signal.aborted){setRows(data.toilets.map((row:AdminToilet)=>({...row,published_at:row.published_at??null})));setNext(data.next_offset)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load added toilets.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();

@@ -151,7 +151,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
     {loading?<p role="status" className="mt-3">Checking admin access and loading reviews...</p>:!error&&<>
       {!rows.length&&<p className="mt-3 text-sm">No reviews found.</p>}
       <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
-        <h3 className="font-bold">{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status==='pending'?'Not moderated yet':row.status}</h3>
+        <h3 className="font-bold">{row.restroom_name?`${row.restroom_name} - `:''}{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status==='pending'?'Not moderated yet':row.status}</h3>
         <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>
         <p className="mt-1 break-all text-xs">Review ID: {row.id}</p>
         <p className="mt-1 break-all text-xs">User ID: {row.user_id??'No account (anonymous or deleted)'}</p>

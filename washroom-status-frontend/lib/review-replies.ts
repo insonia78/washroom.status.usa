@@ -1,9 +1,9 @@
 export type AdminReview={
   id:string;user_id:string|null;osm_type:string;osm_id:number;rating:number;
   availability:string|null;cleanliness_status:string|null;issues:string[];comment:string;
-  photo_urls:string[];status:'pending'|'approved'|'rejected';created_at:string;archived_at:string|null;
-};
-export type ReviewReply={
+  photo_urls:string[];  status:'pending'|'approved'|'rejected';created_at:string;archived_at:string|null;restroom_name?:string|null;
+  };
+  export type ReviewReply={
   id:string;review_id:string;recipient_user_id:string|null;body:string;
   status:'draft'|'sending'|'sent'|'failed'|'unknown';created_at:string;
   first_attempt_at:string|null;last_attempt_at:string|null;sent_at:string|null;

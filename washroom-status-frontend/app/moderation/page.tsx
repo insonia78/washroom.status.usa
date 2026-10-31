@@ -118,7 +118,7 @@ export default function ModerationPage(){
         <p className="mt-1 text-xs text-slate-500">Oldest first, up to 50 at a time. Refresh after moderation to load the next pending reviews.</p>
         {loading?<p role="status" className="mt-4">Loading pending reviews...</p>:ready&&reviews.length===0?<p className="panel mt-4">No pending reviews in this queue.</p>:null}
         <div className="mt-4 space-y-4">{reviews.map(review=><article key={review.id} className="panel">
-          <h3 className="font-bold">{review.osm_type==='refuge'?'Refuge Restrooms':`OpenStreetMap ${review.osm_type}`} #{review.osm_id}</h3>
+          <h3 className="font-bold">{review.restroom_name?`${review.restroom_name} - `:''}{review.osm_type==='refuge'?'Refuge Restrooms':`OpenStreetMap ${review.osm_type}`} #{review.osm_id}</h3>
           <a href={review.osm_type==='refuge'?`https://www.refugerestrooms.org/restrooms/${review.osm_id}`:`https://www.openstreetmap.org/${review.osm_type}/${review.osm_id}`} target="_blank" rel="noopener noreferrer" className="text-sm text-teal-800 underline">View restroom on {review.osm_type==='refuge'?'Refuge Restrooms':'OpenStreetMap'}</a>
           <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={review.created_at}>{new Date(review.created_at).toLocaleString('en-US')}</time> · Review {review.id}</p>
           <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
