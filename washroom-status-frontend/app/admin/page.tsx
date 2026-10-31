@@ -173,7 +173,7 @@ export default function AdminPage(){
     }catch(error){setError(error instanceof Error?error.message:'Could not sign out.')}
     finally{setBusy(false)}
   }
-  return <main className="mx-auto max-w-4xl px-4 py-7">
+  return <main className="mx-auto max-w-7xl px-4 py-7">
     <a href="/" className="text-sm text-teal-800 underline">Back to restroom search</a>
     <h1 className="mt-5 text-3xl font-extrabold">Restroom administration</h1>
     <p className="mt-2 text-sm text-slate-600">Admin-only dashboard for private replies to reviewers, verified public owner replies and improvement updates. Review moderator access does not grant admin access.</p>
@@ -181,8 +181,10 @@ export default function AdminPage(){
     {message&&<p role="status" className="mt-4 text-sm">{message}</p>}
     {checking?<p role="status" className="mt-4">Checking sign-in...</p>:session?<>
       <div className="mt-4 flex flex-wrap items-center gap-3"><p className="text-sm">Signed in as {session.user.email}</p><button type="button" disabled={busy} onClick={()=>void signOut()} className="pill">Sign out</button></div>
-      <AdminReviewReplies key={`replies:${session.access_token}`} session={session}/>
-      <AdminToilets key={`toilets:${session.access_token}`} session={session}/>
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
+        <AdminReviewReplies key={`replies:${session.access_token}`} session={session}/>
+        <AdminToilets key={`toilets:${session.access_token}`} session={session}/>
+      </div>
       <OwnerResponseDashboard key={session.access_token} session={session}/>
       <AdminOwnerInvites key={`invites:${session.access_token}`} session={session}/>
       <OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="publish"/>
