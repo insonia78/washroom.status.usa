@@ -158,7 +158,7 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       console.error("frontend-api toilet publish failed", { status: response.status });
       throw new ApiError(503, "Toilet approval is unavailable. Refresh and try again.");
     }
-    if (table === "rpc/admin_create_owner_invite" || table === "rpc/owner_submit_reply" || table === "rpc/owner_reply_decide" || table === "rpc/admin_archive_owner_reply") {
+    if (table === "rpc/admin_create_owner_invite" || table === "rpc/owner_submit_reply" || table === "rpc/owner_reply_decide" || table === "rpc/admin_archive_owner_reply" || table === "rpc/admin_archive_owner_response") {
       if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Access denied for this action");
       if (isRecord(error) && error.code === "22023" && typeof error.message === "string") throw new ApiError(422, error.message);
       console.error("frontend-api owner reply failed", { table, status: response.status });
@@ -503,7 +503,7 @@ async function moderation(req: Request): Promise<Response> {
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const publicOwnerColumns = "id,osm_type,osm_id,review_id,business_name,body,completed_on,evidence_url,published_at";
-const adminOwnerColumns = `${publicOwnerColumns},verification_note,status,version,updated_at`;
+const adminOwnerColumns = `${publicOwnerColumns},verification_note,status,version,updated_at,archived_at`;
 const replyColumns = "id,review_id,recipient_user_id,body,status,created_by,last_sent_by,created_at,first_attempt_at,last_attempt_at,sent_at,provider_id";
 
 async function adminReviews(req: Request): Promise<Response> {
@@ -892,6 +892,9 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
     if (!/^\d{1,8}$/.test(offsetText)) throw new ApiError(400, "Invalid response offset");
     params.set("offset", offsetText);
     if (!admin) params.set("status", "eq.published");
+    const archivedFilter = query.get("archived") ?? "0";
+    if (archivedFilter !== "0" && archivedFilter !== "1") throw new ApiError(400, "Invalid archived filter");
+    params.set("archived_at", admin && archivedFilter === "1" ? "not.is.null" : "is.null");
     const { rows, total } = await databasePage("owner_responses", params);
     if (!Array.isArray(rows)) throw new ApiError(502, "Invalid owner response list");
     // Hide replies if their review is no longer approved, even after publication.
@@ -913,6 +916,12 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+  if (isRecord(body) && body.action === "archive") {
+    if (typeof body.id !== "string" || !uuidPattern.test(body.id) || typeof body.archived !== "boolean") throw new ApiError(400, "Invalid archive request");
+    const archiveRows = await rpcRows("admin_archive_owner_response", { p_admin_id: adminId, p_id: body.id, p_archived: body.archived });
+    if (!archiveRows.length) throw new ApiError(404, "Response not found. Refresh.");
+    return json(200, { response: archiveRows[0] });
+  }
   if (!isRecord(body) || typeof body.action !== "string" || !["save", "publish"].includes(body.action) ||
     (body.id !== null && (typeof body.id !== "string" || !uuidPattern.test(body.id))) ||
     (body.id === null ? body.version !== null : typeof body.version !== "number" || !Number.isSafeInteger(body.version) || body.version < 1) ||

@@ -3,7 +3,7 @@ export type OwnerResponse={
   completed_on:string|null;evidence_url:string|null;published_at:string|null;
 };
 export type AdminOwnerResponse=OwnerResponse&{
-  verification_note:string;status:'draft'|'published';version:number;updated_at:string;
+  verification_note:string;status:'draft'|'published';version:number;updated_at:string;archived_at?:string|null;
 };
 
 export function isEvidenceUrl(value:unknown):value is string{

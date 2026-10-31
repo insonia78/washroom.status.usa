@@ -12,6 +12,7 @@ import OwnerReplyQueue from '@/components/OwnerReplyQueue';
 
 type Fields={osm_type:string;osm_id:string;review_id:string;business_name:string;body:string;completed_on:string;evidence_url:string;verification_note:string};
 const emptyFields:Fields={osm_type:'node',osm_id:'',review_id:'',business_name:'',body:'',completed_on:'',evidence_url:'',verification_note:''};
+const tabs=[{id:'moderation',label:'Reviews & toilets'},{id:'responses',label:'Owner responses'},{id:'invites',label:'Owner invites'},{id:'replies',label:'Owner replies'}] as const;
 const endpoint='/api/backend/admin/owner-responses';
 
 function OwnerResponseDashboard({session}:{session:Session}){
@@ -28,6 +29,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
   const [page,setPage]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [next,setNext]=useState<number|null>(null);
   const [refresh,setRefresh]=useState(0);
+  const [showArchived,setShowArchived]=useState(false);
   const lifetime=useRef<AbortController|null>(null);
   useEffect(()=>{
     const controller=new AbortController();lifetime.current=controller;
@@ -36,7 +38,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
   useEffect(()=>{
     const controller=new AbortController();
     setLoading(true);setError('');setRows([]);setReady(false);
-    fetch(`${endpoint}?offset=${page}`,{headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store',signal:controller.signal})
+    fetch(`${endpoint}?offset=${page}&archived=${showArchived?1:0}`,{headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store',signal:controller.signal})
       .then(async response=>{
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'Could not load owner responses.');
@@ -46,12 +48,25 @@ function OwnerResponseDashboard({session}:{session:Session}){
       }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load owner responses.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
-  },[session.access_token,page,refresh]);
+  },[session.access_token,page,refresh,showArchived]);
 
   function edit(row:AdminOwnerResponse|null){
     setDraft(row);setConfirmed(false);setDirty(false);setError('');setMessage('');
     setFields(row?{osm_type:row.osm_type,osm_id:String(row.osm_id),review_id:row.review_id||'',business_name:row.business_name,body:row.body,
       completed_on:row.completed_on||'',evidence_url:row.evidence_url||'',verification_note:row.verification_note}:emptyFields);
+  }
+  async function archive(row:AdminOwnerResponse,archived:boolean){
+    if(busy)return;
+    setBusy(true);setError('');setMessage('');
+    try{
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},
+        body:JSON.stringify({action:'archive',id:row.id,archived})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'Could not archive the response.');
+      setMessage(archived?'Response archived.':'Response restored.');
+      setRefresh(value=>value+1);
+    }catch(error){setError(error instanceof Error?error.message:'Could not archive the response.')}
+    finally{setBusy(false)}
   }
   function change(key:keyof Fields,value:string){setFields(previous=>({...previous,[key]:value}));setDirty(true)}
   async function save(action:'save'|'publish'){
@@ -115,8 +130,9 @@ function OwnerResponseDashboard({session}:{session:Session}){
       <section className="mt-6" aria-label="Saved owner responses">
         <h2 className="text-xl font-bold">Saved owner responses</h2>
         <button type="button" disabled={busy} onClick={()=>setRefresh(value=>value+1)} className="pill mt-2">Refresh responses</button>
+        <button type="button" disabled={busy} onClick={()=>{setPage(0);setShowArchived(value=>!value)}} className="pill mt-2 ml-2">{showArchived?'Show active responses':'Show archived responses'}</button>
         <p className="mt-2 text-xs text-slate-600">Newest updated first, 3 per page. Published responses are read-only; publish a new update to add further progress.</p>
-        {!rows.length&&<p className="mt-3 text-sm">No saved owner responses.</p>}
+        {!rows.length&&<p className="mt-3 text-sm">{showArchived?'No archived owner responses.':'No saved owner responses.'}</p>}
         {rows.map(row=><article key={row.id} className="panel mt-3">
           <h3 className="font-bold">{row.business_name} - {row.status}</h3>
           <p className="mt-1 break-all text-xs">{row.osm_type} #{row.osm_id} {row.review_id?`- Reply to review ${row.review_id}`:'- Restroom improvement update'}</p>
@@ -125,6 +141,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
           {row.evidence_url&&<a href={row.evidence_url} target="_blank" rel="noopener noreferrer" className="mt-2 block break-all text-sm text-teal-800 underline">Evidence: {row.evidence_url}</a>}
           <p className="mt-2 whitespace-pre-wrap break-words text-sm">Private verification: {row.verification_note}</p>
           <p className="mt-2 text-xs">Updated <time dateTime={row.updated_at}>{new Date(row.updated_at).toLocaleString()}</time> - Version {row.version}</p>
+          <button type="button" disabled={busy} className="pill mt-3 mr-2" onClick={()=>void archive(row,!showArchived)}>{showArchived?'Restore':'Archive'}</button>
           {row.status==='draft'&&<button type="button" disabled={busy} className="pill mt-3" onClick={()=>edit(row)}>Edit draft</button>}
         </article>)}
         <div className="mt-4 flex gap-3">
@@ -145,6 +162,7 @@ export default function AdminPage(){
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
   const [denied,setDenied]=useState(false);
+  const [tab,setTab]=useState<(typeof tabs)[number]['id']>('moderation');
   useEffect(()=>{
     if(!session)return;
     const controller=new AbortController();
@@ -192,13 +210,16 @@ export default function AdminPage(){
     {message&&<p role="status" className="mt-4 text-sm">{message}</p>}
     {checking?<p role="status" className="mt-4">Checking sign-in...</p>:session?<>
       <div className="mt-4 flex flex-wrap items-center gap-3"><p className="text-sm">Signed in as {session.user.email}</p><button type="button" disabled={busy} onClick={()=>void signOut()} className="pill">Sign out</button></div>
-      <div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
+      <nav role="tablist" aria-label="Administration sections" className="sticky top-0 z-10 mt-5 flex flex-wrap gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
+        {tabs.map(item=><button key={item.id} type="button" role="tab" aria-selected={tab===item.id} onClick={()=>setTab(item.id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===item.id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{item.label}</button>)}
+      </nav>
+      {tab==='moderation'&&<div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
         <AdminReviewReplies key={`replies:${session.access_token}`} session={session}/>
         <AdminToilets key={`toilets:${session.access_token}`} session={session}/>
-      </div>
-      <OwnerResponseDashboard key={session.access_token} session={session}/>
-      <AdminOwnerInvites key={`invites:${session.access_token}`} session={session}/>
-      <OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="publish"/>
+      </div>}
+      {tab==='responses'&&<OwnerResponseDashboard key={session.access_token} session={session}/>}
+      {tab==='invites'&&<AdminOwnerInvites key={`invites:${session.access_token}`} session={session}/>}
+      {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="publish"/>}
     </>:<form onSubmit={signIn} className="panel mt-5 max-w-md">
       <h2 className="text-xl font-bold">Administrator sign-in</h2>
       <label className="mt-4 block text-sm font-semibold">Email<input required type="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
