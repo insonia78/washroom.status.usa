@@ -6,6 +6,31 @@ import {useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
 
 const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
+const maxPhotoInputBytes=12*1024*1024;
+const maxPhotoUploadBytes=1024*1024;
+
+async function prepareReviewPhoto(file:File):Promise<File>{
+  const bitmap=await createImageBitmap(file);
+  try{
+    let scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+    for(let attempt=0;attempt<6;attempt++){
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+      canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+      const context=canvas.getContext('2d');
+      if(!context)throw new Error('Photo processing is unavailable in this browser.');
+      context.drawImage(bitmap,0,0,canvas.width,canvas.height);
+      const quality=Math.max(0.5,0.82-attempt*0.07);
+      const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));
+      if(blob&&blob.size<=maxPhotoUploadBytes){
+        const name=file.name.replace(/\.[^.]+$/,'')||'review-photo';
+        return new File([blob],`${name}.jpg`,{type:'image/jpeg',lastModified:file.lastModified});
+      }
+      if(attempt>=2)scale*=0.8;
+    }
+    throw new Error('This photo could not be reduced enough to upload. Try a smaller image.');
+  }finally{bitmap.close()}
+}
 
 export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClose:()=>void}){
   const dialog=useRef<HTMLDialogElement>(null);
@@ -18,12 +43,13 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
   const [issues,setIssues]=useState<string[]>([]);
   const [comment,setComment]=useState('');
   const [photos,setPhotos]=useState<File[]>([]);
+  const [preparingPhotos,setPreparingPhotos]=useState(false);
   const [message,setMessage]=useState('');
   const [sending,setSending]=useState(false);
   const [submitted,setSubmitted]=useState(false);
   const isRefugeRestroom=restroom.source==='refuge-restrooms';
   const auth=useContributionAuth();
-  const locked=sending||auth.checking||!auth.session;
+  const locked=sending||preparingPhotos||auth.checking||!auth.session;
 
   useEffect(()=>{
     const element=dialog.current;
@@ -41,8 +67,9 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
   async function submit(event:React.FormEvent){
     event.preventDefault();
     if(!rating||!availability||!cleanlinessStatus){setMessage('Answer all three review questions.');return}
-    if(photos.length>3||photos.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<=0||file.size>5*1024*1024)){
-      setMessage('Choose up to 3 JPEG, PNG, or WebP photos, each no larger than 5 MB.');return;
+    if(preparingPhotos){setMessage('Wait for photo preparation to finish.');return}
+    if(photos.length>3||photos.some(file=>file.type!=='image/jpeg'||file.size<=0||file.size>maxPhotoUploadBytes)){
+      setMessage('Choose up to 3 JPEG, PNG, or WebP photos.');return;
     }
     if(sending)return;
     setSending(true);
@@ -57,10 +84,15 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
         headers:{Authorization:`Bearer ${token}`},
         body:form
       });
-      const data=await response.json();
+      const data:unknown=await response.json().catch(async()=>{
+        const text=await response.clone().text();
+        return {error:response.status===413||/request entity too large/i.test(text)
+          ?'The photos are too large to submit. Remove a photo and try again.'
+          :'The server returned an unexpected response. Please try again.'};
+      });
       if(response.status===401)auth.clearSession();
-      if(!response.ok)throw new Error(data.error||'Submission failed');
-      if(response.status!==201||data.status!=='pending')throw new Error('The server did not confirm your review. Please try again.');
+      if(!response.ok)throw new Error(typeof data==='object'&&data!==null&&'error' in data&&typeof data.error==='string'?data.error:'Submission failed');
+      if(response.status!==201||typeof data!=='object'||data===null||!('status' in data)||data.status!=='pending')throw new Error('The server did not confirm your review. Please try again.');
       setSubmitted(true);
       setMessage('Thanks! Your review is awaiting moderation.');
     }catch(error){
@@ -90,17 +122,24 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
         <fieldset disabled={sending}><legend className="text-sm font-medium">Clean or Dirty Status: What condition was it in? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['excellent','Excellent'],['clean','Clean'],['average','Average'],['poor','Poor'],['very_dirty','Very Dirty']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-condition`} value={value} checked={cleanlinessStatus===value} onChange={()=>setCleanlinessStatus(value)} className="mr-2"/>{label}</label>)}</div></fieldset>
         <fieldset disabled={sending}><legend className="text-sm font-medium">Problems noticed (optional)</legend><div className="mt-2 flex flex-wrap gap-2">{issueOptions.map(([key,label])=><label key={key} className="pill text-xs"><input type="checkbox" checked={issues.includes(key)} onChange={event=>setIssues(previous=>event.target.checked?[...previous,key]:previous.filter(value=>value!==key))} className="mr-2"/>{label}</label>)}</div></fieldset>
         <label className="block text-sm font-medium">Details (optional)<textarea disabled={sending} maxLength={1000} value={comment} onChange={event=>setComment(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Describe what you observed without identifying other restroom users"/></label>
-        <div><label className="block text-sm font-medium">Photos (optional, up to 3; 5 MB each)<input disabled={sending} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={event=>{
-          const selected=[...(event.currentTarget.files??[])];
-          event.currentTarget.value='';
+        <div><label className="block text-sm font-medium">Photos (optional, up to 3; automatically compressed for upload)<input disabled={locked} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={async event=>{
+          const input=event.currentTarget;
+          const selected=[...(input.files??[])];
+          input.value='';
           setMessage('');
-          const next=[...photos,...selected];
-          if(next.length>3){setMessage('Choose no more than 3 photos.');return}
-          if(next.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<=0||file.size>5*1024*1024)){
-            setMessage('Photos must be JPEG, PNG, or WebP files no larger than 5 MB each.');return;
+          if(photos.length+selected.length>3){setMessage('Choose no more than 3 photos.');return}
+          if(selected.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
+            setMessage('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
           }
-          setPhotos(next);
+          setPreparingPhotos(true);
+          try{
+            const prepared=await Promise.all(selected.map(prepareReviewPhoto));
+            setPhotos(previous=>[...previous,...prepared]);
+          }
+          catch(error){setMessage(error instanceof Error?error.message:'Could not prepare the photos. Try another image.')}
+          finally{setPreparingPhotos(false)}
         }} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm"/></label>
+          {preparingPhotos&&<p role="status" className="mt-1 text-xs text-slate-500">Preparing photos...</p>}
           {photos.length>0&&<ul className="mt-2 space-y-1 text-xs">{photos.map((photo,index)=><li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2"><span className="truncate">{photo.name}</span><button type="button" disabled={sending} onClick={()=>setPhotos(previous=>previous.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button></li>)}</ul>}
         </div>
         <button disabled={sending||!rating||!availability||!cleanlinessStatus} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Submitting...':'Submit for moderation'}</button>
