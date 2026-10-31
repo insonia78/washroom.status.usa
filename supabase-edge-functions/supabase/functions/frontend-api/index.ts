@@ -661,13 +661,18 @@ async function ownerReviews(req: Request): Promise<Response> {
   if (!invites.length) return json(200, { items: [] });
   const ids = invites.map(i => String(i.review_id)).filter(id => uuidPattern.test(id));
   const reviews: unknown = await (await database("reviews", new URLSearchParams({
-    select: "id,osm_type,osm_id,restroom_name,rating,comment,status,created_at", id: `in.(${ids.join(",")})`, status: "eq.approved",
+    select: "id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,status,created_at,photo_paths",
+    id: `in.(${ids.join(",")})`, status: "eq.approved",
   }))).json();
   const replies: unknown = await (await database("owner_replies", new URLSearchParams({
     select: ownerReplyColumns, owner_email: `eq.${account.email}`, order: "created_at.desc",
   }))).json();
   if (!Array.isArray(reviews) || !Array.isArray(replies)) throw new ApiError(502, "Invalid owner review list");
-  const named = await withRestroomNames(reviews.filter(isRecord));
+  const withPhotos = await Promise.all(reviews.filter(isRecord).map(async review => {
+    const { photo_paths, ...details } = review;
+    return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
+  }));
+  const named = await withRestroomNames(withPhotos);
   const items = invites.flatMap(invite => {
     const review = named.find(r => r.id === invite.review_id);
     if (!review) return [];

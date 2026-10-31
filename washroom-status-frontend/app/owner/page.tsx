@@ -4,7 +4,7 @@ import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
 
 type Item={invite_id:string;
-  review:{restroom_name?:string|null;osm_type:string;osm_id:number;rating?:number;comment?:string|null};
+  review:{restroom_name?:string|null;osm_type:string;osm_id:number;rating?:number;availability?:string|null;cleanliness_status?:string|null;issues?:string[]|null;comment?:string|null;created_at?:string;photo_urls?:string[]};
   replies:{id:string;body:string;status:string;business_name:string}[]};
 const statusLabel:Record<string,string>={pending:'Waiting for moderation',moderated:'Waiting for administrator approval',published:'Published',rejected:'Not approved'};
 
@@ -50,7 +50,15 @@ function OwnerReviews({session}:{session:Session}){
       return <article key={item.invite_id} className="panel">
         <h2 className="font-bold">{item.review.restroom_name||`${item.review.osm_type==='refuge'?'Refuge Restrooms':'OpenStreetMap'} #${item.review.osm_id}`}</h2>
         {item.review.rating!==undefined&&<p className="mt-1 text-sm">Rating: {item.review.rating}/5</p>}
+        {item.review.created_at&&<p className="text-xs text-slate-500">Reported {new Date(item.review.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</p>}
+        <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+          {item.review.availability&&<div><dt className="inline font-semibold">Availability: </dt><dd className="inline">{item.review.availability.replace(/_/g,' ')}</dd></div>}
+          {item.review.cleanliness_status&&<div><dt className="inline font-semibold">Cleanliness: </dt><dd className="inline">{item.review.cleanliness_status.replace(/_/g,' ')}</dd></div>}
+        </dl>
+        {!!item.review.issues?.length&&<p className="mt-2 text-sm"><span className="font-semibold">Reported problems:</span> {item.review.issues.map(i=>i.replace(/_/g,' ')).join(', ')}</p>}
         <p className="mt-2 whitespace-pre-wrap text-sm">{item.review.comment||'No written comment.'}</p>
+        {!!item.review.photo_urls?.length&&<div className="mt-3 flex flex-wrap gap-2">{item.review.photo_urls.map((url,index)=>
+          <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Photo ${index+1} of the reported problem`} className="h-32 w-32 rounded-lg border object-cover"/></a>)}</div>}
         {item.replies.map(r=><p key={r.id} className="mt-3 rounded-lg border p-2 text-sm"><span className="font-semibold">{statusLabel[r.status]??r.status}:</span> {r.body}</p>)}
         {!open&&<form onSubmit={event=>void submit(event,item)} className="mt-3">
           <label className="block text-sm font-semibold">Business name<input required maxLength={200} value={draft.business} onChange={e=>setDrafts({...drafts,[item.invite_id]:{...draft,business:e.target.value}})} className="mt-1 w-full rounded-lg border p-3"/></label>
