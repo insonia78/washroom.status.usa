@@ -8,7 +8,7 @@ import {acceptedPhotoTypes,maxPhotoInputBytes,maxPhotoUploadBytes,preparePhoto} 
 
 const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
 
-export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClose:()=>void}){
+export default function ReviewModal({restroom,userLocation,onClose}:{restroom:Restroom;userLocation:[number,number];onClose:()=>void}){
   const dialog=useRef<HTMLDialogElement>(null);
   const titleId=useId();
   const descriptionId=useId();
@@ -61,7 +61,7 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
     try{
       const token=await auth.accessToken();
       const form=new FormData();
-      form.set('review',JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,restroom_name:restroom.name,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment}));
+      form.set('review',JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,restroom_name:restroom.name,current_location:true,user_longitude:userLocation[0],user_latitude:userLocation[1],restroom_longitude:restroom.lon,restroom_latitude:restroom.lat,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment}));
       photos.forEach(photo=>form.append('photos',photo));
       const response=await fetch('/api/reviews',{
         method:'POST',
@@ -98,7 +98,7 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
       <button type="button" autoFocus onClick={onClose} aria-label="Close review modal" className="pill"><X size={18}/></button>
     </div>
     <p id={descriptionId} className="mt-3 text-sm text-slate-600">Sign in to add a review. Reports are screened before publication. An administrator may send a private reply to your verified account email. The admin reply panel shows your user ID, not your email address. Describe your visit without including names or private information. Availability reports are not live verification.</p>
-    {!submitted&&<ContributionSignIn auth={auth} context={{kind:'review',restroom}}/>}
+    {!submitted&&<ContributionSignIn auth={auth} context={{kind:'review',restroom,userLocation}}/>}
     {!submitted&&
       <form onSubmit={submit} className="mt-4 space-y-4"><fieldset disabled={locked} className="space-y-4">
         <fieldset disabled={sending}><legend className="text-sm font-medium">Restroom Availability: Was it available during your visit? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['open','Open'],['closed','Closed'],['temporarily_unavailable','Temporarily unavailable'],['unverified','Unverified']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-availability`} value={value} checked={availability===value} onChange={()=>setAvailability(value)} className="mr-2"/>{label}</label>)}</div></fieldset>

@@ -53,7 +53,7 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
     try{
       const token=await auth.accessToken();
       const form=new FormData();
-      form.set('submission',JSON.stringify({name:name.trim(),longitude:coordinates[0],latitude:coordinates[1],wheelchair,fee,notes}));
+      form.set('submission',JSON.stringify({name:name.trim(),longitude:coordinates[0],latitude:coordinates[1],current_location:true,user_longitude:coordinates[0],user_latitude:coordinates[1],wheelchair,fee,notes}));
       photos.forEach(photo=>form.append('photos',photo));
       const response=await fetch('/api/backend/toilet-submissions',{
           method:'POST',

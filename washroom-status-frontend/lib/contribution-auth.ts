@@ -4,7 +4,7 @@ import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from './supabase';
 import type {Restroom} from '@/components/RestroomDetails';
 
-export type ContributionContext={kind:'review';restroom:Restroom}|{kind:'toilet';coordinates:[number,number]};
+export type ContributionContext={kind:'review';restroom:Restroom;userLocation:[number,number]}|{kind:'toilet';coordinates:[number,number]};
 const contextKey='washroom-contribution-context';
 const contextMaxAgeMs=60*60*1000;
 export function readContributionContext():ContributionContext|null{

@@ -198,6 +198,18 @@ function validRestroom(type: unknown, id: unknown): boolean {
     typeof id === "number" && Number.isSafeInteger(id) && id > 0;
 }
 
+const maxContributionMiles = 11;
+function milesBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const rad = (v: number) => v * Math.PI / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function usCoordinates(lat: unknown, lon: unknown): [number, number] | null {
+  return typeof lat === "number" && typeof lon === "number" && Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= 17 && lat <= 72 && lon >= -179 && lon <= -65 ? [lat, lon] : null;
+}
+
 async function toiletSubmissions(req: Request): Promise<Response> {
   if (req.method !== "POST") throw new ApiError(405, "Method not allowed");
   const userId = await requireAuthenticatedUser(req);
@@ -222,6 +234,7 @@ async function toiletSubmissions(req: Request): Promise<Response> {
     throw new ApiError(400, "Invalid toilet fields");
   }
   if (!isRecord(body)) throw new ApiError(400, "Invalid toilet fields");
+  if (body.current_location !== true) throw new ApiError(400, "Toilets can only be added while using your current location.");
   const { name, latitude, longitude, wheelchair, fee, notes } = body;
   const validAnswer = (value: unknown) =>
     typeof value === "string" && ["yes", "no", "unknown"].includes(value);
@@ -233,6 +246,10 @@ async function toiletSubmissions(req: Request): Promise<Response> {
     photos.some(file => !reviewPhotoTypes.has(file.type) || file.size <= 0 || file.size > reviewPhotoMaxBytes) ||
     !(await Promise.all(photos.map(hasMatchingImageSignature))).every(Boolean)) {
     throw new ApiError(400, "Enter a toilet name (up to 120 characters), valid US coordinates, accessibility, fee, and notes (up to 1000 characters).");
+  }
+  const toiletUser = usCoordinates(body.user_latitude, body.user_longitude);
+  if (!toiletUser || milesBetween(toiletUser[0], toiletUser[1], latitude, longitude) > 0.1) {
+    throw new ApiError(403, "Toilets can only be added at your current location.");
   }
   const photoPaths = photos.map(file => {
     const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
@@ -309,6 +326,7 @@ async function reviews(req: Request): Promise<Response> {
     throw new ApiError(400, "Invalid review fields");
   }
   if (!isRecord(body)) throw new ApiError(400, "Invalid review fields");
+  if (body.current_location !== true) throw new ApiError(400, "Reviews can only be added while using your current location.");
   const { osm_type, osm_id, rating, availability, cleanliness_status, issues, comment } = body;
   const restroomName = typeof body.restroom_name === "string" ? body.restroom_name.trim().slice(0, 200) || null : null;
   const allowedIssues = ["dirty_floor", "broken_fixture", "odor", "missing_supplies", "other"];
@@ -327,6 +345,17 @@ async function reviews(req: Request): Promise<Response> {
   const locationParams = new URLSearchParams({
     select: "osm_id", osm_type: `eq.${osm_type}`, osm_id: `eq.${osm_id}`, limit: "1",
   });
+  const reviewUser = usCoordinates(body.user_latitude, body.user_longitude);
+  let reviewRestroom = usCoordinates(body.restroom_latitude, body.restroom_longitude);
+  if (osm_type !== "refuge") {
+    const stored: unknown = await (await database("restrooms", new URLSearchParams({
+      select: "latitude,longitude", osm_type: `eq.${osm_type}`, osm_id: `eq.${osm_id}`, limit: "1",
+    }))).json();
+    if (Array.isArray(stored) && isRecord(stored[0])) reviewRestroom = usCoordinates(stored[0].latitude, stored[0].longitude) ?? reviewRestroom;
+  }
+  if (!reviewUser || !reviewRestroom || milesBetween(reviewUser[0], reviewUser[1], reviewRestroom[0], reviewRestroom[1]) > maxContributionMiles) {
+    throw new ApiError(403, "Reviews can only be added to restrooms near your current location.");
+  }
   let locations: unknown = await (await database(osm_type === "refuge" ? "review_locations" : "restrooms", locationParams)).json();
   if (!Array.isArray(locations)) throw new ApiError(502, "Invalid restroom database response");
   if (!locations.length && osm_type !== "refuge") {

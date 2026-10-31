@@ -25,6 +25,6 @@ export default function ContributionFlow(){
     <p className="mt-4">This link has expired or was opened in a different browser. Return to the main page and request a new link.</p>
     <a href="/" className="mt-5 inline-flex rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Back to restroom search</a></main>;
   return <main className="mx-auto max-w-lg px-4 py-10">
-    {context.kind==='review'?<ReviewModal restroom={context.restroom} onClose={()=>void finish()}/>:<AddToiletModal coordinates={context.coordinates} onClose={()=>void finish()}/>}
+    {context.kind==='review'?<ReviewModal restroom={context.restroom} userLocation={context.userLocation} onClose={()=>void finish()}/>:<AddToiletModal coordinates={context.coordinates} onClose={()=>void finish()}/>}
   </main>;
 }
