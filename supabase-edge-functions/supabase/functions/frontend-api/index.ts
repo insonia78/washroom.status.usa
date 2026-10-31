@@ -476,9 +476,12 @@ async function adminReviews(req: Request): Promise<Response> {
   if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid review offset");
   const archived = query.get("archived") ?? "0";
   if (archived !== "0" && archived !== "1") throw new ApiError(400, "Invalid archived filter");
+  const moderation = query.get("moderation") ?? "moderated";
+  if (moderation !== "moderated" && moderation !== "pending") throw new ApiError(400, "Invalid moderation filter");
   const rows: unknown = await (await database("reviews", new URLSearchParams({
     select: "id,user_id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,status,created_at,archived_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
+    status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
     order: "created_at.desc,id.desc", limit: "50", offset,
   }))).json();
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin review list");

@@ -83,7 +83,7 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
       <h2 id={titleId} className="text-xl font-bold">Add a toilet</h2>
       <button type="button" disabled={sending} onClick={onClose} aria-label="Close add toilet modal" className="pill disabled:opacity-50"><X size={18}/></button>
     </div>
-    <p id={descriptionId} className="mt-3 text-sm text-slate-600">Add a public toilet at your current location. Sign-in is required. Each account can submit up to 3 toilets per UTC day (resets at midnight UTC). Your submission is saved privately for moderation, not published immediately. Do not include private information. If you attach photos, at least one must clearly show the business/restroom name or identifying sign; submissions without this evidence may be rejected.</p>
+    <p id={descriptionId} className="mt-3 text-sm text-slate-600">Add a public toilet at your current location. Sign-in is required. Each account can submit up to 10 toilets per UTC day (resets at midnight UTC). Your submission is saved privately for moderation, not published immediately. Do not include private information. If you attach photos, at least one must clearly show the business/restroom name or identifying sign; submissions without this evidence may be rejected.</p>
     <p className="mt-2 text-sm font-semibold text-teal-800">Current location: {coordinates[1].toFixed(5)}, {coordinates[0].toFixed(5)}</p>
     {!submitted&&<ContributionSignIn auth={auth}/>}
     {!submitted?<form onSubmit={submit} className="mt-4 space-y-4" aria-busy={sending}>

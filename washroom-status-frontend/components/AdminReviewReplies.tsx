@@ -107,6 +107,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
   const [error,setError]=useState('');
   const [selected,setSelected]=useState<AdminReview|null>(null);
   const [showArchived,setShowArchived]=useState(false);
+  const [showPending,setShowPending]=useState(false);
   const archive=async(row:AdminReview)=>{
     setError('');
     try{
@@ -123,7 +124,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
   };
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');setRows([]);
-    fetch(`/api/backend/admin/reviews?offset=${offset}&archived=${showArchived?1:0}`,{
+    fetch(`/api/backend/admin/reviews?offset=${offset}&archived=${showArchived?1:0}&moderation=${showPending?'pending':'moderated'}`,{
       headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store',signal:controller.signal,
     }).then(async response=>{
       const data=await response.json();
@@ -134,17 +135,19 @@ export default function AdminReviewReplies({session}:{session:Session}){
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load reviews.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
-  },[session.access_token,offset,refresh,showArchived]);
+  },[session.access_token,offset,refresh,showArchived,showPending]);
   return <section className="panel mt-5" aria-label="Review reply administration">
     <h2 className="text-xl font-bold">Review reply administration</h2>
     <p className="mt-2 text-sm">Administrator access only. Reviewer identities are shown as user IDs, never email addresses. Private email replies are separate from public owner responses.</p>
     <button type="button" className="pill mt-3" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reviews</button>
     <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowArchived(value=>!value);setOffset(0);setSelected(null)}}>{showArchived?'Show active reviews':'Show archived reviews'}</button>
+    <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowPending(value=>!value);setOffset(0);setSelected(null)}}>{showPending?'Show moderated reviews':'Show reviews not moderated yet'}</button>
+    {showPending&&<p className="mt-2 text-sm text-amber-900">These reviews have not been moderated yet. A moderator must approve or reject them before they appear in the main administrator list.</p>}
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {loading?<p role="status" className="mt-3">Checking admin access and loading reviews...</p>:!error&&<>
       {!rows.length&&<p className="mt-3 text-sm">No reviews found.</p>}
       <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
-        <h3 className="font-bold">{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status}</h3>
+        <h3 className="font-bold">{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status==='pending'?'Not moderated yet':row.status}</h3>
         <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>
         <p className="mt-1 break-all text-xs">Review ID: {row.id}</p>
         <p className="mt-1 break-all text-xs">User ID: {row.user_id??'No account (anonymous or deleted)'}</p>
@@ -155,8 +158,9 @@ export default function AdminReviewReplies({session}:{session:Session}){
         </dl>
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.comment||'No written comment.'}</p>
         {row.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
+        {row.status==='pending'?<p className="mt-3 text-sm font-semibold text-amber-900">Not moderated yet - replies and archiving unlock after moderation.</p>:<>
         <button type="button" className="pill mt-3" onClick={()=>setSelected(row)}>Open private replies</button>
-        <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button>
+        <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button></>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
         {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous reviews</button>}
