@@ -2,7 +2,9 @@ begin;
 
 alter table app_locations.owner_replies add column if not exists archived_at timestamptz;
 
-create or replace function public.admin_archive_owner_reply(p_admin_id uuid, p_id uuid, p_archived boolean)
+drop function if exists public.admin_archive_owner_reply(uuid, uuid, boolean);
+
+create or replace function app_locations.admin_archive_owner_reply(p_admin_id uuid, p_id uuid, p_archived boolean)
 returns table (id uuid, archived_at timestamptz)
 language plpgsql
 security invoker
@@ -20,7 +22,9 @@ begin
 end;
 $$;
 
-revoke all on function public.admin_archive_owner_reply(uuid, uuid, boolean) from public, anon, authenticated;
-grant execute on function public.admin_archive_owner_reply(uuid, uuid, boolean) to service_role;
+revoke all on function app_locations.admin_archive_owner_reply(uuid, uuid, boolean) from public, anon, authenticated;
+grant execute on function app_locations.admin_archive_owner_reply(uuid, uuid, boolean) to service_role;
+
+notify pgrst, 'reload schema';
 
 commit;

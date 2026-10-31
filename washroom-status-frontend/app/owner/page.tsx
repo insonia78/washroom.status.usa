@@ -8,7 +8,7 @@ type Item={invite_id:string;
   replies:{id:string;body:string;status:string;business_name:string}[]};
 const statusLabel:Record<string,string>={pending:'Waiting for moderation',moderated:'Waiting for administrator approval',published:'Published',rejected:'Not approved'};
 
-function OwnerReviews({session}:{session:Session}){
+function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
   const [items,setItems]=useState<Item[]>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -38,6 +38,7 @@ function OwnerReviews({session}:{session:Session}){
       if(!response.ok)throw new Error(data.error||'Could not send your reply.');
       setMessage('Reply received. It will be reviewed by a moderator, then approved by an administrator before it is published.');
       setRefresh(value=>value+1);
+      onSent();
     }catch(err){setError(err instanceof Error?err.message:'Could not send your reply.')}
   }
   return <>
@@ -86,6 +87,9 @@ export default function OwnerPage(){
       .finally(()=>{if(active)setChecking(false)});
     return()=>{active=false;subscription.unsubscribe()};
   },[supabase]);
+  async function endSession(note:string){
+    await supabase?.auth.signOut({scope:'global'});setMessage(note);
+  }
   async function signIn(event:React.FormEvent){
     event.preventDefault();if(!supabase)return;setError('');setMessage('');
     const {error:otpError}=await supabase.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo:`${window.location.origin}/owner`}});
@@ -97,8 +101,8 @@ export default function OwnerPage(){
     <p className="mt-2 text-sm text-slate-600">See the reviews shared with you and send a reply. Replies are checked by a moderator and approved by an administrator before they are published.</p>
     {checking?<p role="status" className="mt-4">Checking sign-in...</p>:session?<>
       <div className="mt-4 flex items-center gap-3"><p className="text-sm">Signed in as {session.user.email}</p>
-        <button type="button" className="pill" onClick={()=>void supabase?.auth.signOut()}>Sign out</button></div>
-      <OwnerReviews session={session}/>
+        <button type="button" className="pill" onClick={()=>void endSession('You have been signed out.')}>Sign out</button></div>
+      <OwnerReviews session={session} onSent={()=>void endSession('Reply received. It will be reviewed by a moderator, then approved by an administrator before it is published. You have been signed out and this link no longer works.')}/>
     </>:<form onSubmit={signIn} className="panel mt-5 max-w-md">
       <p className="text-sm">Use the invitation email, or request a new link with the email address you were invited with.</p>
       {error&&<p role="alert" className="mt-3 text-amber-800">{error}</p>}
