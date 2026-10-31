@@ -1,7 +1,7 @@
 export type AdminReview={
   id:string;user_id:string|null;osm_type:string;osm_id:number;rating:number;
   availability:string|null;cleanliness_status:string|null;issues:string[];comment:string;
-  photo_urls:string[];status:'pending'|'approved'|'rejected';created_at:string;
+  photo_urls:string[];status:'pending'|'approved'|'rejected';created_at:string;archived_at:string|null;
 };
 export type ReviewReply={
   id:string;review_id:string;recipient_user_id:string|null;body:string;
@@ -23,7 +23,7 @@ export function isAdminReview(value:unknown):value is AdminReview{
     Array.isArray(value.issues)&&value.issues.every(issue=>typeof issue==='string')&&
     typeof value.comment==='string'&&typeof value.status==='string'&&
     Array.isArray(value.photo_urls)&&value.photo_urls.every(url=>typeof url==='string')&&
-    ['pending','approved','rejected'].includes(value.status)&&date(value.created_at);
+    ['pending','approved','rejected'].includes(value.status)&&date(value.created_at)&&nullableDate(value.archived_at);
 }
 export function isReviewReply(value:unknown):value is ReviewReply{
   return record(value)&&typeof value.id==='string'&&uuid.test(value.id)&&

@@ -135,6 +135,11 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       console.error("frontend-api reply storage failed", { status: response.status });
       throw new ApiError(503, "Reply storage is unavailable. Refresh to check the saved reply before retrying.");
     }
+    if (table === "rpc/admin_archive_review") {
+      if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Administrator access required");
+      console.error("frontend-api review archive failed", { status: response.status });
+      throw new ApiError(503, "Review archive is unavailable. Refresh and try again.");
+    }
     if (table === "toilet_submissions") {
       if (isRecord(error) && error.code === "P0001") {
         throw new ApiError(429, "You have reached the limit of 3 toilet submissions per UTC day. Try again after midnight UTC.");
@@ -447,12 +452,33 @@ const adminOwnerColumns = `${publicOwnerColumns},verification_note,status,versio
 const replyColumns = "id,review_id,recipient_user_id,body,status,created_by,last_sent_by,created_at,first_attempt_at,last_attempt_at,sent_at,provider_id";
 
 async function adminReviews(req: Request): Promise<Response> {
-  if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
-  await requireAllowlistedUser(req, "admin");
-  const offset = new URL(req.url).searchParams.get("offset") ?? "0";
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const adminId = await requireAllowlistedUser(req, "admin");
+  if (req.method === "POST") {
+    let body: unknown;
+    try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+    if (!isRecord(body) || typeof body.review_id !== "string" || !uuidPattern.test(body.review_id) ||
+      typeof body.archived !== "boolean") throw new ApiError(400, "Invalid archive request");
+    const rows: unknown = await (await database("rpc/admin_archive_review", new URLSearchParams(), {
+      method: "POST",
+      body: JSON.stringify({ p_admin_id: adminId, p_review_id: body.review_id, p_archived: body.archived }),
+    })).json();
+    if (!Array.isArray(rows) || rows.length > 1) throw new ApiError(502, "Invalid archive response");
+    if (!rows.length) throw new ApiError(404, "Review not found");
+    const row: unknown = rows[0];
+    if (!isRecord(row) || row.id !== body.review_id || (row.archived_at === null) === body.archived) {
+      throw new ApiError(502, "Invalid archive response");
+    }
+    return json(200, { review: row });
+  }
+  const query = new URL(req.url).searchParams;
+  const offset = query.get("offset") ?? "0";
   if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid review offset");
+  const archived = query.get("archived") ?? "0";
+  if (archived !== "0" && archived !== "1") throw new ApiError(400, "Invalid archived filter");
   const rows: unknown = await (await database("reviews", new URLSearchParams({
-    select: "id,user_id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,status,created_at,photo_paths",
+    select: "id,user_id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,status,created_at,archived_at,photo_paths",
+    archived_at: archived === "1" ? "not.is.null" : "is.null",
     order: "created_at.desc,id.desc", limit: "50", offset,
   }))).json();
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin review list");

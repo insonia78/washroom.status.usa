@@ -5,7 +5,8 @@
 These gateway routes require a verified account on the separate
 `app_locations.owner_response_admins` allowlist, not merely a review moderator:
 
-- `GET /frontend/admin/reviews?offset=0`: up to 50 reviews (all moderation states)
+- `GET /frontend/admin/reviews?offset=0&archived=0`: up to 50 reviews (all moderation states); `archived=1` lists archived reviews only
+- `POST /frontend/admin/reviews` with `{"review_id":"<uuid>","archived":true|false}`: archive or unarchive a review (administrators only; public visibility and moderation status are unchanged)
   with `user_id` or null for anonymous/deleted accounts, plus `next_offset`.
 - `GET /frontend/admin/review-replies?review_id=UUID&offset=0`: up to 50 private
   replies for that review, plus `next_offset`.

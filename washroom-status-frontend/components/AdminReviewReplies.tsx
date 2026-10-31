@@ -106,9 +106,24 @@ export default function AdminReviewReplies({session}:{session:Session}){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [selected,setSelected]=useState<AdminReview|null>(null);
+  const [showArchived,setShowArchived]=useState(false);
+  const archive=async(row:AdminReview)=>{
+    setError('');
+    try{
+      const response=await fetch('/api/backend/admin/reviews',{
+        method:'POST',cache:'no-store',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},
+        body:JSON.stringify({review_id:row.id,archived:!row.archived_at}),
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Could not update the review archive.');
+      if(selected?.id===row.id)setSelected(null);
+      setRefresh(value=>value+1);
+    }catch(error){setError(error instanceof Error?error.message:'Could not update the review archive.')}
+  };
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');setRows([]);
-    fetch(`/api/backend/admin/reviews?offset=${offset}`,{
+    fetch(`/api/backend/admin/reviews?offset=${offset}&archived=${showArchived?1:0}`,{
       headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store',signal:controller.signal,
     }).then(async response=>{
       const data=await response.json();
@@ -119,11 +134,12 @@ export default function AdminReviewReplies({session}:{session:Session}){
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load reviews.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
-  },[session.access_token,offset,refresh]);
+  },[session.access_token,offset,refresh,showArchived]);
   return <section className="panel mt-5" aria-label="Review reply administration">
     <h2 className="text-xl font-bold">Review reply administration</h2>
     <p className="mt-2 text-sm">Administrator access only. Reviewer identities are shown as user IDs, never email addresses. Private email replies are separate from public owner responses.</p>
     <button type="button" className="pill mt-3" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reviews</button>
+    <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowArchived(value=>!value);setOffset(0);setSelected(null)}}>{showArchived?'Show active reviews':'Show archived reviews'}</button>
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {loading?<p role="status" className="mt-3">Checking admin access and loading reviews...</p>:!error&&<>
       {!rows.length&&<p className="mt-3 text-sm">No reviews found.</p>}
@@ -140,6 +156,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.comment||'No written comment.'}</p>
         {row.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
         <button type="button" className="pill mt-3" onClick={()=>setSelected(row)}>Open private replies</button>
+        <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button>
       </article>)}</div>
       <div className="mt-3 flex gap-2">
         {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous reviews</button>}

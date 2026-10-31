@@ -25,7 +25,7 @@ Deno.test("moderation exposes only review listing and decisions", () => {
 });
 
 Deno.test("private review replies expose admin reads and saved reply actions but no user directory", () => {
-  assertEquals(findRoute("/frontend/admin/reviews")?.methods, ["GET"]);
+  assertEquals(findRoute("/frontend/admin/reviews")?.methods, ["GET", "POST"]);
   assertEquals(findRoute("/frontend/admin/review-replies")?.methods, ["GET", "POST"]);
   assertFalse(findRoute("/frontend/admin/users"));
   assertFalse(findRoute("/frontend/review-replies"));
