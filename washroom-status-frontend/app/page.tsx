@@ -167,7 +167,7 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
 <button type="button" aria-label={`Add review for ${x.name}`} aria-haspopup="dialog" onClick={()=>{setSelected(x);setReviewRestroom(x)}} className="mt-3 rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">Add review</button>
 <LatestReview restroom={x}/>
 </div>)}</div></section></div>
-{selected&&<RestroomDetails key={`details-${selected.osm_type}-${selected.id}`} restroom={selected} onClose={()=>setSelected(null)} onAddReview={()=>setReviewRestroom(selected)}/>}
+{selected&&<RestroomDetails key={`details-${selected.osm_type}-${selected.id}`} restroom={selected} onClose={()=>setSelected(null)} onAddReview={currentLocationActive?()=>setReviewRestroom(selected):undefined}/>}
 {reviewRestroom&&<ContributionStart key={`review-${reviewRestroom.osm_type}-${reviewRestroom.id}`} title="Add a review" name={reviewRestroom.name} context={{kind:'review',restroom:reviewRestroom}} onClose={()=>setReviewRestroom(null)}/>}
 {toiletCoordinates&&<ContributionStart title="Add a toilet" context={{kind:'toilet',coordinates:toiletCoordinates}} onClose={()=>setToiletCoordinates(null)}/>}
 <section className="mt-8 grid gap-3 md:grid-cols-3">{[[ShieldCheck,'Transparent ratings','Show review counts, timestamps and moderation status.'],[Accessibility,'Accessible search','Filter by documented wheelchair access and facilities.'],[Clock3,'Honest availability','Never mistake listed opening hours for live availability.']].map(([Icon,title,desc])=><div key={title as string} className="panel"><Icon className="mb-3 text-teal-700"/><h3 className="font-bold">{title as string}</h3><p className="mt-1 text-sm text-slate-500">{desc as string}</p></div>)}</section></main>}
