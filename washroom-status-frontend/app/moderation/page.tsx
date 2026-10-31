@@ -24,6 +24,8 @@ export default function ModerationPage(){
   const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [nextOffset,setNextOffset]=useState<number|null>(null);
   const [denied,setDenied]=useState(false);
+  const [checked,setChecked]=useState(false);
+  const [tab,setTab]=useState<'toilets'|'replies'|'reviews'>('toilets');
   useEffect(()=>{
     if(!supabase){setChecking(false);setError('Moderator sign-in is not configured. Set the public Supabase URL and anonymous key.');return}
     let active=true;
@@ -43,7 +45,7 @@ export default function ModerationPage(){
     setReviews([]);
     setNotes({});
     setReady(false);
-    if(!session){setLoading(false);return}
+    if(!session){setLoading(false);setChecked(false);return}
     const controller=new AbortController();
     setLoading(true);
     setError('');
@@ -55,7 +57,7 @@ export default function ModerationPage(){
         if(!Array.isArray(data.reviews)||!data.reviews.every(isPendingReview))throw new Error('Invalid moderation queue response.');
         if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setReviews(data.reviews);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null);setReady(true)}
       }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load the moderation queue.')})
-      .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
+      .finally(()=>{if(!controller.signal.aborted){setLoading(false);setChecked(true)}});
     return()=>controller.abort();
   },[session,refresh,offset]);
 
@@ -110,7 +112,7 @@ export default function ModerationPage(){
     <p className="mt-2 text-sm text-slate-600">Verify submitted toilet locations and review reported answers. Moderator notes are private and are never included in public reviews.</p>
     {error&&<p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
     {message&&<p role="status" className="mt-4 rounded-xl bg-teal-50 p-3 text-sm text-teal-900">{message}</p>}
-    {checking?<p role="status" className="mt-5">Checking sign-in...</p>:!session?
+    {checking||(session&&!checked)?<p role="status" className="mt-5">Checking access...</p>:!session?
       <form onSubmit={signIn} className="panel mt-5 max-w-md">
         <h2 className="text-xl font-bold">Moderator sign-in</h2>
         <p className="mt-2 text-sm text-slate-600">Use an existing Supabase account that has been explicitly added to the moderator allowlist.</p>
@@ -121,8 +123,12 @@ export default function ModerationPage(){
           <button type="button" onClick={()=>{setMessage('');setRefresh(value=>value+1)}} disabled={busy||loading} className="pill disabled:opacity-50">Refresh queue</button>
           <button type="button" onClick={signOut} disabled={busy} className="pill disabled:opacity-50">Sign out</button>
         </div>
-        <ToiletModerationQueue session={session} refresh={refresh}/>
-        <OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="moderate"/>
+        <nav role="tablist" aria-label="Moderation sections" className="sticky top-0 z-10 mt-5 flex flex-wrap gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
+          {([['toilets','Toilets'],['replies','Owner replies'],['reviews','Reviews']] as const).map(([id,label])=><button key={id} type="button" role="tab" aria-selected={tab===id} onClick={()=>setTab(id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{label}</button>)}
+        </nav>
+        {tab==='toilets'&&<ToiletModerationQueue session={session} refresh={refresh}/>}
+        {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="moderate"/>}
+        {tab==='reviews'&&<>
         <h2 className="mt-6 text-xl font-bold">Pending reviews</h2>
         <p className="mt-1 text-xs text-slate-500">Oldest first, 3 per page.</p>
         {loading?<p role="status" className="mt-4">Loading pending reviews...</p>:ready&&reviews.length===0?<p className="panel mt-4">No pending reviews in this queue.</p>:null}
@@ -145,6 +151,7 @@ export default function ModerationPage(){
           <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
           {nextOffset!==null&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(nextOffset)}>Next reviews</button>}
         </div>
+        </>}
       </>}
   </main>;
 }
