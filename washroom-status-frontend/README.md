@@ -1,5 +1,17 @@
 # Washroom Status USA
 
+## Private admin review replies
+
+The `/admin` dashboard includes a separate review-reply panel showing reviewer
+user IDs, not emails. Only allowlisted admins can save private replies and request
+server-sent email; review moderators do not automatically have this access.
+Replies are immutable once saved, and sending is an explicit second action.
+Provider acceptance is shown separately from failed/uncertain sends. Anonymous
+and deleted-account reviews cannot be emailed. This does not change public owner
+responses or expose reviewer identity in public review responses.
+See [backend deployment and Resend setup](../supabase-edge-functions/README.md#private-admin-review-replies)
+for the required migration, secrets, retry limits and privacy boundary.
+
 ## Email magic-link sign-in for contributions
 
 The main controls show Search radius and, when current GPS location is active,

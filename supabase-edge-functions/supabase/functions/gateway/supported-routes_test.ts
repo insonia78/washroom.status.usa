@@ -24,6 +24,13 @@ Deno.test("moderation exposes only review listing and decisions", () => {
   assertFalse(findRoute("/frontend/moderation/users"));
 });
 
+Deno.test("private review replies expose admin reads and saved reply actions but no user directory", () => {
+  assertEquals(findRoute("/frontend/admin/reviews")?.methods, ["GET"]);
+  assertEquals(findRoute("/frontend/admin/review-replies")?.methods, ["GET", "POST"]);
+  assertFalse(findRoute("/frontend/admin/users"));
+  assertFalse(findRoute("/frontend/review-replies"));
+});
+
 Deno.test("supportedRoutes allow washroom places lookups and account deactivation", () => {
   const bathroomsRoute = findRoute("/places/bathrooms");
   const deactivateRoute = findRoute("/accounts/deactivate");

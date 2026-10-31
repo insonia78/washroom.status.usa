@@ -12,7 +12,64 @@ sessions. Public approved review reads and place searches remain unsigned.
 Deploy the updated `frontend-api` with the frontend's email magic-link forms;
 enable the Email provider, configure SMTP and allow application callback URLs
 using [the frontend setup](../washroom-status-frontend/README.md#email-magic-link-sign-in-for-contributions).
-No additional migration is needed. Old anonymous review rows remain intact.
+No additional migration is needed for contribution sign-in itself. Old anonymous
+review rows remain intact. Private admin email replies require the migration below.
+
+## Private admin review replies
+
+The application `/admin` panel lists review IDs and reviewer user IDs, never
+reviewer email addresses. Only accounts in `app_locations.owner_response_admins`
+can list these reviews, save private replies or send them. Moderator membership
+alone is insufficient. The backend derives the recipient from the saved review,
+resolves the verified address through the Supabase Auth admin API, and sends via
+Resend. Client-supplied recipient/actor/email fields are ignored. Replies are not
+public owner responses and are not returned by public review endpoints.
+
+### Deploy and configure
+
+After the existing private-schema migration is applied, deploy from this folder:
+
+```powershell
+supabase db push --dry-run
+supabase db push
+supabase secrets set RESEND_API_KEY="YOUR_RESEND_API_KEY" REVIEW_REPLY_FROM="Washroom Status USA <replies@YOUR_VERIFIED_DOMAIN>"
+supabase functions deploy frontend-api
+supabase functions deploy gateway
+```
+
+This applies `20261031010000_private_review_replies.sql`, creating the RLS-protected
+`app_locations.review_replies` table and service-role-only admin RPC. Review IDs,
+recipient user IDs, immutable reply text, author/sender IDs, timestamps, delivery
+state and provider confirmation ID are stored, not recipient email addresses.
+Configure a verified sending domain in Resend and use a send-capable API key.
+Keep both settings in Edge Function secrets, never `NEXT_PUBLIC_*` variables.
+Configure a monitored sender mailbox if users should be able to reply by email.
+Deploy the updated frontend as well. Supabase Auth SMTP settings are separate;
+the built-in magic-link sender cannot deliver these arbitrary reply messages.
+
+In `/admin`, select **Open private replies**, write **Private reply**, choose
+**Save private reply**, review the saved text, then **Email saved reply**. History
+is paginated. Anonymous/deleted-account reviews cannot receive replies. Email
+delivery uses the current verified account email; it is never returned to the
+browser or included in application error logs. Database/platform administrators
+and authorized Resend dashboard users can still access identities/provider logs;
+this is privacy in the application admin panel, not secrecy from infrastructure operators.
+
+`sent` means Resend accepted the email, not confirmed inbox delivery. There is no
+webhook delivery/bounce tracking or automatic background resend. `failed` means
+the send was rejected or recipient lookup failed; `unknown` means delivery could
+not be confirmed. Refresh history after any error; a lost final database response
+may leave `sending` even if Resend accepted the email. Retry the **same saved
+reply**, not a new copy. Concurrent attempts are claimed atomically with a
+60-second lease and the fixed reply ID is the Resend idempotency key.
+Retries stop 23 hours after the first attempt, before Resend's 24-hour key expiry.
+If that window expires, an infrastructure operator must check provider delivery
+logs before anyone creates a replacement reply. Changing sender configuration or
+the user's address between attempts can cause a provider idempotency conflict;
+do not bypass it by blindly creating another reply.
+
+Tests: `npx deno test --allow-env --allow-net supabase\functions\frontend-api`
+and `supabase\tests\review_replies.sql` against an isolated migrated test database.
 
 | Function | Purpose |
 | --- | --- |

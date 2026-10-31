@@ -1,5 +1,34 @@
 # Places API
 
+## Private administrator replies
+
+These gateway routes require a verified account on the separate
+`app_locations.owner_response_admins` allowlist, not merely a review moderator:
+
+- `GET /frontend/admin/reviews?offset=0`: up to 50 reviews (all moderation states)
+  with `user_id` or null for anonymous/deleted accounts, plus `next_offset`.
+- `GET /frontend/admin/review-replies?review_id=UUID&offset=0`: up to 50 private
+  replies for that review, plus `next_offset`.
+- `POST /frontend/admin/review-replies`: save with
+  `{"action":"save","id":"CLIENT_GENERATED_UUID","review_id":"UUID","body":"Reply"}`.
+  Returns `{ "reply": ... }`. Reusing the ID with the same author/review/text is
+  safe after a lost response; changing saved text is rejected.
+- Send a saved reply using `{"action":"send","id":"SAVED_REPLY_UUID"}`.
+  Recipient and content come from the stored review/reply, never client email,
+  user ID or replacement body fields. Returns `{ "reply": ... }` only after
+  provider acceptance has been persisted, or if already accepted.
+
+Next.js proxies these as `/api/backend/admin/reviews` and
+`/api/backend/admin/review-replies`. Reviewer email is resolved only on the backend
+via Supabase Auth and passed to Resend, never returned by these endpoints.
+States are `draft`, `sending`, `sent` (provider accepted, not guaranteed inbox
+delivery), `failed`, and `unknown`. A concurrent/in-progress send returns 409;
+unavailable recipients/expired retry windows return 422; missing email
+configuration/provider failures return 503. Retry only the same saved reply:
+there is a 60-second send lease and a 23-hour retry window with a stable Resend
+idempotency key. A failed final storage write may leave `sending` despite
+acceptance. Refresh history rather than assuming failure means no email was sent.
+
 ## Contribution authentication
 
 POST `/frontend/reviews` and `/frontend/toilet-submissions` require a verified,

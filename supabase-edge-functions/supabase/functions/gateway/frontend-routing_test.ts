@@ -23,6 +23,8 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
       return await api.fetch(req);
     }
     if (url.pathname === "/rest/v1/reviews") return Response.json([]);
+    if (url.pathname === "/rest/v1/owner_response_admins") return Response.json([{ user_id: "10000000-0000-4000-8000-000000000001" }]);
+    if (url.pathname === "/rest/v1/review_replies") return Response.json([]);
     if (url.pathname === "/auth/v1/user") return Response.json({ id: "10000000-0000-4000-8000-000000000001", email_confirmed_at: "2026-01-01" });
     if (url.pathname === "/rest/v1/toilet_submissions") {
       const body = await req.json();
@@ -57,6 +59,18 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
     if (unauthorized.status !== 401 || Number(forwarded) !== 5) throw new Error("Moderation routes must forward to backend authorization");
     const blocked = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/auth/v1/admin"));
     if (blocked.status !== 404 || Number(forwarded) !== 5) throw new Error("Unlisted auth endpoints must not forward");
+    for (const path of ["/admin/reviews", "/admin/review-replies?review_id=20000000-0000-4000-8000-000000000001"]) {
+      const url = `https://project.example/functions/v1/gateway/frontend${path}`;
+      const denied = await gateway.fetch(new Request(url));
+      if (denied.status !== 401) throw new Error("Private reply reads must enforce backend authentication");
+      const allowed = await gateway.fetch(new Request(url, { headers: { Authorization: "Bearer admin-test" } }));
+      if (allowed.status !== 200 || allowed.headers.get("cache-control") !== "no-store") throw new Error("Private admin read failed through gateway");
+    }
+    const deniedSend = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/admin/review-replies", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "send", id: "30000000-0000-4000-8000-000000000001" }),
+    }));
+    if (deniedSend.status !== 401 || Number(forwarded) !== 10) throw new Error("Private reply writes must reach backend authorization");
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of previous) {

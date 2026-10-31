@@ -71,6 +71,31 @@ test('owner response admin writes forward session and payload only through the g
   assert.equal(result.headers.get('cache-control'),'no-store');
 });
 
+test('private review reply reads and writes proxy only to the gateway',async()=>{
+  for(const path of ['reviews','review-replies']){
+    globalThis.fetch=async(input,init)=>{
+      assert.equal(String(input),`https://project.example/functions/v1/gateway/frontend/admin/${path}?offset=0`);
+      assert.equal(new Headers(init.headers).get('authorization'),'Bearer admin-session');
+      return Response.json({});
+    };
+    const response=await backendGet(new Request(`http://localhost/api/backend/admin/${path}?offset=0`,{
+      headers:{Authorization:'Bearer admin-session'},
+    }),{params:Promise.resolve({path:['admin',path]})});
+    assert.equal(response.status,200);
+  }
+  const payload={action:'send',id:'11111111-1111-4111-8111-111111111111'};
+  globalThis.fetch=async(input,init)=>{
+    assert.equal(String(input),'https://project.example/functions/v1/gateway/frontend/admin/review-replies');
+    assert.equal(new Headers(init.headers).get('authorization'),'Bearer admin-session');
+    assert.deepEqual(JSON.parse(new TextDecoder().decode(init.body)),payload);
+    return Response.json({reply:{status:'sent'}});
+  };
+  const response=await backendPost(new Request('http://localhost/api/backend/admin/review-replies',{
+    method:'POST',headers:{Authorization:'Bearer admin-session','Content-Type':'application/json'},body:JSON.stringify(payload),
+  }),{params:Promise.resolve({path:['admin','review-replies']})});
+  assert.equal(response.status,200);
+});
+
 test('city geocoding and boundary data follow the gateway; arbitrary backend paths are rejected', async () => {
   for (const path of [['geocode'], ['map-boundary'], ['auth', 'v1', 'user'], ['moderation', 'reviews'], ['admin','owner-responses'], ['owner-responses']]) {
     globalThis.fetch = async (input) => {

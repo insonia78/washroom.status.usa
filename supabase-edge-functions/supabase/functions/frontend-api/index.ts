@@ -45,6 +45,13 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
   });
   if (!response.ok) {
     const error: unknown = await response.json();
+    if (table === "rpc/admin_review_reply") {
+      if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Administrator access required");
+      if (isRecord(error) && error.code === "22023") throw new ApiError(422,
+        typeof error.message === "string" ? error.message : "Invalid review reply");
+      console.error("frontend-api reply storage failed", { status: response.status });
+      throw new ApiError(503, "Reply storage is unavailable. Refresh to check the saved reply before retrying.");
+    }
     if (table === "toilet_submissions") {
       if (isRecord(error) && error.code === "P0001") {
         throw new ApiError(429, "You have reached the limit of 3 toilet submissions per UTC day. Try again after midnight UTC.");
@@ -282,6 +289,115 @@ async function moderation(req: Request): Promise<Response> {
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const publicOwnerColumns = "id,osm_type,osm_id,review_id,business_name,body,completed_on,evidence_url,published_at";
 const adminOwnerColumns = `${publicOwnerColumns},verification_note,status,version,updated_at`;
+const replyColumns = "id,review_id,recipient_user_id,body,status,created_by,last_sent_by,created_at,first_attempt_at,last_attempt_at,sent_at,provider_id";
+
+async function adminReviews(req: Request): Promise<Response> {
+  if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
+  await requireAllowlistedUser(req, "admin");
+  const offset = new URL(req.url).searchParams.get("offset") ?? "0";
+  if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid review offset");
+  const rows: unknown = await (await database("reviews", new URLSearchParams({
+    select: "id,user_id,osm_type,osm_id,rating,comment,status,created_at",
+    order: "created_at.desc,id.desc", limit: "50", offset,
+  }))).json();
+  if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin review list");
+  return json(200, { reviews: rows, next_offset: rows.length === 50 ? Number(offset) + 50 : null });
+}
+
+async function replyAction(adminId: string, action: string, id: string, fields: Record<string, unknown> = {}) {
+  const rows: unknown = await (await database("rpc/admin_review_reply", new URLSearchParams(), {
+    method: "POST", body: JSON.stringify({ ...fields, p_admin_id: adminId, p_action: action, p_id: id }),
+  })).json();
+  if (!Array.isArray(rows) || rows.length > 1) {
+    throw new ApiError(502, "Invalid saved reply. Refresh before retrying.");
+  }
+  if (!rows.length) throw new ApiError(409, "Reply is unavailable or a send is in progress. Refresh and wait at least 60 seconds before retrying.");
+  const row: unknown = rows[0];
+  if (!isRecord(row) || row.id !== id) throw new ApiError(502, "Invalid saved reply. Refresh before retrying.");
+  return row;
+}
+
+async function adminReviewReplies(req: Request): Promise<Response> {
+  if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
+  const adminId = await requireAllowlistedUser(req, "admin");
+  if (req.method === "GET") {
+    const query = new URL(req.url).searchParams;
+    const reviewId = query.get("review_id");
+    const offset = query.get("offset") ?? "0";
+    if (!reviewId || !uuidPattern.test(reviewId) || !/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid review or reply offset");
+    const replies: unknown = await (await database("review_replies", new URLSearchParams({
+      select: replyColumns, review_id: `eq.${reviewId}`, order: "created_at.desc,id.desc", limit: "50", offset,
+    }))).json();
+    if (!Array.isArray(replies)) throw new ApiError(502, "Invalid reply history");
+    return json(200, { replies, next_offset: replies.length === 50 ? Number(offset) + 50 : null });
+  }
+  let body: unknown;
+  try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }
+  if (!isRecord(body) || typeof body.id !== "string" || !uuidPattern.test(body.id) ||
+    !["save", "send"].includes(String(body.action))) throw new ApiError(400, "Invalid reply action");
+  const replyId = body.id;
+  if (body.action === "save") {
+    if (typeof body.review_id !== "string" || !uuidPattern.test(body.review_id) ||
+      typeof body.body !== "string" || !body.body.trim() || body.body.length > 4000) throw new ApiError(400, "Select a review and enter a reply of 1 to 4000 characters");
+    const reply = await replyAction(adminId, "save", replyId, { p_review_id: body.review_id, p_body: body.body.trim() });
+    return json(200, { reply });
+  }
+  // Configuration is checked before claiming a delivery or contacting the recipient.
+  const apiKey = config("RESEND_API_KEY");
+  const from = config("REVIEW_REPLY_FROM");
+  const reply = await replyAction(adminId, "claim", replyId);
+  if (reply.status === "sent") return json(200, { reply });
+  if (reply.status !== "sending" || typeof reply.recipient_user_id !== "string" ||
+    !uuidPattern.test(reply.recipient_user_id) || typeof reply.body !== "string") throw new ApiError(502, "Invalid saved reply");
+  const finish = async (action: "sent" | "failed" | "unknown", providerId?: string) =>
+    await replyAction(adminId, action, replyId, providerId ? { p_provider_id: providerId } : {});
+  const serviceKey = config("SUPABASE_SERVICE_ROLE_KEY");
+  let recipient: unknown;
+  try {
+    const lookup = await upstream(new URL(`/auth/v1/admin/users/${reply.recipient_user_id}`, config("SUPABASE_URL")), {
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+    });
+    if (!lookup.ok) {
+      await lookup.body?.cancel();
+      throw new Error("Recipient lookup failed");
+    }
+    recipient = await lookup.json();
+  } catch {
+    await finish("failed");
+    throw new ApiError(503, "Recipient lookup failed. The reply is saved; no email was sent.");
+  }
+  if (!isRecord(recipient) || recipient.id !== reply.recipient_user_id || typeof recipient.email !== "string" ||
+    !recipient.email || !recipient.email_confirmed_at || recipient.is_anonymous === true) {
+    await finish("failed");
+    throw new ApiError(422, "The reviewer does not have a verified email account. No email was sent.");
+  }
+  let delivered: Response;
+  try {
+    delivered = await upstream("https://api.resend.com/emails", {
+      method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
+        "Idempotency-Key": `review-reply/${replyId}` },
+      body: JSON.stringify({ from, to: [recipient.email], subject: "A reply to your Washroom Status USA review",
+        text: `An administrator replied to your review.\n\n${reply.body}\n\nWashroom Status USA\nThis is a private reply, not a public review response.` }),
+    });
+  } catch {
+    await finish("unknown");
+    throw new ApiError(503, "Email delivery is uncertain. Reply saved. Retry this same saved reply after 60 seconds; do not create a duplicate.");
+  }
+  if (!delivered.ok) {
+    // Never return or log provider response bodies: they may contain the recipient address.
+    await finish(delivered.status >= 500 || delivered.status === 409 ? "unknown" : "failed");
+    await delivered.body?.cancel();
+    console.error("frontend-api reply email rejected", { status: delivered.status });
+    throw new ApiError(503, "Email provider did not confirm the send. Reply saved. Check email configuration and retry this same saved reply.");
+  }
+  let confirmation: unknown;
+  try { confirmation = await delivered.json(); } catch { confirmation = null; }
+  if (!isRecord(confirmation) || typeof confirmation.id !== "string" || !confirmation.id || confirmation.id.length > 200) {
+    await finish("unknown");
+    throw new ApiError(502, "Email confirmation is uncertain. Reply saved. Retry this same saved reply, not a new one.");
+  }
+  return json(200, { reply: await finish("sent", confirmation.id) });
+}
 
 function ownerTarget(query: URLSearchParams, required: boolean): URLSearchParams {
   const params = new URLSearchParams();
@@ -379,6 +495,8 @@ export default {
       if (path === "/reviews") return await reviews(req);
       if (path === "/moderation/reviews") return await moderation(req);
       if (path === "/admin/owner-responses") return await ownerResponses(req, true);
+      if (path === "/admin/reviews") return await adminReviews(req);
+      if (path === "/admin/review-replies") return await adminReviewReplies(req);
       if (path === "/owner-responses") return await ownerResponses(req, false);
       if (path.startsWith("/auth/")) return await auth(req, path);
       if (req.method !== "GET") throw new ApiError(405, "Method not allowed");
