@@ -1,4 +1,6 @@
 'use client';
+import PageCount from '@/components/PageCount';
+import NotFoundView from '@/components/NotFoundView';
 import {useEffect,useRef,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
@@ -23,7 +25,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
   const [draft,setDraft]=useState<AdminOwnerResponse|null>(null);
   const [confirmed,setConfirmed]=useState(false);
   const [dirty,setDirty]=useState(false);
-  const [page,setPage]=useState(0);
+  const [page,setPage]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [next,setNext]=useState<number|null>(null);
   const [refresh,setRefresh]=useState(0);
   const lifetime=useRef<AbortController|null>(null);
@@ -40,7 +42,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
         if(!response.ok)throw new Error(data.error||'Could not load owner responses.');
         if(!Array.isArray(data.responses)||!data.responses.every(isAdminOwnerResponse)||
           (data.next_offset!==null&&data.next_offset!==page+3))throw new Error('Invalid admin response list.');
-        if(!controller.signal.aborted){setRows(data.responses);setNext(data.next_offset);setReady(true)}
+        if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setRows(data.responses);setNext(data.next_offset);setReady(true)}
       }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load owner responses.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -126,7 +128,7 @@ function OwnerResponseDashboard({session}:{session:Session}){
           {row.status==='draft'&&<button type="button" disabled={busy} className="pill mt-3" onClick={()=>edit(row)}>Edit draft</button>}
         </article>)}
         <div className="mt-4 flex gap-3">
-          {page>0&&<button disabled={busy} type="button" className="pill" onClick={()=>setPage(value=>Math.max(0,value-3))}>Previous page</button>}
+          <PageCount offset={page} total={total}/>{page>0&&<button disabled={busy} type="button" className="pill" onClick={()=>setPage(value=>Math.max(0,value-3))}>Previous page</button>}
           {next!==null&&<button disabled={busy} type="button" className="pill" onClick={()=>setPage(next)}>Next page</button>}
         </div>
       </section>
@@ -142,6 +144,14 @@ export default function AdminPage(){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
+  const [denied,setDenied]=useState(false);
+  useEffect(()=>{
+    if(!session)return;
+    const controller=new AbortController();
+    fetch(`${endpoint}?offset=0`,{headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store',signal:controller.signal})
+      .then(response=>{if(response.status===403)setDenied(true)}).catch(()=>{});
+    return()=>controller.abort();
+  },[session]);
   useEffect(()=>{
     if(!supabase){setChecking(false);setError('Admin sign-in is not configured. Set the public Supabase URL and anonymous key.');return}
     let active=true;
@@ -173,6 +183,7 @@ export default function AdminPage(){
     }catch(error){setError(error instanceof Error?error.message:'Could not sign out.')}
     finally{setBusy(false)}
   }
+  if(denied)return <NotFoundView/>;
   return <main className="mx-auto max-w-7xl px-4 py-7">
     <a href="/" className="text-sm text-teal-800 underline">Back to restroom search</a>
     <h1 className="mt-5 text-3xl font-extrabold">Restroom administration</h1>

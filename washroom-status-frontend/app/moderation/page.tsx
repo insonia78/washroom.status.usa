@@ -1,4 +1,6 @@
 'use client';
+import PageCount from '@/components/PageCount';
+import NotFoundView from '@/components/NotFoundView';
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
@@ -19,8 +21,9 @@ export default function ModerationPage(){
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
   const [refresh,setRefresh]=useState(0);
-  const [offset,setOffset]=useState(0);
+  const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [nextOffset,setNextOffset]=useState<number|null>(null);
+  const [denied,setDenied]=useState(false);
   useEffect(()=>{
     if(!supabase){setChecking(false);setError('Moderator sign-in is not configured. Set the public Supabase URL and anonymous key.');return}
     let active=true;
@@ -47,9 +50,10 @@ export default function ModerationPage(){
     fetch(`/api/backend/moderation/reviews?offset=${offset}`,{headers:{Authorization:`Bearer ${session.access_token}`},signal:controller.signal,cache:'no-store'})
       .then(async response=>{
         const data=await response.json();
+        if(response.status===403){if(!controller.signal.aborted)setDenied(true);return}
         if(!response.ok)throw new Error(data.error||'Could not load the moderation queue.');
         if(!Array.isArray(data.reviews)||!data.reviews.every(isPendingReview))throw new Error('Invalid moderation queue response.');
-        if(!controller.signal.aborted){setReviews(data.reviews);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null);setReady(true)}
+        if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setReviews(data.reviews);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null);setReady(true)}
       }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load the moderation queue.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -99,6 +103,7 @@ export default function ModerationPage(){
     finally{setBusy(false)}
   }
 
+  if(denied)return <NotFoundView/>;
   return <main className="mx-auto max-w-4xl px-4 py-7">
     <a href="/" className="text-sm font-semibold text-teal-800 underline">Back to restroom search</a>
     <h1 className="mt-5 text-3xl font-extrabold">Restroom moderation</h1>
@@ -137,7 +142,7 @@ export default function ModerationPage(){
           <div className="mt-3 flex gap-3"><button type="button" disabled={busy} onClick={()=>decide(review,'approved')} className="rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Approve</button><button type="button" disabled={busy} onClick={()=>decide(review,'rejected')} className="rounded-xl border border-red-300 px-4 py-3 font-bold text-red-800 disabled:opacity-50">Reject</button></div>
         </article>)}</div>
         <div className="mt-4 flex gap-3">
-          {offset>0&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
+          <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
           {nextOffset!==null&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(nextOffset)}>Next reviews</button>}
         </div>
       </>}

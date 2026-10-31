@@ -1,4 +1,5 @@
 'use client';
+import PageCount from './PageCount';
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
@@ -12,7 +13,7 @@ export default function ToiletModerationQueue({session,refresh}:{session:Session
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
-  const [offset,setOffset]=useState(0);
+  const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [nextOffset,setNextOffset]=useState<number|null>(null);
   useEffect(()=>{
     const controller=new AbortController();
@@ -23,7 +24,7 @@ export default function ToiletModerationQueue({session,refresh}:{session:Session
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not load toilet submissions.');
       if(!Array.isArray(data.submissions)||!data.submissions.every(isPendingToilet))throw new Error('Invalid toilet moderation queue response.');
-      if(!controller.signal.aborted){setItems(data.submissions);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null)}
+      if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setItems(data.submissions);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load toilet submissions.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -69,7 +70,7 @@ export default function ToiletModerationQueue({session,refresh}:{session:Session
       <div className="mt-3 flex gap-3"><button type="button" disabled={busy} onClick={()=>decide(item,'approved')} className="rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Approve toilet</button><button type="button" disabled={busy} onClick={()=>decide(item,'rejected')} className="rounded-xl border border-red-300 px-4 py-3 font-bold text-red-800 disabled:opacity-50">Reject toilet</button></div>
     </article>)}</div>
     <div className="mt-4 flex gap-3">
-      {offset>0&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous toilets</button>}
+      <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous toilets</button>}
       {nextOffset!==null&&<button type="button" disabled={busy||loading} className="pill" onClick={()=>setOffset(nextOffset)}>Next toilets</button>}
     </div>
   </section>;

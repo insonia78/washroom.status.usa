@@ -1,4 +1,5 @@
 'use client';
+import PageCount from './PageCount';
 import {useEffect,useRef,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
@@ -7,7 +8,7 @@ import {isAdminReview,isReviewReply,type AdminReview,type ReviewReply} from '@/l
 const endpoint='/api/backend/admin/review-replies';
 function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
   const [rows,setRows]=useState<ReviewReply[]>([]);
-  const [offset,setOffset]=useState(0);
+  const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [next,setNext]=useState<number|null>(null);
   const [refresh,setRefresh]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -33,7 +34,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
       if(!response.ok)throw new Error(data.error||'Could not load replies.');
       if(!Array.isArray(data.replies)||!data.replies.every((row:unknown)=>isReviewReply(row)&&row.review_id===review.id)||
         (data.next_offset!==null&&data.next_offset!==offset+3))throw new Error('Invalid reply history.');
-      if(!controller.signal.aborted){setRows(data.replies);setNext(data.next_offset);setReady(true)}
+      if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setRows(data.replies);setNext(data.next_offset);setReady(true)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load replies.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -91,7 +92,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
         {(row.status==='unknown'||row.status==='sending')&&<p className="mt-2 text-xs text-amber-900">Delivery may be in progress or uncertain. Refresh first and wait 60 seconds before retrying this same reply. Retries stop 23 hours after the first attempt to prevent duplicate emails.</p>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
-        {offset>0&&<button type="button" disabled={busy} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous replies</button>}
+        <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" disabled={busy} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous replies</button>}
         {next!==null&&<button type="button" disabled={busy} className="pill" onClick={()=>setOffset(next)}>More replies</button>}
       </div>
     </>}
@@ -100,7 +101,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
 
 export default function AdminReviewReplies({session}:{session:Session}){
   const [rows,setRows]=useState<AdminReview[]>([]);
-  const [offset,setOffset]=useState(0);
+  const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [next,setNext]=useState<number|null>(null);
   const [refresh,setRefresh]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -131,7 +132,7 @@ export default function AdminReviewReplies({session}:{session:Session}){
       if(!response.ok)throw new Error(data.error||'Could not load reviews.');
       if(!Array.isArray(data.reviews)||!data.reviews.every(isAdminReview)||
         (data.next_offset!==null&&data.next_offset!==offset+3))throw new Error('Invalid admin review list.');
-      if(!controller.signal.aborted){setRows(data.reviews);setNext(data.next_offset)}
+      if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setRows(data.reviews);setNext(data.next_offset)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load reviews.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -167,14 +168,19 @@ export default function AdminReviewReplies({session}:{session:Session}){
         <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button></>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
-        {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
+        <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous reviews</button>}
         {next!==null&&<button type="button" className="pill" onClick={()=>setOffset(next)}>More reviews</button>}
       </div>
     </>}
-    {selected&&<div className="mt-5 rounded-xl border p-3">
-      <p className="break-all text-sm font-bold">Replying to review {selected.id}</p>
-      <p className="mt-1 break-all text-xs">User ID: {selected.user_id??'No account'}</p>
-      <ReplyEditor key={`${selected.id}:${session.access_token}`} review={selected} session={session}/>
+    {selected&&<div role="dialog" aria-modal="true" aria-label="Private replies" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={()=>setSelected(null)}>
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={event=>event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <p className="break-all text-sm font-bold">Replying to review {selected.id}</p>
+          <button type="button" className="pill" onClick={()=>setSelected(null)}>Close</button>
+        </div>
+        <p className="mt-1 break-all text-xs">User ID: {selected.user_id??'No account'}</p>
+        <ReplyEditor key={`${selected.id}:${session.access_token}`} review={selected} session={session}/>
+      </div>
     </div>}
   </section>;
 }

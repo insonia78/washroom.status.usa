@@ -1,4 +1,5 @@
 'use client';
+import PageCount from './PageCount';
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 
@@ -18,7 +19,7 @@ const isAdminToilet=(value:unknown):value is AdminToilet=>record(value)&&typeof 
 
 export default function AdminToilets({session}:{session:Session}){
   const [rows,setRows]=useState<AdminToilet[]>([]);
-  const [offset,setOffset]=useState(0);
+  const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [next,setNext]=useState<number|null>(null);
   const [refresh,setRefresh]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -59,7 +60,7 @@ export default function AdminToilets({session}:{session:Session}){
       if(!response.ok)throw new Error(data.error||'Could not load added toilets.');
       if(!Array.isArray(data.toilets)||!data.toilets.every(isAdminToilet)||
         (data.next_offset!==null&&data.next_offset!==offset+3))throw new Error('Invalid admin toilet list.');
-      if(!controller.signal.aborted){setRows(data.toilets.map((row:AdminToilet)=>({...row,published_at:row.published_at??null})));setNext(data.next_offset)}
+      if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setRows(data.toilets.map((row:AdminToilet)=>({...row,published_at:row.published_at??null})));setNext(data.next_offset)}
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load added toilets.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -99,7 +100,7 @@ export default function AdminToilets({session}:{session:Session}){
           </div>}
       </article>)}</div>
       <div className="mt-3 flex gap-2">
-        {offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous toilets</button>}
+        <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous toilets</button>}
         {next!==null&&<button type="button" className="pill" onClick={()=>setOffset(next)}>More toilets</button>}
       </div>
     </>}

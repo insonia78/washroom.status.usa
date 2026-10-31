@@ -1,4 +1,5 @@
 'use client';
+import PageCount from './PageCount';
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 
@@ -16,7 +17,7 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
   const [error,setError]=useState('');
   const [refresh,setRefresh]=useState(0);
   const [showArchived,setShowArchived]=useState(false);
-  const [offset,setOffset]=useState(0);
+  const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [nextOffset,setNextOffset]=useState<number|null>(null);
   const headers={Authorization:`Bearer ${session.access_token}`};
   useEffect(()=>{
@@ -25,7 +26,7 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not load owner replies.');
       if(!Array.isArray(data.replies)||!data.replies.every(isReply))throw new Error('Invalid owner reply list.');
-      if(!controller.signal.aborted){setRows(data.replies);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null)}
+      if(!controller.signal.aborted){setTotal(typeof data.total==='number'?data.total:null);setRows(data.replies);setNextOffset(typeof data.next_offset==='number'?data.next_offset:null)}
     }).catch(err=>{if(!controller.signal.aborted)setError(err instanceof Error?err.message:'Could not load owner replies.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
@@ -74,7 +75,7 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
       </div>
     </article>)}</div>
     <div className="mt-4 flex gap-3">
-      {offset>0&&<button type="button" disabled={loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous replies</button>}
+      <PageCount offset={offset} total={total}/>{offset>0&&<button type="button" disabled={loading} className="pill" onClick={()=>setOffset(value=>Math.max(0,value-3))}>Previous replies</button>}
       {nextOffset!==null&&<button type="button" disabled={loading} className="pill" onClick={()=>setOffset(nextOffset)}>Next replies</button>}
     </div>
   </section>;
