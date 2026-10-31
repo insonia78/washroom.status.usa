@@ -296,6 +296,7 @@ async function reviews(req: Request): Promise<Response> {
   }
   if (!isRecord(body)) throw new ApiError(400, "Invalid review fields");
   const { osm_type, osm_id, rating, availability, cleanliness_status, issues, comment } = body;
+  const restroomName = typeof body.restroom_name === "string" ? body.restroom_name.trim().slice(0, 200) || null : null;
   const allowedIssues = ["dirty_floor", "broken_fixture", "odor", "missing_supplies", "other"];
   if (!validRestroom(osm_type, osm_id) || typeof rating !== "number" ||
     !Number.isInteger(rating) || rating < 1 || rating > 5 ||
@@ -329,7 +330,7 @@ async function reviews(req: Request): Promise<Response> {
       method: "POST",
       body: JSON.stringify({
         osm_type, osm_id, rating, availability, cleanliness_status, issues, comment: comment.trim(),
-        photo_paths: photoPaths, user_id: userId, status: "pending",
+        restroom_name: restroomName, photo_paths: photoPaths, user_id: userId, status: "pending",
       }),
     });
   } catch (error) {
@@ -439,7 +440,8 @@ async function withRestroomNames(rows: unknown[]): Promise<Record<string, unknow
   }
   return rows.map(row => {
     const review = row as Record<string, unknown>;
-    return { ...review, restroom_name: names.get(`${review.osm_type}:${review.osm_id}`) ?? null };
+    const stored = typeof review.restroom_name === "string" && review.restroom_name ? review.restroom_name : null;
+    return { ...review, restroom_name: stored ?? names.get(`${review.osm_type}:${review.osm_id}`) ?? null };
   });
 }
 
@@ -448,7 +450,7 @@ async function moderation(req: Request): Promise<Response> {
   const userId = await requireAllowlistedUser(req, "moderator");
   if (req.method === "GET") {
     const pending: unknown = await (await database("reviews", new URLSearchParams({
-      select: "id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,created_at,status,photo_paths",
+      select: "id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,created_at,status,photo_paths",
       status: "eq.pending", order: "created_at.asc,id.asc", limit: "50",
     }))).json();
     if (!Array.isArray(pending)) throw new ApiError(502, "Invalid moderation queue response");
@@ -510,7 +512,7 @@ async function adminReviews(req: Request): Promise<Response> {
   const moderation = query.get("moderation") ?? "moderated";
   if (moderation !== "moderated" && moderation !== "pending") throw new ApiError(400, "Invalid moderation filter");
   const rows: unknown = await (await database("reviews", new URLSearchParams({
-    select: "id,user_id,osm_type,osm_id,rating,availability,cleanliness_status,issues,comment,status,created_at,archived_at,photo_paths",
+    select: "id,user_id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,status,created_at,archived_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
     status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
     order: "created_at.desc,id.desc", limit: "50", offset,

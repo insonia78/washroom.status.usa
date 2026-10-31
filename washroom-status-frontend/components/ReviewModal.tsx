@@ -53,7 +53,7 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
     try{
       const token=await auth.accessToken();
       const form=new FormData();
-      form.set('review',JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment}));
+      form.set('review',JSON.stringify({osm_type:restroom.osm_type,osm_id:restroom.id,restroom_name:restroom.name,rating,availability,cleanliness_status:cleanlinessStatus,issues,comment}));
       photos.forEach(photo=>form.append('photos',photo));
       const response=await fetch('/api/reviews',{
         method:'POST',
