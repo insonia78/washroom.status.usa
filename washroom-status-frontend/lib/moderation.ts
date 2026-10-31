@@ -6,7 +6,7 @@ export type PendingReview={
 
 export type PendingToilet={
   id:string;name:string;latitude:number;longitude:number;wheelchair:string;
-  fee:string;notes:string;status:'pending';created_at:string;
+  fee:string;notes:string;photo_urls:string[];status:'pending';created_at:string;
 };
 
 export function isPendingToilet(value:unknown):value is PendingToilet{
@@ -17,6 +17,7 @@ export function isPendingToilet(value:unknown):value is PendingToilet{
     typeof row.longitude==='number'&&Number.isFinite(row.longitude)&&row.longitude>=-179&&row.longitude<=-65&&
     typeof row.wheelchair==='string'&&['yes','no','unknown'].includes(row.wheelchair)&&
     typeof row.fee==='string'&&['yes','no','unknown'].includes(row.fee)&&typeof row.notes==='string'&&
+    Array.isArray(row.photo_urls)&&row.photo_urls.every(url=>typeof url==='string')&&
     row.status==='pending'&&typeof row.created_at==='string'&&Number.isFinite(Date.parse(row.created_at));
 }
 

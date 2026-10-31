@@ -30,7 +30,7 @@ Deno.test("toilet moderation protects exact coordinates and decisions with the m
       if (url.pathname === "/rest/v1/toilet_submissions") {
         assert(url.searchParams.get("status") === "eq.pending", "Only pending");
         assert(!url.searchParams.get("select")?.includes("user_id"), "Do not expose contributor identity");
-        return Response.json([{ id, latitude: 40.7128123, longitude: -74.0060123 }]);
+        return Response.json([{ id, latitude: 40.7128123, longitude: -74.0060123, photo_paths: [] }]);
       }
       assert(url.pathname === "/rest/v1/rpc/moderate_toilet_submission", "Only approved moderation RPC");
       const payload = JSON.parse(String(init?.body));

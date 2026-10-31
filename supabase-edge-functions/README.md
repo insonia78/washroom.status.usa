@@ -14,9 +14,11 @@ enable the Email provider, configure SMTP and allow application callback URLs
 using [the frontend setup](../washroom-status-frontend/README.md#email-magic-link-sign-in-for-contributions).
 Old anonymous review rows remain intact. Apply
 `20261031020000_review_photos.sql` to add the private `review-photos` bucket and
-review photo paths. Reviews accept up to three JPEG, PNG, or WebP images, each
-up to 5 MB; only approved-review endpoints and authorized administration return
-short-lived signed photo URLs. Private admin email replies require the migration below.
+review photo paths, then `20261031030000_toilet_submission_photos.sql` to add
+photo paths to the private toilet moderation inbox. Both forms accept up to
+three JPEG, PNG, or WebP images, each up to 5 MB. Only approved-review endpoints
+and authorized moderation/admin queues return short-lived signed photo URLs.
+Private admin email replies require the migration below.
 
 ## Private admin review replies
 

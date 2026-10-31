@@ -62,6 +62,7 @@ export default function ToiletModerationQueue({session,refresh}:{session:Session
       <NavigationLinks latitude={item.latitude} longitude={item.longitude} name={item.name}/>
       <p className="mt-3 text-sm">Wheelchair accessible: {item.wheelchair} · Fee required: {item.fee}</p>
       <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.notes||'No access details provided.'}</p>
+      {item.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{item.photo_urls.map((url,index)=><a key={`${item.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open toilet submission photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to toilet submission`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
       <p className="mt-2 text-xs text-slate-500">Submitted <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString('en-US')}</time></p>
       <div className="mt-3 flex gap-3"><button type="button" disabled={busy} onClick={()=>decide(item,'approved')} className="rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Approve toilet</button><button type="button" disabled={busy} onClick={()=>decide(item,'rejected')} className="rounded-xl border border-red-300 px-4 py-3 font-bold text-red-800 disabled:opacity-50">Reject toilet</button></div>
     </article>)}</div>

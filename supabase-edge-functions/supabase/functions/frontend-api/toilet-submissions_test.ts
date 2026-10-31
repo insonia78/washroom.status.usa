@@ -35,12 +35,38 @@ Deno.test("current-location toilet submissions are validated and saved privately
         assert(payload.name === "Park toilet" && payload.notes === "Near entrance", "Trim text");
         assert(payload.latitude === fields.latitude && payload.longitude === fields.longitude, "Preserve exact GPS coordinates");
         assert(payload.wheelchair === "unknown" && payload.fee === "no", "Preserve answers");
-        assert(payload.status === "pending" && payload.user_id === "10000000-0000-4000-8000-000000000001" && !("id" in payload), "Use verified account, ignoring forged fields");
+        assert(payload.status === "pending" && payload.user_id === "10000000-0000-4000-8000-000000000001" &&
+          Array.isArray(payload.photo_paths) && payload.photo_paths.length === 0 && !("id" in payload),
+          "Use verified account and private photo path list, ignoring forged fields");
         return new Response(null, { status: 201 });
       };
       const response = await api.fetch(request({ ...fields, status: "approved", user_id: "forged", id: "forged" }));
       assert(response.status === 201 && calls === 2, "Verify identity before insertion");
       assert((await response.json()).status === "pending", "Confirm moderation");
+    });
+    await t.step("uploads toilet photos privately and stores their paths for moderation", async () => {
+      const form = new FormData();
+      form.set("submission", JSON.stringify(fields));
+      form.append("photos", new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "sign.png", { type: "image/png" }));
+      globalThis.fetch = async (input, init) => {
+        const url = new URL(String(input));
+        if (url.pathname === "/auth/v1/user") return Response.json({ id: "10000000-0000-4000-8000-000000000001", email_confirmed_at: "2026-01-01" });
+        if (url.pathname.startsWith("/storage/v1/object/review-photos/")) {
+          assert(init?.method === "POST", "Upload photo to the private bucket");
+          return Response.json({ Key: "stored" });
+        }
+        assert(url.pathname === "/rest/v1/toilet_submissions" && init?.method === "POST", "Insert toilet into moderation queue");
+        const payload = JSON.parse(String(init.body));
+        assert(payload.photo_paths.length === 1 && /^10000000-0000-4000-8000-000000000001\/[0-9a-f-]+\.png$/i.test(payload.photo_paths[0]),
+          "Associate the generated private photo path");
+        return new Response(null, { status: 201 });
+      };
+      const response = await api.fetch(new Request("https://project.example/frontend-api/toilet-submissions", {
+        method: "POST",
+        headers: { ...buildGatewayHeaders(config.GATEWAY_INTERNAL_SECRET), Authorization: "Bearer user-token" },
+        body: form,
+      }));
+      assert(response.status === 201, "Accept toilet submission with evidence photo");
     });
     await t.step("rejects invalid input without database requests", async () => {
       globalThis.fetch = async input => {

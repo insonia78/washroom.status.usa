@@ -11,17 +11,23 @@ afterEach(()=>{
   else process.env.WASHROOM_GATEWAY_URL=originalUrl;
 });
 
-test('toilet submissions pass through the gateway with unchanged coordinates and pending confirmation',async()=>{
+test('toilet submissions forward multipart photos and unchanged coordinates through the gateway',async()=>{
   const fields={name:'Park toilet',latitude:40.71,longitude:-74,wheelchair:'unknown',fee:'no',notes:''};
   globalThis.fetch=async(input,init)=>{
     assert.equal(String(input),'https://gateway.example/functions/v1/gateway/frontend/toilet-submissions');
     assert.equal(init.method,'POST');
-    assert.deepEqual(JSON.parse(new TextDecoder().decode(init.body)),fields);
+    assert.match(new Headers(init.headers).get('content-type'),/^multipart\/form-data; boundary=/);
+    const body=new TextDecoder().decode(init.body);
+    assert.ok(body.includes(JSON.stringify(fields)));
+    assert.ok(body.includes('sign.jpg'));
     assert.equal(init.cache,'no-store');
     return Response.json({status:'pending'},{status:201});
   };
+  const form=new FormData();
+  form.set('submission',JSON.stringify(fields));
+  form.append('photos',new File(['photo'], 'sign.jpg', {type:'image/jpeg'}));
   const response=await POST(new Request('https://app.example/api/backend/toilet-submissions',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields),
+    method:'POST',body:form,
   }),{params:Promise.resolve({path:['toilet-submissions']})});
   assert.equal(response.status,201);
   assert.equal(response.headers.get('cache-control'),'no-store');

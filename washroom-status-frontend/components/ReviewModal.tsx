@@ -4,33 +4,9 @@ import {X} from 'lucide-react';
 import type {Restroom} from '@/components/RestroomDetails';
 import {useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
+import {acceptedPhotoTypes,maxPhotoInputBytes,maxPhotoUploadBytes,preparePhoto} from '@/lib/photo-preparation';
 
 const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
-const maxPhotoInputBytes=12*1024*1024;
-const maxPhotoUploadBytes=1024*1024;
-
-async function prepareReviewPhoto(file:File):Promise<File>{
-  const bitmap=await createImageBitmap(file);
-  try{
-    let scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
-    for(let attempt=0;attempt<6;attempt++){
-      const canvas=document.createElement('canvas');
-      canvas.width=Math.max(1,Math.round(bitmap.width*scale));
-      canvas.height=Math.max(1,Math.round(bitmap.height*scale));
-      const context=canvas.getContext('2d');
-      if(!context)throw new Error('Photo processing is unavailable in this browser.');
-      context.drawImage(bitmap,0,0,canvas.width,canvas.height);
-      const quality=Math.max(0.5,0.82-attempt*0.07);
-      const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));
-      if(blob&&blob.size<=maxPhotoUploadBytes){
-        const name=file.name.replace(/\.[^.]+$/,'')||'review-photo';
-        return new File([blob],`${name}.jpg`,{type:'image/jpeg',lastModified:file.lastModified});
-      }
-      if(attempt>=2)scale*=0.8;
-    }
-    throw new Error('This photo could not be reduced enough to upload. Try a smaller image.');
-  }finally{bitmap.close()}
-}
 
 export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClose:()=>void}){
   const dialog=useRef<HTMLDialogElement>(null);
@@ -128,17 +104,18 @@ export default function ReviewModal({restroom,onClose}:{restroom:Restroom;onClos
           input.value='';
           setMessage('');
           if(photos.length+selected.length>3){setMessage('Choose no more than 3 photos.');return}
-          if(selected.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
+          if(selected.some(file=>!acceptedPhotoTypes.includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
             setMessage('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
           }
           setPreparingPhotos(true);
           try{
-            const prepared=await Promise.all(selected.map(prepareReviewPhoto));
+            const prepared=await Promise.all(selected.map(preparePhoto));
             setPhotos(previous=>[...previous,...prepared]);
           }
           catch(error){setMessage(error instanceof Error?error.message:'Could not prepare the photos. Try another image.')}
           finally{setPreparingPhotos(false)}
         }} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm"/></label>
+          <p className="mt-1 text-xs text-slate-600">If you attach photos, at least one must clearly show the business/restroom name or identifying sign. Reviews without this evidence may be rejected.</p>
           {preparingPhotos&&<p role="status" className="mt-1 text-xs text-slate-500">Preparing photos...</p>}
           {photos.length>0&&<ul className="mt-2 space-y-1 text-xs">{photos.map((photo,index)=><li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2"><span className="truncate">{photo.name}</span><button type="button" disabled={sending} onClick={()=>setPhotos(previous=>previous.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button></li>)}</ul>}
         </div>
