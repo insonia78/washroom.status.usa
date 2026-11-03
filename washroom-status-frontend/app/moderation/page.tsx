@@ -106,7 +106,7 @@ export default function ModerationPage(){
   }
 
   if(denied)return <NotFoundView/>;
-  return <main className="mx-auto max-w-4xl px-4 py-7">
+  return <main className="moderator-dashboard mx-auto max-w-4xl px-4 py-7">
     <a href="/" className="text-sm font-semibold text-teal-800 underline">Back to restroom search</a>
     <h1 className="mt-5 text-3xl font-extrabold">Restroom moderation</h1>
     <p className="mt-2 text-sm text-slate-600">Verify submitted toilet locations and review reported answers. Moderator notes are private and are never included in public reviews.</p>
