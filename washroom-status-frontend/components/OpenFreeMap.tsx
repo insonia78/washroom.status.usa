@@ -30,6 +30,7 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
   const [map, setMap] = useState<MapInstance | null>(null);
+  const [interactive, setInteractive] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<{restroom:Restroom;host:HTMLDivElement;close:()=>void;position:()=>void}|null>(null);
 
@@ -57,8 +58,16 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
         minZoom: 1,
         maxZoom: 19,
       });
-      instance.addControl(new NavigationControl(), 'top-right');
-      instance.getCanvas().setAttribute('aria-label', 'Interactive restroom map');
+      instance.dragPan.disable();
+      instance.scrollZoom.disable();
+      instance.boxZoom.disable();
+      instance.keyboard.disable();
+      instance.doubleClickZoom.disable();
+      instance.dragRotate.disable();
+      instance.touchZoomRotate.disable();
+      instance.touchPitch.disable();
+      instance.getCanvas().setAttribute('tabindex', '-1');
+      instance.getCanvas().setAttribute('aria-label', 'Restroom map. Interaction is disabled.');
       instance.on('error', event => {
         console.error('Map resource failed to load:', event.error);
         if (active) setError(LOCATION_RESULTS_ERROR);
@@ -81,6 +90,44 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!map) return;
+    const handlers = [
+      map.dragPan,
+      map.scrollZoom,
+      map.boxZoom,
+      map.keyboard,
+      map.doubleClickZoom,
+      map.dragRotate,
+      map.touchZoomRotate,
+      map.touchPitch,
+    ];
+    handlers.forEach(handler => interactive ? handler.enable() : handler.disable());
+    map.getCanvas().setAttribute('tabindex', interactive ? '0' : '-1');
+    map.getCanvas().setAttribute(
+      'aria-label',
+      interactive ? 'Interactive restroom map' : 'Restroom map. Interaction is disabled.',
+    );
+  }, [interactive, map]);
+
+  useEffect(() => {
+    if (!map || !interactive) return;
+    let active = true;
+    let control: import('maplibre-gl').IControl | undefined;
+    import('maplibre-gl').then(({NavigationControl}) => {
+      if (!active) return;
+      control = new NavigationControl();
+      map.addControl(control, 'top-right');
+    }).catch((loadError: unknown) => {
+      console.error('Map navigation controls failed to load:', loadError);
+      if (active) setError(LOCATION_RESULTS_ERROR);
+    });
+    return () => {
+      active = false;
+      if (control) map.removeControl(control);
+    };
+  }, [interactive, map]);
 
   useEffect(() => {
     if (!map) return;
@@ -158,6 +205,7 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
         button.textContent = item.category === 'fuel' ? '⛽' : item.category === 'supermarket' ? '🛒' : '🚻';
         button.setAttribute('aria-label', `View ${item.name}`);
         button.setAttribute('aria-expanded', 'false');
+        button.disabled = !interactive;
         button.style.cssText = 'background:white;border:2px solid #0d9488;border-radius:50%;width:36px;height:36px;cursor:pointer';
         const showPreview = () => {
           cancelClose();
@@ -196,20 +244,22 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
           positionPreview();
           setPreview({restroom:item,host,close:closePreview,position:positionPreview});
         };
-        button.onmouseenter = showPreview;
-        button.onmouseleave = scheduleClose;
-        button.onfocus = showPreview;
-        button.onblur = scheduleClose;
-        button.onkeydown = event => {
-          if (event.key === 'Escape') {event.preventDefault();event.stopPropagation();closePreview();}
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            showPreview();
-            (previewHost?.querySelector<HTMLButtonElement>('button') ?? previewHost)?.focus({preventScroll:true});
-          }
-        };
-        button.onclick = () => {showPreview();onSelect(item);};
-        markers.push(new Marker({element: button}).setLngLat([item.lon, item.lat]).addTo(map));
+        if (interactive) {
+          button.onmouseenter = showPreview;
+          button.onmouseleave = scheduleClose;
+          button.onfocus = showPreview;
+          button.onblur = scheduleClose;
+          button.onkeydown = event => {
+            if (event.key === 'Escape') {event.preventDefault();event.stopPropagation();closePreview();}
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              showPreview();
+              (previewHost?.querySelector<HTMLButtonElement>('button') ?? previewHost)?.focus({preventScroll:true});
+            }
+          };
+          button.onclick = () => {showPreview();onSelect(item);};
+        }
+        markers.push(new Marker({element: button}).setLngLat([item.lon,item.lat]).addTo(map));
       });
     }).catch((loadError: unknown) => {
       console.error('Result markers failed to load:', loadError);
@@ -224,10 +274,19 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
       setPreview(null);
       markers.forEach(marker => marker.remove());
     };
-  }, [filter, items, map, onSelect]);
+  }, [filter, interactive, items, map, onSelect]);
 
   return <div className="relative h-[420px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-    <div ref={containerRef} tabIndex={0} aria-label="Interactive restroom map" className="h-full w-full" />
+    <div ref={containerRef} tabIndex={interactive ? 0 : -1} aria-label={interactive ? 'Interactive restroom map' : 'Restroom map. Interaction is disabled.'} className="h-full w-full" />
+    <button
+      type="button"
+      aria-pressed={interactive}
+      aria-label={interactive ? 'Disable map interaction' : 'Enable map interaction'}
+      onClick={() => setInteractive(enabled => !enabled)}
+      className="absolute left-3 top-3 z-10 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow"
+    >
+      {interactive ? 'Disable map interaction' : 'Enable map interaction'}
+    </button>
     {preview&&createPortal(<MapRestroomPreview restroom={preview.restroom} onSelect={()=>onSelect(preview.restroom)} onClose={preview.close} onLayout={preview.position}/>,preview.host)}
     {error && <div role="alert" className="absolute left-3 right-3 top-14 rounded-xl bg-white p-3 text-center text-sm font-semibold text-slate-700 shadow">{error}</div>}
   </div>;
