@@ -12,7 +12,7 @@ import OwnerReplyQueue from '@/components/OwnerReplyQueue';
 
 type Fields={osm_type:string;osm_id:string;review_id:string;business_name:string;body:string;completed_on:string;evidence_url:string;verification_note:string};
 const emptyFields:Fields={osm_type:'node',osm_id:'',review_id:'',business_name:'',body:'',completed_on:'',evidence_url:'',verification_note:''};
-const tabs=[{id:'moderation',label:'Reviews & toilets'},{id:'responses',label:'Owner responses'},{id:'invites',label:'Owner invites'},{id:'replies',label:'Owner replies'}] as const;
+const tabs=[{id:'moderation',label:'Reviews & toilets'},{id:'responses',label:'Owner responses'},{id:'replies',label:'Owner replies'}] as const;
 const endpoint='/api/backend/admin/owner-responses';
 
 function OwnerResponseDashboard({session}:{session:Session}){
@@ -164,6 +164,8 @@ export default function AdminPage(){
   const [denied,setDenied]=useState(false);
   const [checked,setChecked]=useState(false);
   const [tab,setTab]=useState<(typeof tabs)[number]['id']>('moderation');
+  const [inviteReviewId,setInviteReviewId]=useState<string|null>(null);
+  const inviteOpener=useRef<HTMLButtonElement|null>(null);
   useEffect(()=>{
     if(!session)return;
     const controller=new AbortController();
@@ -215,12 +217,17 @@ export default function AdminPage(){
         {tabs.map(item=><button key={item.id} type="button" role="tab" aria-selected={tab===item.id} onClick={()=>setTab(item.id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===item.id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{item.label}</button>)}
       </nav>
       {tab==='moderation'&&<div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
-        <AdminReviewReplies key={`replies:${session.access_token}`} session={session}/>
+        <AdminReviewReplies key={`replies:${session.access_token}`} session={session} onInviteOwner={(reviewId,opener)=>{inviteOpener.current=opener;setInviteReviewId(reviewId)}}/>
         <AdminToilets key={`toilets:${session.access_token}`} session={session}/>
       </div>}
       {tab==='responses'&&<OwnerResponseDashboard key={session.access_token} session={session}/>}
-      {tab==='invites'&&<AdminOwnerInvites key={`invites:${session.access_token}`} session={session}/>}
       {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="publish"/>}
+      {inviteReviewId&&<AdminOwnerInvites
+        key={`invite:${session.access_token}:${inviteReviewId}`}
+        session={session}
+        reviewId={inviteReviewId}
+        onClose={()=>{setInviteReviewId(null);inviteOpener.current?.focus()}}
+      />}
     </>:<form onSubmit={signIn} className="panel mt-5 max-w-md">
       <h2 className="text-xl font-bold">Administrator sign-in</h2>
       <label className="mt-4 block text-sm font-semibold">Email<input required type="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>

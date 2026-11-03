@@ -99,7 +99,13 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
   </section>;
 }
 
-export default function AdminReviewReplies({session}:{session:Session}){
+export default function AdminReviewReplies({
+  session,
+  onInviteOwner,
+}:{
+  session:Session;
+  onInviteOwner:(reviewId:string,opener:HTMLButtonElement)=>void;
+}){
   const [rows,setRows]=useState<AdminReview[]>([]);
   const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
   const [next,setNext]=useState<number|null>(null);
@@ -154,7 +160,12 @@ export default function AdminReviewReplies({session}:{session:Session}){
       <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
         <h3 className="font-bold">{row.restroom_name?`${row.restroom_name} - `:''}{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status==='pending'?'Not moderated yet':row.status}</h3>
         <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>
-        <p className="mt-1 break-all text-xs">Review ID: {row.id}</p>
+        <p className="mt-1 break-all text-xs">Review ID: <button
+          type="button"
+          className="text-left text-teal-800 underline underline-offset-2"
+          onClick={event=>onInviteOwner(row.id,event.currentTarget)}
+          aria-label={`Send an owner invite for review ${row.id}`}
+        >{row.id}</button></p>
         <p className="mt-1 break-all text-xs">User ID: {row.user_id??'No account (anonymous or deleted)'}</p>
         <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
           <div><dt className="font-semibold">Availability at visit</dt><dd className="capitalize">{row.availability?.replaceAll('_',' ')||'Not provided (older review)'}</dd></div>
