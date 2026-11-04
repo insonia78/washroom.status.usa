@@ -239,7 +239,7 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
     }
     if (table === "toilet_submissions") {
       if (isRecord(error) && error.code === "P0001") {
-        throw new ApiError(429, "You have reached the limit of 10 toilet submissions per UTC day. Try again after midnight UTC.");
+        throw new ApiError(429, "You have reached the limit of 3 toilet submissions per UTC day. Try again after midnight UTC.");
       }
       console.error("frontend-api toilet submission failed", { status: response.status });
       throw new ApiError(503, "Toilet could not be saved. Please try again.");
@@ -248,6 +248,9 @@ async function database(table: string, params: URLSearchParams, init: RequestIni
       if (isRecord(error) && error.code === "42501") throw new ApiError(403, "Moderator access required");
       console.error("frontend-api toilet moderation failed", { status: response.status });
       throw new ApiError(503, "Toilet moderation is temporarily unavailable");
+    }
+    if (table === "reviews" && isRecord(error) && error.code === "P0001") {
+      throw new ApiError(429, "You have reached the limit of 3 reviews per UTC day. Try again after midnight UTC.");
     }
     if (isRecord(error) && error.code === "23505") {
       throw new ApiError(409, "You have already reviewed this restroom");

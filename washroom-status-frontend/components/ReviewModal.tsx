@@ -97,7 +97,7 @@ export default function ReviewModal({restroom,userLocation,onClose}:{restroom:Re
       <div><h2 id={titleId} className="text-xl font-bold">Add a review</h2><p className="mt-1 break-words font-semibold text-teal-800">{restroom.name}</p><p className="mt-1 text-xs text-slate-500">{isRefugeRestroom?'Refuge Restrooms':`OpenStreetMap ${restroom.osm_type}`} #{restroom.id}</p></div>
       <button type="button" autoFocus onClick={onClose} aria-label="Close review modal" className="pill"><X size={18}/></button>
     </div>
-    <p id={descriptionId} className="mt-3 text-sm text-slate-600">Sign in to add a review. Reports are screened before publication. An administrator may send a private reply to your verified account email. The admin reply panel shows your user ID, not your email address. Describe your visit without including names or private information. Availability reports are not live verification.</p>
+    <p id={descriptionId} className="mt-3 text-sm text-slate-600">Sign in to add a review. Each account can submit up to 3 reviews per UTC day (resets at midnight UTC). Reports are screened before publication. An administrator may send a private reply to your verified account email. The admin reply panel shows your user ID, not your email address. Describe your visit without including names or private information. Availability reports are not live verification.</p>
     {!submitted&&<ContributionSignIn auth={auth} context={{kind:'review',restroom,userLocation}}/>}
     {!submitted&&
       <form onSubmit={submit} className="mt-4 space-y-4"><fieldset disabled={locked} className="space-y-4">

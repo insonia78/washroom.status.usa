@@ -14,7 +14,8 @@ Deno.test("current-location toilet submissions are validated and saved privately
   const previous = new Map(Object.keys(config).map(key => [key, Deno.env.get(key)]));
   const originalFetch = globalThis.fetch;
   for (const [key, value] of Object.entries(config)) Deno.env.set(key, value);
-  const fields = { name: " Park toilet ", latitude: 40.71, longitude: -74.0, wheelchair: "unknown", fee: "no", notes: " Near entrance " };
+  const fields = { name: " Park toilet ", latitude: 40.71, longitude: -74.0, wheelchair: "unknown", fee: "no", notes: " Near entrance ",
+    current_location: true, user_latitude: 40.71, user_longitude: -74.0 };
   const request = (body: unknown = fields, method = "POST", authorized = true) =>
     new Request("https://project.example/functions/v1/frontend-api/toilet-submissions", {
       method,

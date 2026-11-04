@@ -104,6 +104,16 @@ approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin
 toilets panel provides the separate final-approval and map-publication step for
 moderator-approved toilet submissions.
 
+## Daily submission caps
+
+Apply `../supabase-edge-functions/supabase/migrations/20261105020000_daily_submission_caps.sql`,
+then deploy `frontend-api` and the frontend. Each signed-in account can add at most
+3 toilets and submit at most 3 reviews per UTC day (resets at midnight UTC). The
+database enforces both caps with never-refunded counters, so rejected or deleted
+submissions still count. A blocked submission returns HTTP 429 with a clear message.
+Verify with `supabase test db supabase\tests\review_submission_quota.sql --local`
+from `supabase-edge-functions` on a database with all migrations applied.
+
 ## Third-party restroom search archive
 
 Apply
