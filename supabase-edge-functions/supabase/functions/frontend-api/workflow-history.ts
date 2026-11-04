@@ -97,7 +97,15 @@ export function toiletStage(toilet: Row): ToiletStage {
   return text(toilet.published_at) ? "published" : "awaiting_admin";
 }
 
-// Owner photos attached to a private reply email: the latest published owner reply photos first,
+// Owner replies whose photos go in a private reply email: published replies first, then
+// moderator-approved replies awaiting publication, newest first. Archived replies are included.
+export function emailReplyOrder<T extends Row>(replies: T[]): T[] {
+  const time = (reply: Row) => Date.parse(text(reply.published_at) ?? text(reply.moderated_at) ?? "") || 0;
+  return replies.filter(reply => reply.status === "published" || reply.status === "moderated")
+    .sort((a, b) => Number(b.status === "published") - Number(a.status === "published") || time(b) - time(a));
+}
+
+// Owner photos attached to a private reply email: approved owner reply photos first,
 // then legacy administrator-added owner photos, capped at the 3-photo email limit.
 export function emailOwnerPhotoPaths(publishedReplyPhotoPaths: string[], addedOwnerPhotoPaths: string[]): string[] {
   return [...new Set([...publishedReplyPhotoPaths, ...addedOwnerPhotoPaths])].slice(0, 3);

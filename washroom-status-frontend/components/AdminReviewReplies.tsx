@@ -78,7 +78,7 @@ export function ReplyEditor({review,session}:{review:AdminReview;session:Session
     <h3 className="font-bold">Private replies</h3>
     <p className="mt-1 text-sm text-slate-600">Replies are stored privately. The server looks up the verified recipient email; this panel never receives it. Sent means accepted by the provider, not confirmed delivery.</p>
     {!!approvedOwnerPhotos.length&&<div className="mt-3 rounded-lg border p-3">
-      <p className="text-sm font-semibold">Approved owner photos (published reply photos first, up to 3) will be attached to the email reply.</p>
+      <p className="text-sm font-semibold">Business owner photos (from moderator-approved or published owner replies first, up to 3) will be attached to the email reply.</p>
       <div className="mt-2 flex flex-wrap gap-2">{approvedOwnerPhotos.map((photo,index)=>
         <a key={photo.id} href={photo.photo_url} target="_blank" rel="noopener noreferrer" aria-label={`Open approved owner photo ${index+1}`}>
           <img src={photo.photo_url} alt={`Approved owner photo ${index+1}`} className="h-20 w-20 rounded-lg border object-cover"/>

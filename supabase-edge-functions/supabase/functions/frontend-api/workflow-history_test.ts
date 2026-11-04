@@ -1,6 +1,6 @@
 import api from "./index.ts";
 import { buildGatewayHeaders } from "../_shared/gateway-auth.ts";
-import { emailOwnerPhotoPaths, reviewHistory, reviewStage, toiletHistory, toiletStage } from "./workflow-history.ts";
+import { emailOwnerPhotoPaths, emailReplyOrder, reviewHistory, reviewStage, toiletHistory, toiletStage } from "./workflow-history.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -37,6 +37,15 @@ Deno.test("workflow history lists the steps taken in time order", () => {
 
   assert(JSON.stringify(emailOwnerPhotoPaths(["r1", "r2"], ["o1", "o2"])) === JSON.stringify(["r1", "r2", "o1"]),
     "Email reply photos first, capped at 3");
+  const order = emailReplyOrder([
+    { id: "pending", status: "pending", created_at: "2026-11-09T00:00:00Z" },
+    { id: "moderated-new", status: "moderated", moderated_at: "2026-11-08T00:00:00Z", archived_at: "2026-11-09T00:00:00Z" },
+    { id: "published-old", status: "published", published_at: "2026-11-02T00:00:00Z" },
+    { id: "rejected", status: "rejected", moderated_at: "2026-11-09T00:00:00Z" },
+    { id: "published-new", status: "published", published_at: "2026-11-05T00:00:00Z" },
+  ]).map(reply => reply.id);
+  assert(JSON.stringify(order) === JSON.stringify(["published-new", "published-old", "moderated-new"]),
+    `Email published, then moderator-approved (including archived) owner replies: ${JSON.stringify(order)}`);
 });
 
 Deno.test("workflow board stages follow the steps taken", () => {

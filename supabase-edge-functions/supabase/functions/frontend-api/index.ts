@@ -2,7 +2,7 @@ import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
 import { geocodeZipCode } from "../places-api/services/geocoding.ts";
 import { RequestError } from "../places-api/utils/errors.ts";
 import { locationDatabaseHeaders } from "../_shared/database-schema.ts";
-import { emailOwnerPhotoPaths, reviewHistory, reviewStage, toiletHistory, toiletStage } from "./workflow-history.ts";
+import { emailOwnerPhotoPaths, emailReplyOrder, reviewHistory, reviewStage, toiletHistory, toiletStage } from "./workflow-history.ts";
 
 // Admin lists use 3 per page; the workflow board loads up to 25 per request.
 function adminPageLimit(query: URLSearchParams): number {
@@ -126,17 +126,17 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 async function approvedOwnerPhotoAttachments(reviewId: string): Promise<EmailPhotoAttachment[]> {
-  const publishedReplies: unknown = await (await database("owner_replies", new URLSearchParams({
-    select: "id", review_id: `eq.${reviewId}`, status: "eq.published",
-    order: "published_at.desc", limit: "10",
+  const approvedReplies: unknown = await (await database("owner_replies", new URLSearchParams({
+    select: "id,status,moderated_at,published_at", review_id: `eq.${reviewId}`, status: "in.(moderated,published)",
+    order: "created_at.desc", limit: "10",
   }))).json();
-  if (!Array.isArray(publishedReplies) || !publishedReplies.every(isRecord) ||
-    publishedReplies.some(reply => typeof reply.id !== "string" || !uuidPattern.test(reply.id))) {
-    throw new ApiError(502, "Invalid published owner reply list");
+  if (!Array.isArray(approvedReplies) || !approvedReplies.every(isRecord) ||
+    approvedReplies.some(reply => typeof reply.id !== "string" || !uuidPattern.test(reply.id))) {
+    throw new ApiError(502, "Invalid approved owner reply list");
   }
-  const replyIds = publishedReplies.map(reply => String(reply.id));
+  const replyIds = emailReplyOrder(approvedReplies).map(reply => String(reply.id));
   const replyPhotos: unknown = replyIds.length ? await (await database("owner_reply_photos", new URLSearchParams({
-    select: "reply_id,photo_path", reply_id: `in.(${replyIds.join(",")})`, status: "eq.published",
+    select: "reply_id,photo_path", reply_id: `in.(${replyIds.join(",")})`, status: "in.(moderated,published)",
     order: "uploaded_at.asc", limit: String(replyIds.length * 3),
   }))).json() : [];
   const rows: unknown = await (await database("owner_review_photos", new URLSearchParams({
@@ -756,11 +756,10 @@ async function adminReviews(req: Request): Promise<Response> {
     }
     const { photo_paths, ...details } = review;
     const repliesForReview = ownerReplies.filter(reply => reply.review_id === review.id);
-    const latestPublished = [...repliesForReview].filter(reply => reply.status === "published")
-      .sort((a, b) => String(b.published_at ?? "").localeCompare(String(a.published_at ?? "")));
+    const approvedReplies = emailReplyOrder(repliesForReview);
     type SignedPhoto = { id: string; photo_url: string; status: string };
-    const replyEmailPhotos = latestPublished.flatMap(reply => (reply.photos as SignedPhoto[])
-      .filter(photo => photo.status === "published"));
+    const replyEmailPhotos = approvedReplies.flatMap(reply => (reply.photos as SignedPhoto[])
+      .filter(photo => photo.status === "published" || photo.status === "moderated"));
     const addedOwnerPhotos = ownerPhotosForReview.filter(photo => photo.status === "added");
     const emailIds = emailOwnerPhotoPaths(replyEmailPhotos.map(photo => photo.id), addedOwnerPhotos.map(photo => photo.id));
     const emailCandidates: SignedPhoto[] = [...replyEmailPhotos, ...addedOwnerPhotos];
@@ -1324,7 +1323,7 @@ async function adminReviewReplies(req: Request): Promise<Response> {
   }
   const subject = "A reply to your Washroom Status USA review";
   const attachmentNote = photoAttachments.length
-    ? "\n\nApproved owner-provided photos are attached to this email."
+    ? "\n\nPhotos from the business owner showing their improvements are attached to this email."
     : "";
   const text = `An administrator replied to your review.\n\n${reply.body}${attachmentNote}\n\nWashroom Status USA\nThis is a private reply, not a public review response.`;
   if (useGmail) {

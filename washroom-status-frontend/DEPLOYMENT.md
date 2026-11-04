@@ -103,8 +103,10 @@ Owners now attach photos only through the reply form (one uploader, up to three
 photos). The separate review-photo uploader was removed from the owner dashboard;
 previously submitted owner review photos remain visible read-only and can still be
 added by an administrator. Private reply emails attach up to three owner photos:
-photos from the latest published owner reply first, then administrator-added owner
-review photos. Admin review cards show reviewer photos, owner reply photos (all
+photos from owner replies that a moderator approved or an administrator published
+(archived replies included; published first, newest first), then administrator-added
+owner review photos. Owners' improvement photos are therefore emailed as soon as the
+moderator approves the reply, without waiting for admin publication. Admin review cards show reviewer photos, owner reply photos (all
 statuses), owner-submitted photos, and a read-only **Review steps taken** timeline
 (submission, moderator decisions, owner invites and replies, private reply emails,
 archiving). Admin toilet cards show a **Toilet steps taken** timeline (submission,

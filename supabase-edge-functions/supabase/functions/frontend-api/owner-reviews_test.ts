@@ -190,14 +190,16 @@ Deno.test("private review email includes approved owner photos as attachments", 
       }
       if (url.pathname === "/rest/v1/owner_replies") {
         assert(url.searchParams.get("review_id") === `eq.${reviewId}` &&
-          url.searchParams.get("status") === "eq.published",
-        "Include only published owner replies for this review");
-        return Response.json([{ id: ownerReplyId }]);
+          url.searchParams.get("status") === "in.(moderated,published)" && !url.searchParams.has("archived_at"),
+        "Include moderator-approved and published owner replies, archived or not");
+        return Response.json([{
+          id: ownerReplyId, status: "moderated", moderated_at: "2026-11-04T00:00:00Z", published_at: null,
+        }]);
       }
       if (url.pathname === "/rest/v1/owner_reply_photos") {
         assert(url.searchParams.get("reply_id") === `in.(${ownerReplyId})` &&
-          url.searchParams.get("status") === "eq.published",
-        "Include only published owner reply photos");
+          url.searchParams.get("status") === "in.(moderated,published)",
+        "Include only moderator-approved or published owner reply photos");
         return Response.json([{ reply_id: ownerReplyId, photo_path: replyPhotoPath }]);
       }
       if (url.pathname === "/rest/v1/owner_review_photos") {
@@ -220,8 +222,8 @@ Deno.test("private review email includes approved owner photos as attachments", 
           payload.attachments[1].filename === "owner-photo-2.jpg" &&
           payload.attachments[0].content_type === "image/jpeg" &&
           payload.attachments[0].content === "/9j/" &&
-          payload.text.includes("Approved owner-provided photos are attached"),
-        "Attach the published reply photo and approved owner photo to the email reply");
+          payload.text.includes("Photos from the business owner showing their improvements are attached"),
+        "Attach the moderator-approved reply photo and approved owner photo to the email reply");
         attachedPaths = 2;
         return Response.json({ id: "provider-message-id" });
       }
