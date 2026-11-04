@@ -52,7 +52,7 @@ function Column({label,hint,count,children}:{label:string;hint:string;count:numb
 
 function Ticket({title,lines,badges,onOpen}:{title:string;lines:string[];badges:string[];onOpen:(opener:HTMLButtonElement)=>void}){
   return <button type="button" onClick={event=>onOpen(event.currentTarget)}
-    className="w-full rounded-lg border bg-white p-2 text-left shadow-sm hover:border-teal-700 hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-700">
+    className="ticket w-full rounded-lg border bg-white p-2 text-left shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-700">
     <span className="block break-words text-sm font-semibold">{title}</span>
     {lines.map(line=><span key={line} className="mt-0.5 block break-words text-xs text-slate-600">{line}</span>)}
     {!!badges.length&&<span className="mt-1 flex flex-wrap gap-1">{badges.map(badge=><span key={badge} className="rounded bg-teal-50 px-1.5 py-0.5 text-[11px] text-teal-900">{badge}</span>)}</span>}
