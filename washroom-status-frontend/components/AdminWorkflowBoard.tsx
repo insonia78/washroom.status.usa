@@ -39,7 +39,7 @@ async function load(path:string,key:'reviews'|'toilets',session:Session,signal:A
 }
 
 function Column({label,hint,count,children}:{label:string;hint:string;count:number;children:React.ReactNode}){
-  return <section aria-label={label} className="flex w-64 shrink-0 flex-col rounded-xl border bg-slate-50">
+  return <section aria-label={label} className="flex w-64 shrink-0 flex-col rounded-xl border bg-white">
     <header className="rounded-t-xl border-b bg-teal-700 px-3 py-2 text-white">
       <h4 className="flex items-center justify-between gap-2 text-sm font-bold">{label}<span className="rounded-full bg-white px-2 text-xs text-teal-800">{count}</span></h4>
       <p className="text-xs text-teal-50">{hint}</p>

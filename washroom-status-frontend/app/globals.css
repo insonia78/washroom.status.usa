@@ -1,6 +1,6 @@
 @import "tailwindcss";
-button:not(.map-restroom-marker):not(.nearby-restrooms button){background-color:var(--color-teal-700)!important;border-color:var(--color-teal-700)!important;color:#fff!important}
-button:not(.map-restroom-marker):not(.nearby-restrooms button):hover:not(:disabled){background-color:var(--color-teal-700)!important;border-color:var(--color-teal-700)!important}
+button:not(.map-restroom-marker):not(.nearby-restrooms button):not(.ticket){background-color:var(--color-teal-700)!important;border-color:var(--color-teal-700)!important;color:#fff!important}
+button:not(.map-restroom-marker):not(.nearby-restrooms button):not(.ticket):hover:not(:disabled){background-color:var(--color-teal-700)!important;border-color:var(--color-teal-700)!important}
 .header-brand{display:flex;flex-direction:column;align-items:flex-start;padding:12px 18px;border:1px solid #302bfb24;border-radius:16px;background:#302bfb14}
 .header-brand .footer-credit{color:#302bfb}
 .header-brand-name{font-size:30px;font-weight:900;line-height:1.2;letter-spacing:-0.04em;color:#302bfb}
