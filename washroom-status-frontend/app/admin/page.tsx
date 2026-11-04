@@ -9,6 +9,7 @@ import AdminReviewReplies from '@/components/AdminReviewReplies';
 import AdminToilets from '@/components/AdminToilets';
 import AdminOwnerInvites from '@/components/AdminOwnerInvites';
 import OwnerReplyQueue from '@/components/OwnerReplyQueue';
+import NotificationBell from '@/components/NotificationBell';
 
 type Fields={osm_type:string;osm_id:string;review_id:string;business_name:string;body:string;completed_on:string;evidence_url:string;verification_note:string};
 const emptyFields:Fields={osm_type:'node',osm_id:'',review_id:'',business_name:'',body:'',completed_on:'',evidence_url:'',verification_note:''};
@@ -212,7 +213,13 @@ export default function AdminPage(){
     {error&&<p role="alert" className="mt-4 text-amber-800">{error}</p>}
     {message&&<p role="status" className="mt-4 text-sm">{message}</p>}
     {checking||(session&&!checked)?<p role="status" className="mt-4">Checking access...</p>:session?<>
-      <div className="mt-4 flex flex-wrap items-center gap-3"><p className="text-sm">Signed in as {session.user.email}</p><button type="button" disabled={busy} onClick={()=>void signOut()} className="pill">Sign out</button></div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm">Signed in as {session.user.email}</p>
+        <div className="flex items-center gap-3">
+          <NotificationBell session={session} role="admin" onSelect={category=>setTab(category==='responses'?'replies':'moderation')}/>
+          <button type="button" disabled={busy} onClick={()=>void signOut()} className="pill">Sign out</button>
+        </div>
+      </div>
       <nav role="tablist" aria-label="Administration sections" className="sticky top-0 z-10 mt-5 flex flex-wrap gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
         {tabs.map(item=><button key={item.id} type="button" role="tab" aria-selected={tab===item.id} onClick={()=>setTab(item.id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===item.id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{item.label}</button>)}
       </nav>

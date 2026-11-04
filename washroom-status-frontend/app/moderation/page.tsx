@@ -7,6 +7,7 @@ import {browserSupabase} from '@/lib/supabase';
 import {isPendingReview,type PendingReview} from '@/lib/moderation';
 import ToiletModerationQueue from '@/components/ToiletModerationQueue';
 import OwnerReplyQueue from '@/components/OwnerReplyQueue';
+import NotificationBell from '@/components/NotificationBell';
 
 export default function ModerationPage(){
   const supabase=browserSupabase();
@@ -119,9 +120,12 @@ export default function ModerationPage(){
         <label className="mt-4 block text-sm font-semibold">Email<input required type="email" autoComplete="email" value={email} onChange={event=>setEmail(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"/></label>
         <button disabled={busy||!supabase} className="mt-3 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">{busy?'Sending...':'Send moderator sign-in link'}</button>
       </form>:<>
-        <div className="mt-5 flex flex-wrap items-center gap-3"><p className="text-sm">Signed in as {session.user.email}</p>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-sm">Signed in as {session.user.email}</p>
+          <div className="flex items-center gap-3">
+          <NotificationBell session={session} role="moderator" onSelect={category=>setTab(category==='responses'?'replies':category)}/>
           <button type="button" onClick={()=>{setMessage('');setRefresh(value=>value+1)}} disabled={busy||loading} className="pill disabled:opacity-50">Refresh queue</button>
           <button type="button" onClick={signOut} disabled={busy} className="pill disabled:opacity-50">Sign out</button>
+          </div>
         </div>
         <nav role="tablist" aria-label="Moderation sections" className="sticky top-0 z-10 mt-5 flex flex-wrap gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
           {([['toilets','Toilets'],['replies','Owner replies'],['reviews','Reviews']] as const).map(([id,label])=><button key={id} type="button" role="tab" aria-selected={tab===id} onClick={()=>setTab(id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{label}</button>)}

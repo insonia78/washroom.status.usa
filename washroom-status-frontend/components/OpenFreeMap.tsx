@@ -202,6 +202,7 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
       visibleItems.forEach(item => {
         const button = document.createElement('button');
         button.type = 'button';
+        button.className = 'map-restroom-marker';
         button.textContent = item.category === 'fuel' ? '⛽' : item.category === 'supermarket' ? '🛒' : '🚻';
         button.setAttribute('aria-label', `View ${item.name}`);
         button.setAttribute('aria-expanded', 'false');

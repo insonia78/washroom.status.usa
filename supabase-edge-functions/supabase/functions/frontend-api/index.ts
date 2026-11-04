@@ -702,11 +702,12 @@ async function adminToilets(req: Request): Promise<Response> {
   const archived = query.get("archived") ?? "0";
   if (archived !== "0" && archived !== "1") throw new ApiError(400, "Invalid archived filter");
   const moderation = query.get("moderation") ?? "moderated";
-  if (moderation !== "moderated" && moderation !== "pending") throw new ApiError(400, "Invalid moderation filter");
+  if (!["moderated", "pending", "awaiting_admin"].includes(moderation)) throw new ApiError(400, "Invalid moderation filter");
   const { rows, total } = await databasePage("toilet_submissions", new URLSearchParams({
     select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,archived_at,published_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
-    status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
+    status: moderation === "pending" ? "eq.pending" : moderation === "awaiting_admin" ? "eq.approved" : "in.(approved,rejected)",
+    ...(moderation === "awaiting_admin" ? { published_at: "is.null" } : {}),
     order: "created_at.desc,id.desc", limit: "3", offset,
   }));
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin toilet list");
@@ -918,10 +919,14 @@ async function ownerReplyStage(req: Request, stage: "moderate" | "publish"): Pro
   const replyQuery = new URL(req.url).searchParams;
   const offset = replyQuery.get("offset") ?? "0";
   if (!/^\d{1,8}$/.test(offset)) throw new ApiError(400, "Invalid offset");
+  const awaitingAdmin = replyQuery.get("awaiting_admin") ?? "0";
+  if (awaitingAdmin !== "0" && (stage !== "publish" || awaitingAdmin !== "1")) {
+    throw new ApiError(400, "Invalid owner reply notification filter");
+  }
   const archivedParam = replyQuery.get("archived") === "1" ? "not.is.null" : "is.null";
   const { rows, total } = await databasePage("owner_replies", new URLSearchParams({
     select: ownerReplyColumns,
-    status: stage === "moderate" ? "eq.pending" : "in.(moderated,published,rejected)",
+    status: stage === "moderate" ? "eq.pending" : awaitingAdmin === "1" ? "eq.moderated" : "in.(moderated,published,rejected)",
     archived_at: archivedParam,
     order: "created_at.asc,id.asc", limit: "3", offset,
   }));

@@ -306,6 +306,11 @@ If two moderators act on the same review, only the first succeeds; the second
 receives a conflict and must refresh. Failed decisions preserve the note.
 Refresh after processing a batch to load more pending reviews.
 
+The moderator and administrator dashboards include a notification bell with live
+counts for reviews, owner responses, and toilet additions awaiting that role's
+review. Counts refresh every 30 seconds and when the dashboard regains focus;
+select a category in the bell to open its queue.
+
 Approval includes the review in public comment lookups and rating aggregates
 on their next fetch. Rejection keeps it hidden. Already-open search cards do
 not update live; refresh the search/page to retrieve the latest approved data.

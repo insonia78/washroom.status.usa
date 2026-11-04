@@ -147,7 +147,7 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
   </div>}
 </div>
 <p className="mt-2 text-xs text-slate-500">Map provided by OpenFreeMap using OpenStreetMap data. Restroom availability and cleanliness are not verified live.</p></div>
-<section className={`panel min-w-0 lg:order-3 ${hasResults||error||warning?'order-0':'order-3'}`}>
+<section className={`nearby-restrooms panel min-w-0 lg:order-3 ${hasResults||error||warning?'order-0':'order-3'}`}>
 <div className="flex items-center justify-between gap-2">
 <h2 className="text-xl font-bold">Nearby restrooms{hasResults&&<span className="lg:hidden"> ({shown.length})</span>}</h2>
 {hasResults&&shown.length>1&&<div className="flex gap-1 lg:hidden">
@@ -164,7 +164,7 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
 {error&&<div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p>{error}</p>{hasSearchOrigin&&<button className="mt-2 font-semibold underline" onClick={()=>setCenter(c=>[...c])}>Retry loading</button>}</div>}{!hasSearchOrigin&&!error&&<p>Search a US city, address, or ZIP code, or choose Use my location to find nearby restrooms.</p>}{hasSearchOrigin&&!busy&&!error&&!shown.length&&<p>No matching mapped restrooms found in this area. Try another filter or city.</p>}
 <div ref={resultsList} id="nearby-restroom-list" aria-label="Nearby restroom results" role="region" aria-busy={busy} className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 lg:block lg:max-h-[420px] lg:space-y-3 lg:overflow-y-auto lg:overflow-x-hidden">
 {shown.map(x=><div key={`${x.osm_type}-${x.id}`} className="w-[85%] shrink-0 snap-start rounded-xl border border-slate-200 p-3 text-left hover:border-teal-600 lg:w-full"><button onClick={()=>{setSelected(x);mapRef.current?.focus([x.lon,x.lat],16)}} className="w-full text-left" aria-label={`View details for ${x.name}`}><div className="flex items-center gap-2 font-bold"><MapPin size={17} className="text-teal-700"/>{x.name}</div><p className="mt-1 text-xs font-semibold text-amber-800">{restroomLabel(x)}</p>{x.distanceMiles!==undefined&&<p className="mt-1 text-xs font-semibold text-teal-700">{formatDistance(x.distanceMiles)} from search location (straight-line)</p>}<p className="mt-1 text-xs text-slate-500">Availability: Unverified</p><p className="mt-1 text-xs text-slate-500">{x.wheelchair==='yes'?'♿ Wheelchair accessible · ':''}{x.fee==='no'?'Free · ':''}{x.opening_hours||'Hours not listed'}</p></button><NavigationLinks latitude={x.lat} longitude={x.lon} name={x.name}/>
-{currentLocationActive&&<button type="button" aria-label={`Add review for ${x.name}`} aria-haspopup="dialog" onClick={()=>{setSelected(x);setReviewRestroom(x)}} className="mt-3 rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Add review</button>}
+{currentLocationActive&&<button type="button" aria-label={`Add review for ${x.name}`} aria-haspopup="dialog" onClick={()=>{setSelected(x);setReviewRestroom(x)}} className="mt-3 rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800">Add review</button>}
 <LatestReview restroom={x}/>
 </div>)}</div></section></div>
 {selected&&<RestroomDetails key={`details-${selected.osm_type}-${selected.id}`} restroom={selected} onClose={()=>setSelected(null)} onAddReview={currentLocationActive?()=>setReviewRestroom(selected):undefined}/>}
