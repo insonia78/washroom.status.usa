@@ -791,6 +791,32 @@ async function ownerReviews(req: Request): Promise<Response> {
     select: "id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,status,created_at,photo_paths",
     id: `in.(${ids.join(",")})`, status: "eq.approved",
   }))).json();
+  if (!Array.isArray(reviews) || !reviews.every(isRecord)) throw new ApiError(502, "Invalid owner review list");
+  const listingIds = [...new Set(reviews.map(review => {
+    if (typeof review.osm_type !== "string" || !["node", "way", "relation", "refuge"].includes(review.osm_type) ||
+      !Number.isSafeInteger(review.osm_id) || Number(review.osm_id) <= 0) {
+      throw new ApiError(502, "Invalid owner review location");
+    }
+    return Number(review.osm_id);
+  }))];
+  const locations: unknown = listingIds.length ? await (await database("review_locations", new URLSearchParams({
+    select: "osm_type,osm_id,latitude,longitude", osm_id: `in.(${listingIds.join(",")})`,
+    limit: String(listingIds.length * 4),
+  }))).json() : [];
+  if (!Array.isArray(locations) || !locations.every(isRecord)) throw new ApiError(502, "Invalid owner review locations");
+  const coordinates = new Map<string, {latitude:number;longitude:number}>();
+  for (const location of locations) {
+    if (typeof location.osm_type !== "string" || !["node", "way", "relation", "refuge"].includes(location.osm_type) ||
+      !Number.isSafeInteger(location.osm_id) || Number(location.osm_id) <= 0 ||
+      (location.latitude === null && location.longitude === null)) continue;
+    if (typeof location.latitude !== "number" || !Number.isFinite(location.latitude) || Math.abs(location.latitude) > 90 ||
+      typeof location.longitude !== "number" || !Number.isFinite(location.longitude) || Math.abs(location.longitude) > 180) {
+      throw new ApiError(502, "Invalid owner review coordinates");
+    }
+    coordinates.set(`${location.osm_type}:${location.osm_id}`, {
+      latitude: location.latitude, longitude: location.longitude,
+    });
+  }
   const replies: unknown = await (await database("owner_replies", new URLSearchParams({
     select: ownerReplyColumns, owner_email: `eq.${account.email}`, order: "created_at.desc",
   }))).json();
@@ -800,7 +826,7 @@ async function ownerReviews(req: Request): Promise<Response> {
     select: "id,invite_id,review_id,photo_path,status", invite_id: `in.(${inviteIds.join(",")})`,
     order: "uploaded_at.asc", limit: String(inviteIds.length * ownerReviewPhotoLimit),
   }))).json() : [];
-  if (!Array.isArray(reviews) || !Array.isArray(replies) || !Array.isArray(submittedPhotos) ||
+  if (!Array.isArray(replies) || !Array.isArray(submittedPhotos) ||
     !submittedPhotos.every(isRecord)) throw new ApiError(502, "Invalid owner review list");
   const withPhotos = await Promise.all(reviews.filter(isRecord).map(async review => {
     const { photo_paths, ...details } = review;
@@ -811,6 +837,7 @@ async function ownerReviews(req: Request): Promise<Response> {
     if (ownerPaths.some(path => !photo_paths.includes(path))) throw new ApiError(502, "Invalid owner review photo list");
     return {
       ...details,
+      ...coordinates.get(`${review.osm_type}:${review.osm_id}`),
       photo_urls: await signedReviewPhotos(photo_paths.filter(path => !ownerPaths.includes(path))),
       owner_photo_urls: await signedReviewPhotos(ownerPaths),
     };

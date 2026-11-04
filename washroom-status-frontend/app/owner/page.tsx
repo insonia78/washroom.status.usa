@@ -3,9 +3,10 @@ import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
 import {acceptedPhotoTypes,maxPhotoInputBytes,preparePhoto} from '@/lib/photo-preparation';
+import ReadOnlyLocationMap from '@/components/ReadOnlyLocationMap';
 
 type Item={invite_id:string;
-  review:{restroom_name?:string|null;osm_type:string;osm_id:number;rating?:number;availability?:string|null;cleanliness_status?:string|null;issues?:string[]|null;comment?:string|null;created_at?:string;photo_urls?:string[]};
+  review:{restroom_name?:string|null;osm_type:string;osm_id:number;latitude?:number;longitude?:number;rating?:number;availability?:string|null;cleanliness_status?:string|null;issues?:string[]|null;comment?:string|null;created_at?:string;photo_urls?:string[]};
   owner_photos:{id:string;photo_url:string;status:'pending'|'added'}[];
   replies:{id:string;body:string;status:string;business_name:string}[]};
 const statusLabel:Record<string,string>={pending:'Waiting for moderation',moderated:'Waiting for administrator approval',published:'Published',rejected:'Not approved'};
@@ -74,6 +75,9 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
       const selectedPhotos=photoDrafts[item.invite_id]??[];
       return <article key={item.invite_id} className="panel">
         <h2 className="font-bold">{item.review.restroom_name||`${item.review.osm_type==='refuge'?'Refuge Restrooms':'OpenStreetMap'} #${item.review.osm_id}`}</h2>
+        {typeof item.review.latitude==='number'&&typeof item.review.longitude==='number'?
+          <ReadOnlyLocationMap latitude={item.review.latitude} longitude={item.review.longitude} label={item.review.restroom_name||`Restroom ${item.review.osm_id}`}/>:
+          <p className="mt-2 text-sm text-slate-600">Location map is not available yet. The listing needs to be refreshed through restroom search.</p>}
         {item.review.rating!==undefined&&<p className="mt-1 text-sm">Rating: {item.review.rating}/5</p>}
         {item.review.created_at&&<p className="text-xs text-slate-500">Reported {new Date(item.review.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</p>}
         <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">

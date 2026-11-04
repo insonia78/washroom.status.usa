@@ -31,7 +31,7 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   let failRefuge = false
   let failDatabase = false
   let failRegistration = false
-  let registered: Array<{ osm_type: string; osm_id: number }> = []
+  let registered: Array<{ osm_type: string; osm_id: number; latitude: number; longitude: number }> = []
   const unexpectedRequests: string[] = []
   Deno.env.set(keys[0], "https://project.example")
   Deno.env.set(keys[1], "test-service-role-key")
@@ -44,7 +44,7 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
       if (url.pathname === "/rest/v1/review_locations") {
         assert(init?.method === "POST", "Only server searches register review locations")
         assert(new Headers(init.headers).get("apikey") === "test-service-role-key", "Registration uses backend credentials")
-        assert(new Headers(init.headers).get("Prefer") === "resolution=ignore-duplicates,return=minimal", "Repeated searches preserve existing identities")
+        assert(new Headers(init.headers).get("Prefer") === "resolution=merge-duplicates,return=minimal", "Repeated searches refresh listing coordinates")
         registered = JSON.parse(String(init.body))
         if (failRegistration) return new Response("Unavailable", { status: 503 })
         return new Response(null, { status: 201 })
@@ -71,7 +71,10 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   }
   type Result = {
     count: number; warning?: string;
-    data: Array<{ id: number; name: string; osmType: string; toilets: string; provider?: string }>
+    data: Array<{
+      id: number; name: string; osmType: string; toilets: string; provider?: string;
+      coordinates: { latitude: number; longitude: number };
+    }>
   }
   const input = { lat: "40.75", lon: "-73.99", radius: "8046.72" }
   const search = async (): Promise<Result> => {
@@ -88,8 +91,10 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
     assert(complete.data.filter(place => place.id === 123).length === 2, "Keep distinct source identities")
     assert(complete.data.find(place => place.id === 456)?.toilets === "unknown",
       "Imported business presence must not imply restroom availability")
-    assert(JSON.stringify(registered) === JSON.stringify(complete.data.map(place => ({ osm_type: place.osmType, osm_id: place.id }))),
-      "Every returned listing is registered for reviews, including fuel and distinct Refuge IDs")
+    assert(JSON.stringify(registered) === JSON.stringify(complete.data.map(place => ({
+      osm_type: place.osmType, osm_id: place.id,
+      latitude: place.coordinates.latitude, longitude: place.coordinates.longitude,
+    }))), "Register each reviewable listing with its verified coordinates")
 
     failRegistration = true
     let registrationError: unknown

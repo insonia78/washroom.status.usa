@@ -44,7 +44,11 @@ export async function searchNearbyPlaces(origin: SearchOrigin, radius: string) {
   return { data }
 }
 
-async function registerReviewLocations(places: Array<{ id: number; osmType: string }>) {
+async function registerReviewLocations(places: Array<{
+  id: number;
+  osmType: string;
+  coordinates: { latitude: number; longitude: number };
+}>) {
   if (!places.length) return
   const baseUrl = Deno.env.get("SUPABASE_URL")
   const apiKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -57,9 +61,14 @@ async function registerReviewLocations(places: Array<{ id: number; osmType: stri
       headers: {
         ...locationDatabaseHeaders("POST"),
         apikey: apiKey, Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
-        Prefer: "resolution=ignore-duplicates,return=minimal",
+        Prefer: "resolution=merge-duplicates,return=minimal",
       },
-      body: JSON.stringify(places.slice(offset, offset + 500).map(place => ({ osm_type: place.osmType, osm_id: place.id }))),
+      body: JSON.stringify(places.slice(offset, offset + 500).map(place => ({
+        osm_type: place.osmType,
+        osm_id: place.id,
+        latitude: place.coordinates.latitude,
+        longitude: place.coordinates.longitude,
+      }))),
       signal: AbortSignal.timeout(15_000),
     })
     if (!response.ok) {

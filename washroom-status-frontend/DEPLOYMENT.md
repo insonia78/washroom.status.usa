@@ -83,6 +83,14 @@ migrations already applied, from `supabase-edge-functions`:
 supabase test db supabase\tests\owner_review_photos.sql --local
 ```
 
+To show invited business owners a read-only map for each complaint, apply
+`../supabase-edge-functions/supabase/migrations/20261103220000_review_location_coordinates.sql`,
+then deploy `places-api`, `frontend-api`, and the frontend. The migration backfills
+coordinates for stored OpenStreetMap restrooms; a Refuge listing's coordinates are
+filled when its location is included in a successful places search after deployment.
+Refresh the restroom search for older Refuge invitations before opening the owner
+dashboard. Map interaction remains disabled.
+
 The admin review panel's **All history** filter combines active and archived
 approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin
 toilets panel provides the separate final-approval and map-publication step for
