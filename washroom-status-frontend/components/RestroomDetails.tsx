@@ -61,7 +61,7 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
     {isRefugeRestroom&&restroom.created_at&&<p className="mt-2 text-sm text-slate-600">Added {new Date(restroom.created_at).toLocaleDateString('en-US')}</p>}
     {restroom.distanceMiles!==undefined&&<p className="mt-2 text-sm font-semibold text-teal-700">{formatDistance(restroom.distanceMiles)} from search location (straight-line)</p>}
     <NavigationLinks latitude={restroom.lat} longitude={restroom.lon} name={restroom.name}/>
-    {onAddReview&&<button type="button" onClick={onAddReview} aria-haspopup="dialog" className="mt-3 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white">Add review</button>}
+    {onAddReview&&<button type="button" onClick={onAddReview} aria-haspopup="dialog" className="mt-3 rounded-xl bg-green-600 px-4 py-2 font-bold text-white hover:bg-green-700">Add review</button>}
     {isRefugeRestroom?<>
       {restroom.directions&&<p className="mt-3 whitespace-pre-wrap text-sm">{restroom.directions}</p>}
       <p className="mt-4 text-xs text-slate-600">Accessibility and restroom details are provided by Refuge Restrooms. Community reviews are collected and moderated by Washroom Status USA, not Refuge Restrooms.</p>

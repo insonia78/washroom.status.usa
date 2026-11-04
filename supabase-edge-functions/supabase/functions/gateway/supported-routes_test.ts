@@ -29,6 +29,7 @@ Deno.test("private review replies expose admin reads and saved reply actions but
   assertEquals(findRoute("/frontend/admin/toilets")?.methods, ["GET", "POST"]);
   assertEquals(findRoute("/frontend/admin/owner-invites")?.methods, ["GET", "POST"]);
   assertEquals(findRoute("/frontend/owner/reviews")?.methods, ["GET"]);
+  assertEquals(findRoute("/frontend/owner/review-photos")?.methods, ["POST"]);
   assertEquals(findRoute("/frontend/admin/review-replies")?.methods, ["GET", "POST"]);
   assertFalse(findRoute("/frontend/admin/users"));
   assertFalse(findRoute("/frontend/review-replies"));

@@ -9,6 +9,7 @@ export const supportedRoutes = [
   { pattern: /^\/frontend\/admin\/owner-replies\/?$/, methods: ["GET", "POST"] },
   { pattern: /^\/frontend\/moderation\/owner-replies\/?$/, methods: ["GET", "POST"] },
   { pattern: /^\/frontend\/owner\/reviews\/?$/, methods: ["GET"] },
+  { pattern: /^\/frontend\/owner\/review-photos\/?$/, methods: ["POST"] },
   { pattern: /^\/frontend\/owner\/replies\/?$/, methods: ["POST"] },
   { pattern: /^\/frontend\/admin\/review-replies\/?$/, methods: ["GET", "POST"] },
   { pattern: /^\/frontend\/owner-responses\/?$/, methods: ["GET"] },

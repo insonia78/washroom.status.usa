@@ -50,15 +50,23 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
       if (response.status !== 200) throw new Error(`Gateway failed ${path}: ${await response.text()}`);
     }
     if (forwarded !== 3) throw new Error("All three calls must pass through the gateway");
+    const uploadForm = new FormData();
+    uploadForm.set("invite_id", "30000000-0000-4000-8000-000000000001");
+    const deniedOwnerUpload = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/owner/review-photos", {
+      method: "POST", body: uploadForm,
+    }));
+    if (deniedOwnerUpload.status !== 401 || Number(forwarded) !== 4) {
+      throw new Error(`Owner photo uploads must reach backend authorization, not fail at the gateway: ${deniedOwnerUpload.status}`);
+    }
     const submission = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/toilet-submissions", {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-user-token" },
       body: JSON.stringify({ name: "Park toilet", latitude: 40.71, longitude: -74, wheelchair: "unknown", fee: "no", notes: "" }),
     }));
-    if (submission.status !== 201 || Number(forwarded) !== 4) throw new Error("Toilet submission must forward and insert");
+    if (submission.status !== 201 || Number(forwarded) !== 5) throw new Error("Toilet submission must forward and insert");
     const unauthorized = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/moderation/reviews"));
-    if (unauthorized.status !== 401 || Number(forwarded) !== 5) throw new Error("Moderation routes must forward to backend authorization");
+    if (unauthorized.status !== 401 || Number(forwarded) !== 6) throw new Error("Moderation routes must forward to backend authorization");
     const blocked = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/auth/v1/admin"));
-    if (blocked.status !== 404 || Number(forwarded) !== 5) throw new Error("Unlisted auth endpoints must not forward");
+    if (blocked.status !== 404 || Number(forwarded) !== 6) throw new Error("Unlisted auth endpoints must not forward");
     for (const path of ["/admin/reviews", "/admin/review-replies?review_id=20000000-0000-4000-8000-000000000001"]) {
       const url = `https://project.example/functions/v1/gateway/frontend${path}`;
       const denied = await gateway.fetch(new Request(url));
@@ -70,7 +78,7 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "send", id: "30000000-0000-4000-8000-000000000001" }),
     }));
-    if (deniedSend.status !== 401 || Number(forwarded) !== 10) throw new Error("Private reply writes must reach backend authorization");
+    if (deniedSend.status !== 401 || Number(forwarded) !== 11) throw new Error("Private reply writes must reach backend authorization");
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of previous) {
