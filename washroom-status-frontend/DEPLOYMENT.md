@@ -86,10 +86,17 @@ supabase test db supabase\tests\owner_review_photos.sql --local
 To show invited business owners a read-only map for each complaint, apply
 `../supabase-edge-functions/supabase/migrations/20261103220000_review_location_coordinates.sql`,
 then deploy `places-api`, `frontend-api`, and the frontend. The migration backfills
-coordinates for stored OpenStreetMap restrooms; a Refuge listing's coordinates are
-filled when its location is included in a successful places search after deployment.
-Refresh the restroom search for older Refuge invitations before opening the owner
-dashboard. Map interaction remains disabled.
+stored OpenStreetMap restrooms; a Refuge listing's coordinates are filled when its
+location is included in a successful places search after deployment. Refresh the
+restroom search for older Refuge invitations before opening the owner dashboard.
+Map interaction remains disabled.
+
+To let owners archive completed responses and attach up to three photos to a reply,
+apply `../supabase-edge-functions/supabase/migrations/20261103230000_owner_reply_owner_archive.sql`
+and `../supabase-edge-functions/supabase/migrations/20261104010000_owner_reply_photos.sql`,
+then deploy `frontend-api` and the frontend. Reply photos remain private through
+moderation and administrator review, then appear with the published owner response.
+Pending replies cannot be archived.
 
 The admin review panel's **All history** filter combines active and archived
 approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin

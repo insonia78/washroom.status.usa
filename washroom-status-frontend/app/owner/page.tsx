@@ -8,7 +8,8 @@ import ReadOnlyLocationMap from '@/components/ReadOnlyLocationMap';
 type Item={invite_id:string;
   review:{restroom_name?:string|null;osm_type:string;osm_id:number;latitude?:number;longitude?:number;rating?:number;availability?:string|null;cleanliness_status?:string|null;issues?:string[]|null;comment?:string|null;created_at?:string;photo_urls?:string[]};
   owner_photos:{id:string;photo_url:string;status:'pending'|'added'}[];
-  replies:{id:string;body:string;status:string;business_name:string}[]};
+  replies:{id:string;body:string;status:string;business_name:string;archived_at?:string|null;
+    photos:{id:string;photo_url:string;status:'pending'|'moderated'|'published'|'rejected'}[]}[]};
 const statusLabel:Record<string,string>={pending:'Waiting for moderation',moderated:'Waiting for administrator approval',published:'Published',rejected:'Not approved'};
 const ownerPhotoStatus:Record<Item['owner_photos'][number]['status'],string>={pending:'Private - waiting for administrator review',added:'Added to the review'};
 
@@ -20,8 +21,10 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
   const [refresh,setRefresh]=useState(0);
   const [drafts,setDrafts]=useState<Record<string,{business:string;body:string}>>({});
   const [photoDrafts,setPhotoDrafts]=useState<Record<string,File[]>>({});
+  const [replyPhotoDrafts,setReplyPhotoDrafts]=useState<Record<string,File[]>>({});
   const [preparingPhotos,setPreparingPhotos]=useState(false);
   const [uploadingInvite,setUploadingInvite]=useState<string|null>(null);
+  const [showArchivedReplies,setShowArchivedReplies]=useState(false);
   const headers={Authorization:`Bearer ${session.access_token}`};
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');
@@ -39,10 +42,15 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
     event.preventDefault();setError('');setMessage('');
     const draft=drafts[item.invite_id]??{business:item.review.restroom_name??'',body:''};
     try{
-      const response=await fetch('/api/backend/owner/replies',{method:'POST',cache:'no-store',headers:{...headers,'Content-Type':'application/json'},
-        body:JSON.stringify({invite_id:item.invite_id,business_name:draft.business,body:draft.body})});
+      const form=new FormData();
+      form.set('invite_id',item.invite_id);
+      form.set('business_name',draft.business);
+      form.set('body',draft.body);
+      (replyPhotoDrafts[item.invite_id]??[]).forEach(photo=>form.append('photos',photo));
+      const response=await fetch('/api/backend/owner/replies',{method:'POST',cache:'no-store',headers,body:form});
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'Could not send your reply.');
+      setReplyPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}));
       setMessage('Reply received. It will be reviewed by a moderator, then approved by an administrator before it is published.');
       setRefresh(value=>value+1);
       onSent();
@@ -65,13 +73,25 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
     }catch(err){setError(err instanceof Error?err.message:'Could not upload the photos.')}
     finally{setUploadingInvite(null)}
   }
+  async function archiveReply(reply:Item['replies'][number],archived:boolean){
+    setError('');setMessage('');
+    try{
+      const response=await fetch('/api/backend/owner/replies',{method:'POST',cache:'no-store',headers:{...headers,'Content-Type':'application/json'},
+        body:JSON.stringify({reply_id:reply.id,archived})});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Could not archive the response.');
+      setRefresh(value=>value+1);
+    }catch(err){setError(err instanceof Error?err.message:'Could not archive the response.')}
+  }
   return <>
     {error&&<p role="alert" className="mt-4 text-amber-800">{error}</p>}
     {message&&<p role="status" className="mt-4 text-sm">{message}</p>}
     {loading?<p role="status" className="mt-4">Loading...</p>:!items.length&&!error&&<p className="panel mt-4">No reviews have been shared with this email address.</p>}
+    {items.some(item=>item.replies.some(reply=>reply.archived_at))&&<label className="mt-3 block text-sm"><input type="checkbox" checked={showArchivedReplies} onChange={event=>setShowArchivedReplies(event.target.checked)}/> Show archived responses</label>}
     <div className="mt-4 space-y-4">{items.map(item=>{
       const draft=drafts[item.invite_id]??{business:item.review.restroom_name??'',body:''};
       const open=item.replies.some(r=>r.status==='pending'||r.status==='moderated'||r.status==='published');
+      const visibleReplies=item.replies.filter(reply=>showArchivedReplies?!!reply.archived_at:!reply.archived_at);
       const selectedPhotos=photoDrafts[item.invite_id]??[];
       return <article key={item.invite_id} className="panel">
         <h2 className="font-bold">{item.review.restroom_name||`${item.review.osm_type==='refuge'?'Refuge Restrooms':'OpenStreetMap'} #${item.review.osm_id}`}</h2>
@@ -123,11 +143,48 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
             </div>}
           </div>}
         </section>
-        {item.replies.map(r=><p key={r.id} className="mt-3 rounded-lg border p-2 text-sm"><span className="font-semibold">{statusLabel[r.status]??r.status}:</span> {r.body}</p>)}
+        {visibleReplies.map(r=><section key={r.id} className="mt-3 rounded-lg border p-3 text-sm">
+          <p><span className="font-semibold">{statusLabel[r.status]??r.status}{r.archived_at?' (archived)':''}:</span> {r.body}</p>
+          {!!r.photos.length&&<div className="mt-3 border-t pt-2">
+            <h3 className="text-xs font-semibold">Photos attached to this response</h3>
+            <div className="mt-2 flex flex-wrap gap-3">{r.photos.map((photo,index)=><div key={photo.id}>
+              <a href={photo.photo_url} target="_blank" rel="noreferrer" aria-label={`Open response photo ${index+1}`}>
+                <img src={photo.photo_url} alt={`Business response photo ${index+1}`} className="h-24 w-24 rounded-lg border object-cover"/>
+              </a>
+              <p className="mt-1 max-w-24 text-xs">{photo.status==='pending'?'Private - waiting for moderator review':
+                photo.status==='moderated'?'Waiting for administrator approval':
+                photo.status==='published'?'Published':'Not approved'}</p>
+            </div>)}</div>
+          </div>}
+          {r.status!=='pending'&&<button type="button" className="pill mt-3" onClick={()=>void archiveReply(r,!r.archived_at)}>{r.archived_at?'Restore response':'Archive response'}</button>}
+        </section>)}
         {!open&&<form onSubmit={event=>void submit(event,item)} className="mt-3">
           <label className="block text-sm font-semibold">Business name<input required maxLength={200} value={draft.business} onChange={e=>setDrafts({...drafts,[item.invite_id]:{...draft,business:e.target.value}})} className="mt-1 w-full rounded-lg border p-3"/></label>
           <label className="mt-2 block text-sm font-semibold">Your reply<textarea required maxLength={4000} rows={4} value={draft.body} onChange={e=>setDrafts({...drafts,[item.invite_id]:{...draft,body:e.target.value}})} className="mt-1 w-full rounded-lg border p-3"/></label>
-          <button className="mt-3 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white">Send reply for review</button>
+          <label className="mt-2 block text-sm font-semibold">Photos for your reply (optional, up to 3)
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={preparingPhotos||uploadingInvite!==null}
+              onChange={async event=>{
+                const input=event.currentTarget;
+                const selected=[...(input.files??[])];
+                input.value='';
+                const existing=replyPhotoDrafts[item.invite_id]??[];
+                if(existing.length+selected.length>3){setError('Choose no more than 3 photos for your response.');return}
+                if(selected.some(file=>!acceptedPhotoTypes.includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
+                  setError('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
+                }
+                setError('');setPreparingPhotos(true);
+                try{
+                  const prepared=await Promise.all(selected.map(preparePhoto));
+                  setReplyPhotoDrafts(previous=>({...previous,[item.invite_id]:[...(previous[item.invite_id]??[]),...prepared]}));
+                }catch(err){setError(err instanceof Error?err.message:'Could not prepare the photos. Try another image.')}
+                finally{setPreparingPhotos(false)}
+              }} className="mt-1 block w-full rounded-lg border p-2 text-sm"/>
+          </label>
+          {!!replyPhotoDrafts[item.invite_id]?.length&&<div className="mt-2 flex items-center gap-2 text-xs">
+            <span>{replyPhotoDrafts[item.invite_id].length} response photo(s) ready</span>
+            <button type="button" onClick={()=>setReplyPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}))} className="underline">Clear</button>
+          </div>}
+          <button disabled={preparingPhotos} className="mt-3 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Send reply for review</button>
         </form>}
       </article>;
     })}</div>

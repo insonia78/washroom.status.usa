@@ -568,6 +568,7 @@ async function moderation(req: Request): Promise<Response> {
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const publicOwnerColumns = "id,osm_type,osm_id,review_id,business_name,body,completed_on,evidence_url,published_at";
+const publicOwnerPhotoColumns = `${publicOwnerColumns},photo_paths`;
 const adminOwnerColumns = `${publicOwnerColumns},verification_note,status,version,updated_at,archived_at`;
 const replyColumns = "id,review_id,recipient_user_id,body,status,created_by,last_sent_by,created_at,first_attempt_at,last_attempt_at,sent_at,provider_id";
 
@@ -736,6 +737,41 @@ async function rpcRows(name: string, args: Record<string, unknown>): Promise<Rec
 
 const ownerReplyColumns = "id,invite_id,review_id,osm_type,osm_id,owner_email,business_name,body,status,created_at,moderated_at,published_at,archived_at";
 
+async function withOwnerReplyPhotos(replies: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
+  const replyIds = replies.map(reply => {
+    if (typeof reply.id !== "string" || !uuidPattern.test(reply.id)) throw new ApiError(502, "Invalid owner reply identity");
+    return reply.id;
+  });
+  const rows: unknown = replyIds.length ? await (await database("owner_reply_photos", new URLSearchParams({
+    select: "id,reply_id,photo_path,status", reply_id: `in.(${replyIds.join(",")})`,
+    order: "uploaded_at.asc", limit: String(replyIds.length * 3),
+  }))).json() : [];
+  if (!Array.isArray(rows) || !rows.every(isRecord)) throw new ApiError(502, "Invalid owner reply photo list");
+  const byReply = new Map<string, Record<string, unknown>[]>();
+  for (const photo of rows) {
+    if (typeof photo.id !== "string" || !uuidPattern.test(photo.id) ||
+      typeof photo.reply_id !== "string" || !replyIds.includes(photo.reply_id) ||
+      typeof photo.photo_path !== "string" ||
+      !["pending", "moderated", "published", "rejected"].includes(String(photo.status))) {
+      throw new ApiError(502, "Invalid owner reply photo list");
+    }
+    const photos = byReply.get(photo.reply_id) ?? [];
+    if (photos.length >= 3) throw new ApiError(502, "Invalid owner reply photo count");
+    photos.push(photo);
+    byReply.set(photo.reply_id, photos);
+  }
+  return await Promise.all(replies.map(async reply => {
+    const photos = byReply.get(String(reply.id)) ?? [];
+    const urls = await signedReviewPhotos(photos.map(photo => photo.photo_path));
+    return {
+      ...reply,
+      photos: photos.map((photo, index) => ({
+        id: photo.id, photo_url: urls[index], status: photo.status,
+      })),
+    };
+  }));
+}
+
 // Admin: invite a business owner to answer one approved review through a magic link.
 async function adminOwnerInvites(req: Request): Promise<Response> {
   if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
@@ -792,16 +828,17 @@ async function ownerReviews(req: Request): Promise<Response> {
     id: `in.(${ids.join(",")})`, status: "eq.approved",
   }))).json();
   if (!Array.isArray(reviews) || !reviews.every(isRecord)) throw new ApiError(502, "Invalid owner review list");
-  const listingIds = [...new Set(reviews.map(review => {
+  for (const review of reviews) {
     if (typeof review.osm_type !== "string" || !["node", "way", "relation", "refuge"].includes(review.osm_type) ||
       !Number.isSafeInteger(review.osm_id) || Number(review.osm_id) <= 0) {
       throw new ApiError(502, "Invalid owner review location");
     }
-    return Number(review.osm_id);
-  }))];
-  const locations: unknown = listingIds.length ? await (await database("review_locations", new URLSearchParams({
-    select: "osm_type,osm_id,latitude,longitude", osm_id: `in.(${listingIds.join(",")})`,
-    limit: String(listingIds.length * 4),
+  }
+  const refugeIds = [...new Set(reviews.filter(review => review.osm_type === "refuge")
+    .map(review => Number(review.osm_id)))];
+  const locations: unknown = refugeIds.length ? await (await database("review_locations", new URLSearchParams({
+    select: "osm_type,osm_id,latitude,longitude", osm_type: "eq.refuge",
+    osm_id: `in.(${refugeIds.join(",")})`, limit: String(refugeIds.length),
   }))).json() : [];
   if (!Array.isArray(locations) || !locations.every(isRecord)) throw new ApiError(502, "Invalid owner review locations");
   const coordinates = new Map<string, {latitude:number;longitude:number}>();
@@ -817,17 +854,39 @@ async function ownerReviews(req: Request): Promise<Response> {
       latitude: location.latitude, longitude: location.longitude,
     });
   }
+  const restroomIds = [...new Set(reviews.filter(review =>
+    typeof review.osm_type === "string" && review.osm_type !== "refuge" &&
+    !coordinates.has(`${review.osm_type}:${review.osm_id}`),
+  ).map(review => Number(review.osm_id)))];
+  const restrooms: unknown = restroomIds.length ? await (await database("restrooms", new URLSearchParams({
+    select: "osm_type,osm_id,latitude,longitude",
+    osm_type: "in.(node,way,relation)", osm_id: `in.(${restroomIds.join(",")})`,
+    limit: String(restroomIds.length * 3),
+  }))).json() : [];
+  if (!Array.isArray(restrooms) || !restrooms.every(isRecord)) throw new ApiError(502, "Invalid owner restroom locations");
+  for (const restroom of restrooms) {
+    if (typeof restroom.osm_type !== "string" || !Number.isSafeInteger(restroom.osm_id) ||
+      typeof restroom.latitude !== "number" || !Number.isFinite(restroom.latitude) ||
+      Math.abs(restroom.latitude) > 90 || typeof restroom.longitude !== "number" ||
+      !Number.isFinite(restroom.longitude) || Math.abs(restroom.longitude) > 180) continue;
+    coordinates.set(`${restroom.osm_type}:${restroom.osm_id}`, {
+      latitude: restroom.latitude, longitude: restroom.longitude,
+    });
+  }
   const replies: unknown = await (await database("owner_replies", new URLSearchParams({
     select: ownerReplyColumns, owner_email: `eq.${account.email}`, order: "created_at.desc",
   }))).json();
+  if (!Array.isArray(replies) || !replies.every(isRecord)) throw new ApiError(502, "Invalid owner reply list");
+  const repliesWithPhotos = await withOwnerReplyPhotos(replies);
   const inviteIds = invites.map(invite => invite.id)
     .filter((id): id is string => typeof id === "string" && uuidPattern.test(id));
   const submittedPhotos: unknown = inviteIds.length ? await (await database("owner_review_photos", new URLSearchParams({
     select: "id,invite_id,review_id,photo_path,status", invite_id: `in.(${inviteIds.join(",")})`,
     order: "uploaded_at.asc", limit: String(inviteIds.length * ownerReviewPhotoLimit),
   }))).json() : [];
-  if (!Array.isArray(replies) || !Array.isArray(submittedPhotos) ||
-    !submittedPhotos.every(isRecord)) throw new ApiError(502, "Invalid owner review list");
+  if (!Array.isArray(submittedPhotos) || !submittedPhotos.every(isRecord)) {
+    throw new ApiError(502, "Invalid owner review list");
+  }
   const withPhotos = await Promise.all(reviews.filter(isRecord).map(async review => {
     const { photo_paths, ...details } = review;
     if (typeof review.id !== "string" || !Array.isArray(photo_paths) ||
@@ -860,7 +919,7 @@ async function ownerReviews(req: Request): Promise<Response> {
       invite_id: invite.id,
       review,
       owner_photos: withOwnerPhotos.filter(photo => photo.invite_id === invite.id),
-      replies: replies.filter(r => isRecord(r) && r.invite_id === invite.id),
+      replies: repliesWithPhotos.filter(reply => reply.invite_id === invite.id),
     }];
   });
   return json(200, { items });
@@ -909,15 +968,56 @@ async function ownerReviewPhotos(req: Request): Promise<Response> {
 async function ownerReplies(req: Request): Promise<Response> {
   if (req.method !== "POST") throw new ApiError(405, "Method not allowed");
   const account = await requireVerifiedAccount(req);
-  const body = await readJson(req);
+  let body: Record<string, unknown>;
+  let photos: File[] = [];
+  if (req.headers.get("content-type")?.toLowerCase().includes("multipart/form-data")) {
+    let form: FormData;
+    try { form = await req.formData(); } catch { throw new ApiError(400, "Invalid owner reply submission"); }
+    const values = form.getAll("photos");
+    if (values.length > ownerReviewPhotoLimit || values.some(value => typeof value === "string" || !(value instanceof File))) {
+      throw new ApiError(400, "Choose up to 3 image files for your response.");
+    }
+    photos = values as File[];
+    body = {
+      invite_id: form.get("invite_id"),
+      business_name: form.get("business_name"),
+      body: form.get("body"),
+    };
+  } else {
+    body = await readJson(req);
+  }
+  if (typeof body.reply_id === "string" && uuidPattern.test(body.reply_id) && typeof body.archived === "boolean") {
+    const rows = await rpcRows("owner_archive_reply", {
+      p_owner_id: account.id, p_email: account.email, p_id: body.reply_id, p_archived: body.archived,
+    });
+    if (!rows.length) throw new ApiError(409, "This reply cannot be archived yet. Refresh.");
+    return json(200, { reply: rows[0] });
+  }
   if (typeof body.invite_id !== "string" || !uuidPattern.test(body.invite_id) ||
     typeof body.business_name !== "string" || typeof body.body !== "string") throw new ApiError(400, "Invalid owner reply");
-  const rows = await rpcRows("owner_submit_reply", {
-    p_user_id: account.id, p_email: account.email, p_invite_id: body.invite_id,
-    p_business_name: body.business_name, p_body: body.body,
+  if (photos.some(file => !reviewPhotoTypes.has(file.type) || file.size <= 0 ||
+    file.size > reviewPhotoMaxBytes) ||
+    !(await Promise.all(photos.map(hasMatchingImageSignature))).every(Boolean)) {
+    throw new ApiError(400, "Choose JPEG, PNG, or WebP photos smaller than 5 MB each.");
+  }
+  const photoPaths = photos.map(file => {
+    const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+    return `${account.id}/${crypto.randomUUID()}.${extension}`;
   });
-  if (rows.length !== 1) throw new ApiError(502, "Invalid owner reply response");
-  return json(201, { reply: rows[0] });
+  try {
+    for (const [index, file] of photos.entries()) await uploadReviewPhoto(photoPaths[index], file);
+    const rows = await rpcRows("owner_submit_reply", {
+      p_user_id: account.id, p_email: account.email, p_invite_id: body.invite_id,
+      p_business_name: body.business_name, p_body: body.body, p_photo_paths: photoPaths,
+    });
+    if (rows.length !== 1 || typeof rows[0].id !== "string" || rows[0].status !== "pending") {
+      throw new ApiError(502, "Invalid owner reply response");
+    }
+    return json(201, { reply: rows[0] });
+  } catch (error) {
+    await deleteReviewPhotos(photoPaths);
+    throw error;
+  }
 }
 
 // Step 1 (moderator) and step 2 (administrator) share the same list and decision logic.
@@ -963,8 +1063,11 @@ async function ownerReplyStage(req: Request, stage: "moderate" | "publish"): Pro
     select: "id,osm_type,osm_id,restroom_name,comment", id: `in.(${reviewIds.join(",")})`,
   }))).json() : [];
   const named = Array.isArray(reviews) ? await withRestroomNames(reviews.filter(isRecord)) : [];
+  const repliesWithPhotos = await withOwnerReplyPhotos(rows);
   return json(200, {
-    total, replies: rows.map(r => ({ ...r, review: named.find(v => v.id === r.review_id) ?? null })),
+    total, replies: repliesWithPhotos.map(reply => ({
+      ...reply, review: named.find(v => v.id === reply.review_id) ?? null,
+    })),
     next_offset: rows.length === 3 ? Number(offset) + 3 : null,
   });
 }
@@ -1100,7 +1203,7 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
   if (req.method === "GET") {
     const query = new URL(req.url).searchParams;
     const params = ownerTarget(query, !admin);
-    params.set("select", admin ? adminOwnerColumns : publicOwnerColumns);
+    params.set("select", admin ? adminOwnerColumns : publicOwnerPhotoColumns);
     params.set("order", admin ? "updated_at.desc,id.desc" : "published_at.desc,id.desc");
     const pageSize = admin ? 3 : 50;
     params.set("limit", String(pageSize));
@@ -1112,7 +1215,7 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
     if (archivedFilter !== "0" && archivedFilter !== "1") throw new ApiError(400, "Invalid archived filter");
     params.set("archived_at", admin && archivedFilter === "1" ? "not.is.null" : "is.null");
     const { rows, total } = await databasePage("owner_responses", params);
-    if (!Array.isArray(rows)) throw new ApiError(502, "Invalid owner response list");
+    if (!Array.isArray(rows) || !rows.every(isRecord)) throw new ApiError(502, "Invalid owner response list");
     // Hide replies if their review is no longer approved, even after publication.
     let responses = rows;
     if (!admin) {
@@ -1128,7 +1231,12 @@ async function ownerResponses(req: Request, admin: boolean): Promise<Response> {
         responses = rows.filter(row => isRecord(row) && (row.review_id === null || visible.has(row.review_id)));
       }
     }
-    return json(200, { responses, total, next_offset: rows.length === pageSize ? Number(offsetText) + pageSize : null });
+    const publicResponses = admin ? responses : await Promise.all(responses.map(async row => {
+      if (!isRecord(row)) throw new ApiError(502, "Invalid owner response list");
+      const { photo_paths, ...details } = row;
+      return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
+    }));
+    return json(200, { responses: publicResponses, total, next_offset: rows.length === pageSize ? Number(offsetText) + pageSize : null });
   }
   let body: unknown;
   try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON"); }

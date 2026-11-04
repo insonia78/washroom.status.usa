@@ -34,6 +34,11 @@ export default function OwnerResponses({restroom}:{restroom:Restroom}){
       <h4 className="font-bold">{row.business_name} - {row.review_id?'Owner reply':'Improvement update'}</h4>
       {row.review_id&&<p className="mt-1 break-all text-xs text-slate-600">Reply to review #{row.review_id}</p>}
       <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.body}</p>
+      {!!row.photo_urls?.length&&<div className="mt-3 flex flex-wrap gap-3" aria-label="Published business response photos">
+        {row.photo_urls.map((url,index)=><a key={url} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open business response photo ${index+1}`}>
+          <img src={url} alt={`Business response photo ${index+1}`} className="h-24 w-24 rounded-lg border object-cover"/>
+        </a>)}
+      </div>}
       {row.completed_on&&<p className="mt-2 text-xs">Improvements completed: <time dateTime={row.completed_on}>{row.completed_on}</time></p>}
       {row.evidence_url&&<a href={row.evidence_url} target="_blank" rel="noopener noreferrer" className="mt-2 block text-sm text-teal-800 underline">View owner-provided evidence (external website)</a>}
       <p className="mt-2 text-xs text-slate-500">Published <time dateTime={row.published_at!}>{new Date(row.published_at!).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>

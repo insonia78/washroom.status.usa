@@ -27,6 +27,9 @@ export default function ReadOnlyLocationMap({latitude,longitude,label}:{latitude
         console.error('Owner review map resource failed to load:',event.error);
         if(active)setError(true);
       });
+      map.on('idle',()=>{
+        if(active&&map?.areTilesLoaded())setError(false);
+      });
       const marker=document.createElement('div');
       marker.setAttribute('role','img');
       marker.setAttribute('aria-label',label);

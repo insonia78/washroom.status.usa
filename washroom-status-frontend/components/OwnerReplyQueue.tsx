@@ -4,10 +4,13 @@ import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 
 type Reply={id:string;status?:string;archived_at?:string|null;owner_email:string;business_name:string;body:string;created_at:string;
+  photos:{id:string;photo_url:string;status:'pending'|'moderated'|'published'|'rejected'}[];
   review:{restroom_name?:string|null;osm_type:string;osm_id:number;comment?:string|null}|null};
 const record=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null;
 const isReply=(value:unknown):value is Reply=>record(value)&&typeof value.id==='string'&&typeof value.owner_email==='string'&&
-  typeof value.business_name==='string'&&typeof value.body==='string'&&typeof value.created_at==='string';
+  typeof value.business_name==='string'&&typeof value.body==='string'&&typeof value.created_at==='string'&&
+  Array.isArray(value.photos)&&value.photos.every(photo=>record(photo)&&typeof photo.id==='string'&&
+    typeof photo.photo_url==='string'&&['pending','moderated','published','rejected'].includes(String(photo.status)));
 
 // Step 1 (stage "moderate") is for moderators; step 2 (stage "publish") is the administrator's final approval.
 export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'moderate'|'publish'}){
@@ -65,6 +68,15 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
       <p className="mt-1 text-xs text-slate-500">From {row.owner_email} on {new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</p>
       {row.review?.comment&&<p className="mt-2 text-sm"><span className="font-semibold">Original review:</span> {row.review.comment}</p>}
       <p className="mt-2 whitespace-pre-wrap text-sm"><span className="font-semibold">Owner reply:</span> {row.body}</p>
+      {!!row.photos.length&&<div className="mt-3 border-t pt-2">
+        <h4 className="text-sm font-semibold">Owner reply photos</h4>
+        <div className="mt-2 flex flex-wrap gap-3">{row.photos.map((photo,index)=><div key={photo.id}>
+          <a href={photo.photo_url} target="_blank" rel="noreferrer" aria-label={`Open owner reply photo ${index+1}`}>
+            <img src={photo.photo_url} alt={`Owner reply photo ${index+1}`} className="h-24 w-24 rounded-lg border object-cover"/>
+          </a>
+          <p className="mt-1 text-xs">{photo.status}</p>
+        </div>)}</div>
+      </div>}
       {stage==='publish'&&row.status&&<p className="mt-1 text-xs font-semibold uppercase">{row.status}{row.archived_at?' (archived)':''}</p>}
       <div className="mt-3 flex gap-2">
         {(stage==='moderate'||row.status==='moderated')&&<>
