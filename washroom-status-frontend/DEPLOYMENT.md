@@ -99,6 +99,22 @@ moderation and administrator review; the moderator and administrator queues disp
 the attached photos and their review status. Photos appear publicly only with a
 published owner response. Pending replies cannot be archived.
 
+Owners now attach photos only through the reply form (one uploader, up to three
+photos). The separate review-photo uploader was removed from the owner dashboard;
+previously submitted owner review photos remain visible read-only and can still be
+added by an administrator. Private reply emails attach up to three owner photos:
+photos from the latest published owner reply first, then administrator-added owner
+review photos. Admin review cards show reviewer photos, owner reply photos (all
+statuses), owner-submitted photos, and a read-only **Review steps taken** timeline
+(submission, moderator decisions, owner invites and replies, private reply emails,
+archiving). Admin toilet cards show a **Toilet steps taken** timeline (submission,
+moderator decision, final approval, archiving). No migration is required; deploy
+`frontend-api` and the frontend, then run:
+
+```powershell
+npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions\frontend-api\workflow-history_test.ts supabase-edge-functions\supabase\functions\frontend-api\owner-reviews_test.ts
+```
+
 The admin review panel's **All history** filter combines active and archived
 approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin
 toilets panel provides the separate final-approval and map-publication step for

@@ -160,6 +160,9 @@ Deno.test("private review email includes approved owner photos as attachments", 
   const replyId = "90000000-0000-4000-8000-000000000001";
   const photoId = "a0000000-0000-4000-8000-000000000001";
   const photoPath = `${adminId}/${photoId}.jpg`;
+  const ownerReplyId = "b0000000-0000-4000-8000-000000000001";
+  const replyPhotoPath = `${adminId}/c0000000-0000-4000-8000-000000000001.jpg`;
+  let attachedPaths = 0;
   const headers = { ...buildGatewayHeaders(config.GATEWAY_INTERNAL_SECRET), Authorization: "Bearer admin-token" };
   try {
     globalThis.fetch = async (input, init) => {
@@ -185,13 +188,26 @@ Deno.test("private review email includes approved owner photos as attachments", 
           body: "The business submitted an update.", status: "sent",
         }]);
       }
+      if (url.pathname === "/rest/v1/owner_replies") {
+        assert(url.searchParams.get("review_id") === `eq.${reviewId}` &&
+          url.searchParams.get("status") === "eq.published",
+        "Include only published owner replies for this review");
+        return Response.json([{ id: ownerReplyId }]);
+      }
+      if (url.pathname === "/rest/v1/owner_reply_photos") {
+        assert(url.searchParams.get("reply_id") === `in.(${ownerReplyId})` &&
+          url.searchParams.get("status") === "eq.published",
+        "Include only published owner reply photos");
+        return Response.json([{ reply_id: ownerReplyId, photo_path: replyPhotoPath }]);
+      }
       if (url.pathname === "/rest/v1/owner_review_photos") {
         assert(url.searchParams.get("review_id") === `eq.${reviewId}` &&
           url.searchParams.get("status") === "eq.added",
         "Include only owner photos approved for this review");
         return Response.json([{ photo_path: photoPath }]);
       }
-      if (url.pathname === `/storage/v1/object/review-photos/${photoPath}`) {
+      if (url.pathname === `/storage/v1/object/review-photos/${photoPath}` ||
+        url.pathname === `/storage/v1/object/review-photos/${replyPhotoPath}`) {
         assert(init?.method !== "POST", "Fetch the approved owner photo from private storage");
         return new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
           headers: { "Content-Type": "image/jpeg", "Content-Length": "3" },
@@ -199,12 +215,14 @@ Deno.test("private review email includes approved owner photos as attachments", 
       }
       if (url.hostname === "api.resend.com") {
         const payload = JSON.parse(String(init?.body));
-        assert(payload.attachments?.length === 1 &&
+        assert(payload.attachments?.length === 2 &&
           payload.attachments[0].filename === "owner-photo-1.jpg" &&
+          payload.attachments[1].filename === "owner-photo-2.jpg" &&
           payload.attachments[0].content_type === "image/jpeg" &&
           payload.attachments[0].content === "/9j/" &&
           payload.text.includes("Approved owner-provided photos are attached"),
-        "Attach the approved owner photo to the email reply");
+        "Attach the published reply photo and approved owner photo to the email reply");
+        attachedPaths = 2;
         return Response.json({ id: "provider-message-id" });
       }
       throw new Error(`Unexpected upstream request: ${url.pathname}`);
@@ -215,7 +233,7 @@ Deno.test("private review email includes approved owner photos as attachments", 
       body: JSON.stringify({ action: "send", id: replyId }),
     }));
     const result = await response.json();
-    assert(response.status === 200 && result.reply.status === "sent",
+    assert(response.status === 200 && result.reply.status === "sent" && attachedPaths === 2,
       "Send the reply and persist the provider confirmation");
   } finally {
     globalThis.fetch = originalFetch;

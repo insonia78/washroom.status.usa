@@ -4,8 +4,10 @@ import {useEffect,useRef,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
 import {isAdminReview,isReviewReply,type AdminReview,type ReviewReply} from '@/lib/review-replies';
+import StepHistory from './StepHistory';
 
 const endpoint='/api/backend/admin/review-replies';
+const replyStatusLabel:Record<string,string>={pending:'Waiting for moderator',moderated:'Moderator approved - waiting for administrator',published:'Published',rejected:'Not approved'};
 function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
   const [rows,setRows]=useState<ReviewReply[]>([]);
   const [offset,setOffset]=useState(0); const [total,setTotal]=useState<number|null>(null);
@@ -21,7 +23,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
   const [message,setMessage]=useState('');
   const inFlight=useRef(false);
   const lifetime=useRef<AbortController|null>(null);
-  const approvedOwnerPhotos=review.owner_photos?.filter(photo=>photo.status==='added')??[];
+  const approvedOwnerPhotos=review.email_photos??review.owner_photos?.filter(photo=>photo.status==='added')??[];
   useEffect(()=>{
     const controller=new AbortController();lifetime.current=controller;
     return()=>{controller.abort();lifetime.current=null};
@@ -76,7 +78,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
     <h3 className="font-bold">Private replies</h3>
     <p className="mt-1 text-sm text-slate-600">Replies are stored privately. The server looks up the verified recipient email; this panel never receives it. Sent means accepted by the provider, not confirmed delivery.</p>
     {!!approvedOwnerPhotos.length&&<div className="mt-3 rounded-lg border p-3">
-      <p className="text-sm font-semibold">Approved owner photos will be attached to the email reply.</p>
+      <p className="text-sm font-semibold">Approved owner photos (published reply photos first, up to 3) will be attached to the email reply.</p>
       <div className="mt-2 flex flex-wrap gap-2">{approvedOwnerPhotos.map((photo,index)=>
         <a key={photo.id} href={photo.photo_url} target="_blank" rel="noopener noreferrer" aria-label={`Open approved owner photo ${index+1}`}>
           <img src={photo.photo_url} alt={`Approved owner photo ${index+1}`} className="h-20 w-20 rounded-lg border object-cover"/>
@@ -206,7 +208,24 @@ export default function AdminReviewReplies({
           <div><dt className="font-semibold">Reported issues</dt><dd>{row.issues.length?row.issues.join(', ').replaceAll('_',' '):'None reported'}</dd></div>
         </dl>
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.comment||'No written comment.'}</p>
-        {row.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
+        <section className="mt-3" aria-label="Reviewer photos">
+          <h4 className="text-sm font-semibold">Reviewer photos</h4>
+          {row.photo_urls.length>0?<div className="mt-2 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>:
+            <p className="mt-1 text-xs text-slate-600">No photos attached by the reviewer.</p>}
+        </section>
+        {!!row.owner_replies?.length&&<section className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-3" aria-label="Owner reply photos">
+          <h4 className="font-semibold">Owner replies and attached photos</h4>
+          {row.owner_replies.map(reply=><div key={reply.id} className="mt-3 border-t border-teal-200 pt-2 first:border-t-0 first:pt-0">
+            <p className="text-sm"><span className="font-semibold">{reply.business_name}</span> - {replyStatusLabel[reply.status]}{reply.archived_at?' (archived)':''}</p>
+            <p className="mt-1 whitespace-pre-wrap break-words text-sm">{reply.body}</p>
+            {reply.photos.length?<div className="mt-2 flex flex-wrap gap-3">{reply.photos.map((photo,index)=><div key={photo.id} className="w-28">
+              <a href={photo.photo_url} target="_blank" rel="noopener noreferrer" aria-label={`Open owner reply photo ${index+1}`}>
+                <img src={photo.photo_url} alt={`Owner reply photo ${index+1}`} className="h-28 w-28 rounded-lg border object-cover"/>
+              </a>
+              <p className="mt-1 text-xs">{replyStatusLabel[photo.status]??photo.status}</p>
+            </div>)}</div>:<p className="mt-1 text-xs text-slate-600">No photos attached to this reply.</p>}
+          </div>)}
+        </section>}
         {!!row.owner_photos?.length&&<section className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-3" aria-label="Owner-submitted photos">
           <h4 className="font-semibold">Owner-submitted photos</h4>
           <p className="mt-1 text-xs text-slate-600">Pending photos are private. Added photos appear publicly with an owner-provided label.</p>
@@ -222,6 +241,7 @@ export default function AdminReviewReplies({
           {row.status!=='approved'&&<p className="mt-2 text-xs text-slate-600">Approve the review before adding owner photos.</p>}
           {row.photo_urls.length+(row.owner_photos.filter(photo=>photo.status==='added').length)>=3&&<p className="mt-2 text-xs text-slate-600">This review already has the maximum of 3 photos.</p>}
         </section>}
+        <StepHistory steps={row.history} label="Review steps taken"/>
         {row.status==='pending'?<p className="mt-3 text-sm font-semibold text-amber-900">Not moderated yet - replies and archiving unlock after moderation.</p>:<>
         <button type="button" className="pill mt-3" onClick={()=>setSelected(row)}>Open private replies</button>
         <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button></>}

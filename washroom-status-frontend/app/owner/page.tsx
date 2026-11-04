@@ -20,10 +20,9 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
   const [message,setMessage]=useState('');
   const [refresh,setRefresh]=useState(0);
   const [drafts,setDrafts]=useState<Record<string,{business:string;body:string}>>({});
-  const [photoDrafts,setPhotoDrafts]=useState<Record<string,File[]>>({});
   const [replyPhotoDrafts,setReplyPhotoDrafts]=useState<Record<string,File[]>>({});
   const [preparingPhotos,setPreparingPhotos]=useState(false);
-  const [uploadingInvite,setUploadingInvite]=useState<string|null>(null);
+  const [sending,setSending]=useState(false);
   const [showArchivedReplies,setShowArchivedReplies]=useState(false);
   const headers={Authorization:`Bearer ${session.access_token}`};
   useEffect(()=>{
@@ -39,7 +38,9 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[session.access_token,refresh]);
   async function submit(event:React.FormEvent,item:Item){
-    event.preventDefault();setError('');setMessage('');
+    event.preventDefault();
+    if(sending)return;
+    setError('');setMessage('');setSending(true);
     const draft=drafts[item.invite_id]??{business:item.review.restroom_name??'',body:''};
     try{
       const form=new FormData();
@@ -55,23 +56,7 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
       setRefresh(value=>value+1);
       onSent();
     }catch(err){setError(err instanceof Error?err.message:'Could not send your reply.')}
-  }
-  async function uploadPhotos(item:Item){
-    const selected=photoDrafts[item.invite_id]??[];
-    if(!selected.length||uploadingInvite||preparingPhotos)return;
-    setUploadingInvite(item.invite_id);setError('');setMessage('');
-    try{
-      const form=new FormData();
-      form.set('invite_id',item.invite_id);
-      selected.forEach(photo=>form.append('photos',photo));
-      const response=await fetch('/api/backend/owner/review-photos',{method:'POST',cache:'no-store',headers,body:form});
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.error||'Could not upload the photos.');
-      setPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}));
-      setMessage('Photos uploaded privately. An administrator will review them before they are added to the review.');
-      setRefresh(value=>value+1);
-    }catch(err){setError(err instanceof Error?err.message:'Could not upload the photos.')}
-    finally{setUploadingInvite(null)}
+    finally{setSending(false)}
   }
   async function archiveReply(reply:Item['replies'][number],archived:boolean){
     setError('');setMessage('');
@@ -92,7 +77,6 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
       const draft=drafts[item.invite_id]??{business:item.review.restroom_name??'',body:''};
       const open=item.replies.some(r=>r.status==='pending'||r.status==='moderated'||r.status==='published');
       const visibleReplies=item.replies.filter(reply=>showArchivedReplies?!!reply.archived_at:!reply.archived_at);
-      const selectedPhotos=photoDrafts[item.invite_id]??[];
       return <article key={item.invite_id} className="panel">
         <h2 className="font-bold">{item.review.restroom_name||`${item.review.osm_type==='refuge'?'Refuge Restrooms':'OpenStreetMap'} #${item.review.osm_id}`}</h2>
         {typeof item.review.latitude==='number'&&typeof item.review.longitude==='number'?
@@ -108,41 +92,13 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
         <p className="mt-2 whitespace-pre-wrap text-sm">{item.review.comment||'No written comment.'}</p>
         {!!item.review.photo_urls?.length&&<div className="mt-3 flex flex-wrap gap-2">{item.review.photo_urls.map((url,index)=>
           <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Photo ${index+1} of the reported problem`} className="h-32 w-32 rounded-lg border object-cover"/></a>)}</div>}
-        <section className="mt-4 border-t pt-3" aria-label="Owner photos for administrator review">
-          <h3 className="font-semibold">Photos for this review</h3>
-          <p className="mt-1 text-xs text-slate-600">Owner photos stay private until an administrator adds them to the review. Up to 3 photos can be submitted per invitation.</p>
-          {!!item.owner_photos.length&&<div className="mt-2 flex flex-wrap gap-3">{item.owner_photos.map((photo,index)=><div key={photo.id}>
+        {!!item.owner_photos.length&&<section className="mt-4 border-t pt-3" aria-label="Previously submitted owner photos">
+          <h3 className="font-semibold">Previously submitted photos</h3>
+          <div className="mt-2 flex flex-wrap gap-3">{item.owner_photos.map((photo,index)=><div key={photo.id}>
             <a href={photo.photo_url} target="_blank" rel="noreferrer"><img src={photo.photo_url} alt={`Owner-submitted photo ${index+1}`} className="h-24 w-24 rounded-lg border object-cover"/></a>
             <p className="mt-1 max-w-32 text-xs">{ownerPhotoStatus[photo.status]}</p>
-          </div>)}</div>}
-          {item.owner_photos.length<3&&<div className="mt-3">
-            <label className="block text-sm font-semibold">Upload photos (JPEG, PNG, or WebP)
-              <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingInvite!==null||preparingPhotos} onChange={async event=>{
-                const input=event.currentTarget;
-                const selected=[...(input.files??[])];
-                input.value='';
-                if(item.owner_photos.length+selectedPhotos.length+selected.length>3){setError('Choose no more than 3 photos for this invitation.');return}
-                if(selected.some(file=>!acceptedPhotoTypes.includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
-                  setError('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
-                }
-                setError('');setPreparingPhotos(true);
-                try{
-                  const prepared=await Promise.all(selected.map(preparePhoto));
-                  setPhotoDrafts(previous=>({...previous,[item.invite_id]:[...(previous[item.invite_id]??[]),...prepared]}));
-                }catch(err){setError(err instanceof Error?err.message:'Could not prepare the photos. Try another image.')}
-                finally{setPreparingPhotos(false)}
-              }} className="mt-1 block w-full rounded-lg border p-2 text-sm"/>
-            </label>
-            {preparingPhotos&&<p role="status" className="mt-2 text-xs">Preparing photos...</p>}
-            {selectedPhotos.length>0&&<div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              <span>{selectedPhotos.length} photo(s) ready to upload</span>
-              <button type="button" disabled={uploadingInvite!==null||preparingPhotos} onClick={()=>setPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}))} className="underline">Clear</button>
-              <button type="button" disabled={uploadingInvite!==null||preparingPhotos} onClick={()=>void uploadPhotos(item)} className="rounded-lg bg-teal-700 px-3 py-2 font-bold text-white disabled:opacity-50">
-                {uploadingInvite===item.invite_id?'Uploading...':'Upload photos for review'}
-              </button>
-            </div>}
-          </div>}
-        </section>
+          </div>)}</div>
+        </section>}
         {visibleReplies.map(r=><section key={r.id} className="mt-3 rounded-lg border p-3 text-sm">
           <p><span className="font-semibold">{statusLabel[r.status]??r.status}{r.archived_at?' (archived)':''}:</span> {r.body}</p>
           {!!r.photos.length&&<div className="mt-3 border-t pt-2">
@@ -161,8 +117,9 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
         {!open&&<form onSubmit={event=>void submit(event,item)} className="mt-3">
           <label className="block text-sm font-semibold">Business name<input required maxLength={200} value={draft.business} onChange={e=>setDrafts({...drafts,[item.invite_id]:{...draft,business:e.target.value}})} className="mt-1 w-full rounded-lg border p-3"/></label>
           <label className="mt-2 block text-sm font-semibold">Your reply<textarea required maxLength={4000} rows={4} value={draft.body} onChange={e=>setDrafts({...drafts,[item.invite_id]:{...draft,body:e.target.value}})} className="mt-1 w-full rounded-lg border p-3"/></label>
-          <label className="mt-2 block text-sm font-semibold">Photos for your reply (optional, up to 3)
-            <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={preparingPhotos||uploadingInvite!==null}
+          <label className="mt-2 block text-sm font-semibold">Attach photos (optional, up to 3 - JPEG, PNG, or WebP)
+            <span className="mt-1 block text-xs font-normal text-slate-600">Photos are sent with your reply and stay private until a moderator and an administrator review them.</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={preparingPhotos||sending}
               onChange={async event=>{
                 const input=event.currentTarget;
                 const selected=[...(input.files??[])];
@@ -180,11 +137,12 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
                 finally{setPreparingPhotos(false)}
               }} className="mt-1 block w-full rounded-lg border p-2 text-sm"/>
           </label>
+          {preparingPhotos&&<p role="status" className="mt-2 text-xs">Preparing photos...</p>}
           {!!replyPhotoDrafts[item.invite_id]?.length&&<div className="mt-2 flex items-center gap-2 text-xs">
-            <span>{replyPhotoDrafts[item.invite_id].length} response photo(s) ready</span>
-            <button type="button" onClick={()=>setReplyPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}))} className="underline">Clear</button>
+            <span>{replyPhotoDrafts[item.invite_id].length} photo(s) attached</span>
+            <button type="button" disabled={sending} onClick={()=>setReplyPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}))} className="underline">Clear</button>
           </div>}
-          <button disabled={preparingPhotos} className="mt-3 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Send reply for review</button>
+          <button disabled={preparingPhotos||sending} className="mt-3 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-50">Send reply for review</button>
         </form>}
       </article>;
     })}</div>

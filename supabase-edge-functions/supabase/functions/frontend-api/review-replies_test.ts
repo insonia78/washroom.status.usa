@@ -46,6 +46,8 @@ Deno.test("admin review replies keep emails backend-only and preserve delivery f
       const headers = new Headers(init?.headers);
       assert(headers.get(init?.method === "POST" ? "Content-Profile" : "Accept-Profile") === "app_locations", "Use private schema");
     }
+    if (url.pathname === "/rest/v1/owner_replies" || url.pathname === "/rest/v1/owner_review_photos" ||
+      url.pathname === "/rest/v1/owner_reply_photos") return Response.json([]);
     if (url.pathname === "/rest/v1/rpc/admin_review_reply") {
       const body = JSON.parse(String(init?.body));
       assert(body.p_admin_id === admin && body.p_id === replyId, "Verify actor and saved reply identity");
@@ -95,7 +97,8 @@ Deno.test("admin review replies keep emails backend-only and preserve delivery f
     await t.step("admin review list includes user IDs but does not fetch emails", async () => {
       globalThis.fetch = async input => {
         const url = new URL(String(input));const auth = authorized(url);if (auth) return auth;
-        if (url.pathname === "/rest/v1/owner_review_photos") return Response.json([]);
+        if (["/rest/v1/owner_review_photos", "/rest/v1/review_moderation_log", "/rest/v1/owner_invites",
+          "/rest/v1/owner_replies", "/rest/v1/review_replies"].includes(url.pathname)) return Response.json([]);
         assert(url.pathname === "/rest/v1/reviews", "Do not call Auth admin lookup for lists");
         assert(url.searchParams.get("select")?.includes("user_id") && url.searchParams.get("select")?.includes("availability") &&
           url.searchParams.get("select")?.includes("cleanliness_status") && !url.searchParams.get("select")?.includes("email"),

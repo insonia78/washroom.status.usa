@@ -3,7 +3,15 @@ export type AdminReview={
   availability:string|null;cleanliness_status:string|null;issues:string[];comment:string;
   photo_urls:string[];  status:'pending'|'approved'|'rejected';created_at:string;archived_at:string|null;restroom_name?:string|null;
   owner_photos?:{id:string;photo_url:string;status:'pending'|'added'}[];
+  owner_replies?:{id:string;business_name:string;body:string;status:'pending'|'moderated'|'published'|'rejected';created_at:string;archived_at:string|null;
+    photos:{id:string;photo_url:string;status:'pending'|'moderated'|'published'|'rejected'}[]}[];
+  email_photos?:{id:string;photo_url:string}[];
+  history?:WorkflowStep[];
   };
+export type WorkflowStep={at:string;label:string;detail?:string};
+export const isWorkflowHistory=(value:unknown):value is WorkflowStep[]|undefined=>value===undefined||Array.isArray(value)&&value.every(step=>
+  typeof step==='object'&&step!==null&&typeof step.at==='string'&&typeof step.label==='string'&&
+  (step.detail===undefined||typeof step.detail==='string'));
   export type ReviewReply={
   id:string;review_id:string;recipient_user_id:string|null;body:string;
   status:'draft'|'sending'|'sent'|'failed'|'unknown';created_at:string;
@@ -27,6 +35,14 @@ export function isAdminReview(value:unknown):value is AdminReview{
     (value.owner_photos===undefined||Array.isArray(value.owner_photos)&&value.owner_photos.every(photo=>
       record(photo)&&typeof photo.id==='string'&&uuid.test(photo.id)&&typeof photo.photo_url==='string'&&
       (photo.status==='pending'||photo.status==='added')))&&
+    (value.owner_replies===undefined||Array.isArray(value.owner_replies)&&value.owner_replies.every(reply=>
+      record(reply)&&typeof reply.id==='string'&&typeof reply.business_name==='string'&&typeof reply.body==='string'&&
+      typeof reply.status==='string'&&['pending','moderated','published','rejected'].includes(reply.status)&&
+      Array.isArray(reply.photos)&&reply.photos.every(photo=>record(photo)&&typeof photo.id==='string'&&
+        typeof photo.photo_url==='string'&&typeof photo.status==='string')))&&
+    (value.email_photos===undefined||Array.isArray(value.email_photos)&&value.email_photos.every(photo=>
+      record(photo)&&typeof photo.id==='string'&&typeof photo.photo_url==='string'))&&
+    isWorkflowHistory(value.history)&&
     ['pending','approved','rejected'].includes(value.status)&&date(value.created_at)&&nullableDate(value.archived_at);
 }
 export function isReviewReply(value:unknown):value is ReviewReply{

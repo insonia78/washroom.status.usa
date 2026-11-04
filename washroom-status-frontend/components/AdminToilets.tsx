@@ -2,10 +2,13 @@
 import PageCount from './PageCount';
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
+import {isWorkflowHistory,type WorkflowStep} from '@/lib/review-replies';
+import StepHistory from './StepHistory';
 
 type AdminToilet={
   id:string;user_id:string|null;name:string;latitude:number;longitude:number;wheelchair:string;fee:string;
   notes:string;photo_urls:string[];status:'pending'|'approved'|'rejected';created_at:string;archived_at:string|null;published_at:string|null;
+  history?:WorkflowStep[];
 };
 const record=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null;
 const isAdminToilet=(value:unknown):value is AdminToilet=>record(value)&&typeof value.id==='string'&&
@@ -15,7 +18,8 @@ const isAdminToilet=(value:unknown):value is AdminToilet=>record(value)&&typeof 
   Array.isArray(value.photo_urls)&&value.photo_urls.every(url=>typeof url==='string')&&
   typeof value.status==='string'&&['pending','approved','rejected'].includes(value.status)&&
   typeof value.created_at==='string'&&(value.archived_at===null||typeof value.archived_at==='string')&&
-  (value.published_at===undefined||value.published_at===null||typeof value.published_at==='string');
+  (value.published_at===undefined||value.published_at===null||typeof value.published_at==='string')&&
+  isWorkflowHistory(value.history);
 
 export default function AdminToilets({session}:{session:Session}){
   const [rows,setRows]=useState<AdminToilet[]>([]);
@@ -92,7 +96,12 @@ export default function AdminToilets({session}:{session:Session}){
           <div><dt className="font-semibold">Fee</dt><dd className="capitalize">{row.fee}</dd></div>
         </dl>
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.notes||'No notes.'}</p>
-        {row.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open toilet photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to toilet`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
+        <section className="mt-3" aria-label="Toilet photos">
+          <h4 className="text-sm font-semibold">Submitted photos</h4>
+          {row.photo_urls.length>0?<div className="mt-2 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open toilet photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to toilet`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>:
+            <p className="mt-1 text-xs text-slate-600">No photos attached to this submission.</p>}
+        </section>
+        <StepHistory steps={row.history} label="Toilet steps taken"/>
         {row.status==='pending'?<p className="mt-3 text-sm font-semibold text-amber-900">Not moderated yet - archiving unlocks after moderation.</p>:
           <div className="mt-3 flex flex-wrap gap-2">
             {row.status==='approved'&&<button type="button" className="pill" onClick={()=>void publish(row)}>{row.published_at?'Remove from map':'Give final approval and publish on map'}</button>}

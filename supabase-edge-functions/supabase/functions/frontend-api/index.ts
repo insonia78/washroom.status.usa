@@ -2,6 +2,7 @@ import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
 import { geocodeZipCode } from "../places-api/services/geocoding.ts";
 import { RequestError } from "../places-api/utils/errors.ts";
 import { locationDatabaseHeaders } from "../_shared/database-schema.ts";
+import { emailOwnerPhotoPaths, reviewHistory, toiletHistory } from "./workflow-history.ts";
 
 // Carries an HTTP status alongside a frontend API error message.
 class ApiError extends Error {
@@ -118,18 +119,31 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 async function approvedOwnerPhotoAttachments(reviewId: string): Promise<EmailPhotoAttachment[]> {
+  const publishedReplies: unknown = await (await database("owner_replies", new URLSearchParams({
+    select: "id", review_id: `eq.${reviewId}`, status: "eq.published",
+    order: "published_at.desc", limit: "10",
+  }))).json();
+  if (!Array.isArray(publishedReplies) || !publishedReplies.every(isRecord) ||
+    publishedReplies.some(reply => typeof reply.id !== "string" || !uuidPattern.test(reply.id))) {
+    throw new ApiError(502, "Invalid published owner reply list");
+  }
+  const replyIds = publishedReplies.map(reply => String(reply.id));
+  const replyPhotos: unknown = replyIds.length ? await (await database("owner_reply_photos", new URLSearchParams({
+    select: "reply_id,photo_path", reply_id: `in.(${replyIds.join(",")})`, status: "eq.published",
+    order: "uploaded_at.asc", limit: String(replyIds.length * 3),
+  }))).json() : [];
   const rows: unknown = await (await database("owner_review_photos", new URLSearchParams({
     select: "photo_path", review_id: `eq.${reviewId}`, status: "eq.added",
     order: "uploaded_at.asc", limit: "3",
   }))).json();
-  if (!Array.isArray(rows) || !rows.every(isRecord) ||
-    rows.some(row => typeof row.photo_path !== "string" || !reviewPhotoPathPattern.test(row.photo_path))) {
-    throw new ApiError(502, "Invalid approved owner photo list");
-  }
+  const validPaths = (list: unknown): list is Record<string, unknown>[] => Array.isArray(list) && list.every(isRecord) &&
+    list.every(row => typeof row.photo_path === "string" && reviewPhotoPathPattern.test(row.photo_path));
+  if (!validPaths(replyPhotos) || !validPaths(rows)) throw new ApiError(502, "Invalid approved owner photo list");
+  const replyPaths = replyIds.flatMap(id => replyPhotos.filter(photo => photo.reply_id === id).map(photo => String(photo.photo_path)));
+  const paths = emailOwnerPhotoPaths(replyPaths, rows.map(row => String(row.photo_path)));
   const attachments: EmailPhotoAttachment[] = [];
   let totalBytes = 0;
-  for (const [index, row] of rows.entries()) {
-    const path = row.photo_path as string;
+  for (const [index, path] of paths.entries()) {
     const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
     const contentType = extension === "jpg" ? "image/jpeg" : extension === "png" ? "image/png" : "image/webp";
     const encodedPath = path.split("/").map(encodeURIComponent).join("/");
@@ -690,10 +704,24 @@ async function adminReviews(req: Request): Promise<Response> {
   const reviewIds = rows.filter(isRecord).map(review => review.id)
     .filter((id): id is string => typeof id === "string" && uuidPattern.test(id));
   const ownerPhotos: unknown = reviewIds.length ? await (await database("owner_review_photos", new URLSearchParams({
-    select: "id,review_id,photo_path,status", review_id: `in.(${reviewIds.join(",")})`,
+    select: "id,review_id,photo_path,status,uploaded_at,reviewed_at", review_id: `in.(${reviewIds.join(",")})`,
     status: "in.(pending,added)", order: "uploaded_at.asc", limit: "50",
   }))).json() : [];
   if (!Array.isArray(ownerPhotos) || !ownerPhotos.every(isRecord)) throw new ApiError(502, "Invalid owner photo list");
+  const historyRows = async (table: string, select: string, order: string) => {
+    const result: unknown = reviewIds.length ? await (await database(table, new URLSearchParams({
+      select, review_id: `in.(${reviewIds.join(",")})`, order, limit: "200",
+    }))).json() : [];
+    if (!Array.isArray(result) || !result.every(isRecord)) throw new ApiError(502, "Invalid review history");
+    return result;
+  };
+  const [moderationLog, invites, ownerReplyRows, privateReplies] = await Promise.all([
+    historyRows("review_moderation_log", "review_id,decision,note,created_at", "created_at.asc"),
+    historyRows("owner_invites", "review_id,email,created_at", "created_at.asc"),
+    historyRows("owner_replies", ownerReplyColumns, "created_at.asc"),
+    historyRows("review_replies", "review_id,status,created_at,sent_at", "created_at.asc"),
+  ]);
+  const ownerReplies = await withOwnerReplyPhotos(ownerReplyRows);
   const photosByReview = new Map<string, {id:string;photo_url:string;photo_path:string;status:"pending"|"added"}[]>();
   for (const photo of ownerPhotos) {
     if (typeof photo.id !== "string" || !uuidPattern.test(photo.id) ||
@@ -719,10 +747,35 @@ async function adminReviews(req: Request): Promise<Response> {
       throw new ApiError(502, "Invalid owner photo list");
     }
     const { photo_paths, ...details } = review;
+    const repliesForReview = ownerReplies.filter(reply => reply.review_id === review.id);
+    const latestPublished = [...repliesForReview].filter(reply => reply.status === "published")
+      .sort((a, b) => String(b.published_at ?? "").localeCompare(String(a.published_at ?? "")));
+    type SignedPhoto = { id: string; photo_url: string; status: string };
+    const replyEmailPhotos = latestPublished.flatMap(reply => (reply.photos as SignedPhoto[])
+      .filter(photo => photo.status === "published"));
+    const addedOwnerPhotos = ownerPhotosForReview.filter(photo => photo.status === "added");
+    const emailIds = emailOwnerPhotoPaths(replyEmailPhotos.map(photo => photo.id), addedOwnerPhotos.map(photo => photo.id));
+    const emailCandidates: SignedPhoto[] = [...replyEmailPhotos, ...addedOwnerPhotos];
     return {
       ...details,
       photo_urls: await signedReviewPhotos(photoPaths.filter(path => !addedPaths.includes(path))),
       owner_photos: ownerPhotosForReview.map(({photo_path: _photoPath, ...photo}) => photo),
+      owner_replies: repliesForReview.map(reply => ({
+        id: reply.id, business_name: reply.business_name, body: reply.body, status: reply.status,
+        created_at: reply.created_at, archived_at: reply.archived_at ?? null, photos: reply.photos,
+      })),
+      email_photos: emailIds.map(id => {
+        const photo = emailCandidates.find(candidate => candidate.id === id) as SignedPhoto;
+        return { id: photo.id, photo_url: photo.photo_url };
+      }),
+      history: reviewHistory({
+        review,
+        moderation: moderationLog.filter(row => row.review_id === review.id),
+        invites: invites.filter(row => row.review_id === review.id),
+        ownerReplies: repliesForReview,
+        ownerPhotos: ownerPhotos.filter(row => row.review_id === review.id),
+        privateReplies: privateReplies.filter(row => row.review_id === review.id),
+      }),
     };
   }));
   return json(200, { reviews: await withRestroomNames(reviewsWithOwnerPhotos), total, next_offset: rows.length === 3 ? Number(offset) + 3 : null });
@@ -770,7 +823,7 @@ async function adminToilets(req: Request): Promise<Response> {
   const moderation = query.get("moderation") ?? "moderated";
   if (!["moderated", "pending", "awaiting_admin"].includes(moderation)) throw new ApiError(400, "Invalid moderation filter");
   const { rows, total } = await databasePage("toilet_submissions", new URLSearchParams({
-    select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,archived_at,published_at,photo_paths",
+    select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,moderated_at,archived_at,published_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
     status: moderation === "pending" ? "eq.pending" : moderation === "awaiting_admin" ? "eq.approved" : "in.(approved,rejected)",
     ...(moderation === "awaiting_admin" ? { published_at: "is.null" } : {}),
@@ -780,7 +833,7 @@ async function adminToilets(req: Request): Promise<Response> {
   const toilets = await Promise.all(rows.map(async row => {
     if (!isRecord(row)) throw new ApiError(502, "Invalid admin toilet list");
     const { photo_paths, ...details } = row;
-    return { ...details, photo_urls: await signedReviewPhotos(photo_paths) };
+    return { ...details, photo_urls: await signedReviewPhotos(photo_paths), history: toiletHistory(row) };
   }));
   return json(200, { toilets, total, next_offset: rows.length === 3 ? Number(offset) + 3 : null });
 }
