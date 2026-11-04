@@ -12,7 +12,7 @@ const category=restroom.category==='fuel'?'Gas station':restroom.category==='sup
 if(!category)return 'Mapped restroom';
 return `${category} · ${restroom.toilets==='yes'?'Toilets listed':restroom.toilets==='no'?'No toilets listed':'Restroom availability unconfirmed'}`;
 }
-type Review={id:string;rating:number;availability?:string|null;cleanliness_status?:string|null;issues:string[];comment:string;created_at:string;photo_urls:string[]};
+type Review={id:string;rating:number;availability?:string|null;cleanliness_status?:string|null;issues:string[];comment:string;created_at:string;photo_urls:string[];owner_photo_urls?:string[]};
 function isReview(value:unknown):value is Review{
   if(typeof value!=='object'||value===null)return false;
   const review=value as Record<string,unknown>;
@@ -21,7 +21,8 @@ function isReview(value:unknown):value is Review{
     (review.cleanliness_status===null||typeof review.cleanliness_status==='string')&&
     Array.isArray(review.issues)&&review.issues.every((issue:unknown)=>typeof issue==='string')&&
     typeof review.comment==='string'&&typeof review.created_at==='string'&&Number.isFinite(Date.parse(review.created_at))&&
-    Array.isArray(review.photo_urls)&&review.photo_urls.every((url:unknown)=>typeof url==='string');
+    Array.isArray(review.photo_urls)&&review.photo_urls.every((url:unknown)=>typeof url==='string')&&
+    (review.owner_photo_urls===undefined||Array.isArray(review.owner_photo_urls)&&review.owner_photo_urls.every((url:unknown)=>typeof url==='string'));
 }
 export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom:Restroom;onClose:()=>void;onAddReview?:()=>void}){
   const [reviews,setReviews]=useState<Review[]>([]);
@@ -76,6 +77,12 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
         {review.cleanliness_status&&<p className="mt-1 text-xs capitalize text-slate-500">Clean or dirty status: {review.cleanliness_status.replaceAll('_',' ')}</p>}
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{review.comment||'No written comment.'}</p>{review.issues.length>0&&<p className="mt-2 text-xs text-slate-500">Reported: {review.issues.join(', ').replaceAll('_',' ')}</p>}
         {review.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{review.photo_urls.map((url,index)=><a key={`${review.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
+        {!!review.owner_photo_urls?.length&&<div className="mt-3">
+          <h4 className="text-xs font-semibold text-slate-600">Owner-provided photos (added by an administrator)</h4>
+          <div className="mt-2 grid grid-cols-3 gap-2">{review.owner_photo_urls.map((url,index)=><a key={`${review.id}-owner-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open owner-provided photo ${index+1}`}>
+            <img src={url} alt={`Owner-provided photo ${index+1}, added by an administrator`} className="aspect-square w-full rounded-lg object-cover"/>
+          </a>)}</div>
+        </div>}
         <p className="mt-2 break-all text-xs text-slate-500">Review ID: {review.id}</p></article>)}</div>}</div>
     <OwnerResponses key={`${restroom.osm_type}-${restroom.id}`} restroom={restroom}/>
   </section>;

@@ -60,3 +60,30 @@ response feed. Check invalid/mismatched review targets, future completion dates,
 non-HTTPS evidence links and stale versions fail explicitly. Confirm published
 responses appear in restroom details for all source types, without affecting review
 grades, and private dashboard state disappears after sign-out.
+
+To let invited owners submit review photos, apply
+`../supabase-edge-functions/supabase/migrations/20261031140000_owner_review_photos.sql`
+after the owner-replies and private-schema migrations, then deploy `frontend-api`,
+`gateway`, and the frontend. Photos are stored privately and remain pending until
+an administrator selects **Add to review** in Step 2 of the admin review panel.
+An approved review can contain at most three photos total; owner-submitted photos
+are labeled separately from reviewer photos when displayed publicly.
+Verify owner uploads are private before approval, only the invited verified account
+can upload, non-admins cannot add photos, and an admin cannot exceed the review photo
+limit. Run the API test from the repository root:
+
+```powershell
+npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions\frontend-api\owner-review-photos_test.ts
+```
+
+Run the database test against an isolated local database with the required
+migrations already applied, from `supabase-edge-functions`:
+
+```powershell
+supabase test db supabase\tests\owner_review_photos.sql --local
+```
+
+The admin review panel's **All history** filter combines active and archived
+approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin
+toilets panel provides the separate final-approval and map-publication step for
+moderator-approved toilet submissions.

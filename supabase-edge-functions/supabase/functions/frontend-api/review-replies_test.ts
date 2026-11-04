@@ -95,15 +95,18 @@ Deno.test("admin review replies keep emails backend-only and preserve delivery f
     await t.step("admin review list includes user IDs but does not fetch emails", async () => {
       globalThis.fetch = async input => {
         const url = new URL(String(input));const auth = authorized(url);if (auth) return auth;
+        if (url.pathname === "/rest/v1/owner_review_photos") return Response.json([]);
         assert(url.pathname === "/rest/v1/reviews", "Do not call Auth admin lookup for lists");
         assert(url.searchParams.get("select")?.includes("user_id") && url.searchParams.get("select")?.includes("availability") &&
           url.searchParams.get("select")?.includes("cleanliness_status") && !url.searchParams.get("select")?.includes("email"),
           "Return the entire review without reviewer email");
-        assert(url.searchParams.get("limit") === "50" && url.searchParams.get("offset") === "50", "Paginate reviews");
+        assert(url.searchParams.get("limit") === "3" && url.searchParams.get("offset") === "50", "Bound and paginate reviews");
         return Response.json([{ id: reviewId, user_id: reviewer, availability: "open", cleanliness_status: "clean", issues: [], photo_paths: [] }]);
       };
       const response = await api.fetch(request("/admin/reviews?offset=50"));
-      assert(response.status === 200 && (await response.text()).includes(reviewer), "Expose private user ID to admin");
+      const responseBody = await response.text();
+      assert(response.status === 200 && responseBody.includes(reviewer),
+        `Expose private user ID to admin: ${response.status} ${responseBody}`);
     });
     await t.step("save, history, send and repeat send do not expose recipient email", async () => {
       reset();emails = 0;actions.length = 0;globalThis.fetch = mock;

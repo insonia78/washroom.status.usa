@@ -68,8 +68,8 @@ export default function AdminToilets({session}:{session:Session}){
   },[session.access_token,offset,refresh,showArchived,showPending]);
   const reset=()=>setOffset(0);
   return <section className="panel mt-5" aria-label="Added toilet administration">
-    <h2 className="text-xl font-bold">Added toilets administration</h2>
-    <p className="mt-2 text-sm">Toilets submitted by users go through two steps: a moderator approves or rejects them, then an administrator gives final approval before they appear on the map. Submitter identities are shown as user IDs, never email addresses.</p>
+    <h2 className="text-xl font-bold">Review and publish submitted toilets</h2>
+    <p className="mt-2 text-sm">Review user-submitted toilets, check their exact location, and give final approval to publish moderator-approved toilets on the map. Submitter identities are shown as user IDs, never email addresses.</p>
     <button type="button" className="pill mt-3" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh toilets</button>
     <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowArchived(value=>!value);reset()}}>{showArchived?'Show active toilets':'Show archived toilets'}</button>
     <div role="tablist" aria-label="Toilet workflow steps" className="mt-3 flex flex-wrap gap-2">
@@ -82,7 +82,7 @@ export default function AdminToilets({session}:{session:Session}){
     {loading?<p role="status" className="mt-3">Loading added toilets...</p>:!error&&<>
       {!rows.length&&<p className="mt-3 text-sm">No toilets found.</p>}
       <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
-        <h3 className="font-bold">{row.name} - {row.status==='pending'?'Not moderated yet':row.status==='rejected'?'Rejected by moderator':row.published_at?'Published on map':'Moderator approved - awaiting final approval'}</h3>
+        <h3 className="font-bold">{row.name} - {row.status==='pending'?'Not moderated yet':row.status==='rejected'?'Rejected by moderator':row.published_at?'Published on map':'Moderator approved - awaiting final approval'}{row.archived_at?' - Archived':''}</h3>
         <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>
         <p className="mt-1 break-all text-xs">Toilet ID: {row.id}</p>
         <p className="mt-1 break-all text-xs">User ID: {row.user_id??'No account (deleted)'}</p>

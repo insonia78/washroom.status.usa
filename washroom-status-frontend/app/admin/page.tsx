@@ -12,7 +12,7 @@ import OwnerReplyQueue from '@/components/OwnerReplyQueue';
 
 type Fields={osm_type:string;osm_id:string;review_id:string;business_name:string;body:string;completed_on:string;evidence_url:string;verification_note:string};
 const emptyFields:Fields={osm_type:'node',osm_id:'',review_id:'',business_name:'',body:'',completed_on:'',evidence_url:'',verification_note:''};
-const tabs=[{id:'moderation',label:'Reviews & toilets'},{id:'responses',label:'Owner responses'},{id:'replies',label:'Owner replies'}] as const;
+const tabs=[{id:'moderation',label:'Reviews & submitted toilets'},{id:'responses',label:'Owner responses'},{id:'replies',label:'Owner replies'}] as const;
 const endpoint='/api/backend/admin/owner-responses';
 
 function OwnerResponseDashboard({session}:{session:Session}){

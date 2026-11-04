@@ -2,11 +2,14 @@
 import {useEffect,useState} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {browserSupabase} from '@/lib/supabase';
+import {acceptedPhotoTypes,maxPhotoInputBytes,preparePhoto} from '@/lib/photo-preparation';
 
 type Item={invite_id:string;
   review:{restroom_name?:string|null;osm_type:string;osm_id:number;rating?:number;availability?:string|null;cleanliness_status?:string|null;issues?:string[]|null;comment?:string|null;created_at?:string;photo_urls?:string[]};
+  owner_photos:{id:string;photo_url:string;status:'pending'|'added'}[];
   replies:{id:string;body:string;status:string;business_name:string}[]};
 const statusLabel:Record<string,string>={pending:'Waiting for moderation',moderated:'Waiting for administrator approval',published:'Published',rejected:'Not approved'};
+const ownerPhotoStatus:Record<Item['owner_photos'][number]['status'],string>={pending:'Private - waiting for administrator review',added:'Added to the review'};
 
 function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
   const [items,setItems]=useState<Item[]>([]);
@@ -15,6 +18,9 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
   const [message,setMessage]=useState('');
   const [refresh,setRefresh]=useState(0);
   const [drafts,setDrafts]=useState<Record<string,{business:string;body:string}>>({});
+  const [photoDrafts,setPhotoDrafts]=useState<Record<string,File[]>>({});
+  const [preparingPhotos,setPreparingPhotos]=useState(false);
+  const [uploadingInvite,setUploadingInvite]=useState<string|null>(null);
   const headers={Authorization:`Bearer ${session.access_token}`};
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');
@@ -41,6 +47,23 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
       onSent();
     }catch(err){setError(err instanceof Error?err.message:'Could not send your reply.')}
   }
+  async function uploadPhotos(item:Item){
+    const selected=photoDrafts[item.invite_id]??[];
+    if(!selected.length||uploadingInvite||preparingPhotos)return;
+    setUploadingInvite(item.invite_id);setError('');setMessage('');
+    try{
+      const form=new FormData();
+      form.set('invite_id',item.invite_id);
+      selected.forEach(photo=>form.append('photos',photo));
+      const response=await fetch('/api/backend/owner/review-photos',{method:'POST',cache:'no-store',headers,body:form});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Could not upload the photos.');
+      setPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}));
+      setMessage('Photos uploaded privately. An administrator will review them before they are added to the review.');
+      setRefresh(value=>value+1);
+    }catch(err){setError(err instanceof Error?err.message:'Could not upload the photos.')}
+    finally{setUploadingInvite(null)}
+  }
   return <>
     {error&&<p role="alert" className="mt-4 text-amber-800">{error}</p>}
     {message&&<p role="status" className="mt-4 text-sm">{message}</p>}
@@ -48,6 +71,7 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
     <div className="mt-4 space-y-4">{items.map(item=>{
       const draft=drafts[item.invite_id]??{business:item.review.restroom_name??'',body:''};
       const open=item.replies.some(r=>r.status==='pending'||r.status==='moderated'||r.status==='published');
+      const selectedPhotos=photoDrafts[item.invite_id]??[];
       return <article key={item.invite_id} className="panel">
         <h2 className="font-bold">{item.review.restroom_name||`${item.review.osm_type==='refuge'?'Refuge Restrooms':'OpenStreetMap'} #${item.review.osm_id}`}</h2>
         {item.review.rating!==undefined&&<p className="mt-1 text-sm">Rating: {item.review.rating}/5</p>}
@@ -60,6 +84,41 @@ function OwnerReviews({session,onSent}:{session:Session;onSent:()=>void}){
         <p className="mt-2 whitespace-pre-wrap text-sm">{item.review.comment||'No written comment.'}</p>
         {!!item.review.photo_urls?.length&&<div className="mt-3 flex flex-wrap gap-2">{item.review.photo_urls.map((url,index)=>
           <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Photo ${index+1} of the reported problem`} className="h-32 w-32 rounded-lg border object-cover"/></a>)}</div>}
+        <section className="mt-4 border-t pt-3" aria-label="Owner photos for administrator review">
+          <h3 className="font-semibold">Photos for this review</h3>
+          <p className="mt-1 text-xs text-slate-600">Owner photos stay private until an administrator adds them to the review. Up to 3 photos can be submitted per invitation.</p>
+          {!!item.owner_photos.length&&<div className="mt-2 flex flex-wrap gap-3">{item.owner_photos.map((photo,index)=><div key={photo.id}>
+            <a href={photo.photo_url} target="_blank" rel="noreferrer"><img src={photo.photo_url} alt={`Owner-submitted photo ${index+1}`} className="h-24 w-24 rounded-lg border object-cover"/></a>
+            <p className="mt-1 max-w-32 text-xs">{ownerPhotoStatus[photo.status]}</p>
+          </div>)}</div>}
+          {item.owner_photos.length<3&&<div className="mt-3">
+            <label className="block text-sm font-semibold">Upload photos (JPEG, PNG, or WebP)
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingInvite!==null||preparingPhotos} onChange={async event=>{
+                const input=event.currentTarget;
+                const selected=[...(input.files??[])];
+                input.value='';
+                if(item.owner_photos.length+selectedPhotos.length+selected.length>3){setError('Choose no more than 3 photos for this invitation.');return}
+                if(selected.some(file=>!acceptedPhotoTypes.includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
+                  setError('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
+                }
+                setError('');setPreparingPhotos(true);
+                try{
+                  const prepared=await Promise.all(selected.map(preparePhoto));
+                  setPhotoDrafts(previous=>({...previous,[item.invite_id]:[...(previous[item.invite_id]??[]),...prepared]}));
+                }catch(err){setError(err instanceof Error?err.message:'Could not prepare the photos. Try another image.')}
+                finally{setPreparingPhotos(false)}
+              }} className="mt-1 block w-full rounded-lg border p-2 text-sm"/>
+            </label>
+            {preparingPhotos&&<p role="status" className="mt-2 text-xs">Preparing photos...</p>}
+            {selectedPhotos.length>0&&<div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span>{selectedPhotos.length} photo(s) ready to upload</span>
+              <button type="button" disabled={uploadingInvite!==null||preparingPhotos} onClick={()=>setPhotoDrafts(previous=>({...previous,[item.invite_id]:[]}))} className="underline">Clear</button>
+              <button type="button" disabled={uploadingInvite!==null||preparingPhotos} onClick={()=>void uploadPhotos(item)} className="rounded-lg bg-teal-700 px-3 py-2 font-bold text-white disabled:opacity-50">
+                {uploadingInvite===item.invite_id?'Uploading...':'Upload photos for review'}
+              </button>
+            </div>}
+          </div>}
+        </section>
         {item.replies.map(r=><p key={r.id} className="mt-3 rounded-lg border p-2 text-sm"><span className="font-semibold">{statusLabel[r.status]??r.status}:</span> {r.body}</p>)}
         {!open&&<form onSubmit={event=>void submit(event,item)} className="mt-3">
           <label className="block text-sm font-semibold">Business name<input required maxLength={200} value={draft.business} onChange={e=>setDrafts({...drafts,[item.invite_id]:{...draft,business:e.target.value}})} className="mt-1 w-full rounded-lg border p-3"/></label>

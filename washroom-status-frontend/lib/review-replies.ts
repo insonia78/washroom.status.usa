@@ -2,6 +2,7 @@ export type AdminReview={
   id:string;user_id:string|null;osm_type:string;osm_id:number;rating:number;
   availability:string|null;cleanliness_status:string|null;issues:string[];comment:string;
   photo_urls:string[];  status:'pending'|'approved'|'rejected';created_at:string;archived_at:string|null;restroom_name?:string|null;
+  owner_photos?:{id:string;photo_url:string;status:'pending'|'added'}[];
   };
   export type ReviewReply={
   id:string;review_id:string;recipient_user_id:string|null;body:string;
@@ -23,6 +24,9 @@ export function isAdminReview(value:unknown):value is AdminReview{
     Array.isArray(value.issues)&&value.issues.every(issue=>typeof issue==='string')&&
     typeof value.comment==='string'&&typeof value.status==='string'&&
     Array.isArray(value.photo_urls)&&value.photo_urls.every(url=>typeof url==='string')&&
+    (value.owner_photos===undefined||Array.isArray(value.owner_photos)&&value.owner_photos.every(photo=>
+      record(photo)&&typeof photo.id==='string'&&uuid.test(photo.id)&&typeof photo.photo_url==='string'&&
+      (photo.status==='pending'||photo.status==='added')))&&
     ['pending','approved','rejected'].includes(value.status)&&date(value.created_at)&&nullableDate(value.archived_at);
 }
 export function isReviewReply(value:unknown):value is ReviewReply{

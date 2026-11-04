@@ -112,8 +112,10 @@ export default function AdminReviewReplies({
   const [refresh,setRefresh]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
+  const [photoMessage,setPhotoMessage]=useState('');
+  const [photoBusy,setPhotoBusy]=useState<string|null>(null);
   const [selected,setSelected]=useState<AdminReview|null>(null);
-  const [showArchived,setShowArchived]=useState(false);
+  const [archiveFilter,setArchiveFilter]=useState<'active'|'archived'|'all'>('active');
   const [showPending,setShowPending]=useState(false);
   const archive=async(row:AdminReview)=>{
     setError('');
@@ -129,9 +131,26 @@ export default function AdminReviewReplies({
       setRefresh(value=>value+1);
     }catch(error){setError(error instanceof Error?error.message:'Could not update the review archive.')}
   };
+  const addOwnerPhoto=async(photoId:string)=>{
+    setPhotoBusy(photoId);setError('');setPhotoMessage('');
+    try{
+      const response=await fetch('/api/backend/admin/reviews',{
+        method:'POST',cache:'no-store',
+        headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
+        body:JSON.stringify({action:'add_owner_photo',photo_id:photoId}),
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Could not add the owner photo.');
+      setPhotoMessage('Owner photo added to the review.');
+      setRefresh(value=>value+1);
+    }catch(error){setError(error instanceof Error?error.message:'Could not add the owner photo.')}
+    finally{setPhotoBusy(null)}
+  };
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');setRows([]);
-    fetch(`/api/backend/admin/reviews?offset=${offset}&archived=${showArchived?1:0}&moderation=${showPending?'pending':'moderated'}`,{
+    const archived=archiveFilter==='all'?'all':archiveFilter==='archived'?'1':'0';
+    const params=new URLSearchParams({offset:String(offset),archived,moderation:showPending?'pending':'moderated'});
+    fetch('/api/backend/admin/reviews?'+params.toString(),{
       headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store',signal:controller.signal,
     }).then(async response=>{
       const data=await response.json();
@@ -142,23 +161,29 @@ export default function AdminReviewReplies({
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Could not load reviews.')})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
     return()=>controller.abort();
-  },[session.access_token,offset,refresh,showArchived,showPending]);
+  },[session.access_token,offset,refresh,archiveFilter,showPending]);
   return <section className="panel mt-5" aria-label="Review reply administration">
     <h2 className="text-xl font-bold">Review reply administration</h2>
     <p className="mt-2 text-sm">Administrator access only. Reviewer identities are shown as user IDs, never email addresses. Private email replies are separate from public owner responses.</p>
     <button type="button" className="pill mt-3" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reviews</button>
-    <button type="button" className="pill mt-3 ml-2" disabled={loading} onClick={()=>{setShowArchived(value=>!value);setOffset(0);setSelected(null)}}>{showArchived?'Show active reviews':'Show archived reviews'}</button>
+    <div className="mt-3 flex flex-wrap gap-2" aria-label="Review history filter">
+      {([['active','Active reviews'],['archived','Archived reviews'],['all','All history']] as const).map(([value,label])=><button
+        key={value} type="button" className="pill" aria-pressed={archiveFilter===value} disabled={loading}
+        onClick={()=>{setArchiveFilter(value);setOffset(0);setSelected(null)}}
+      >{label}</button>)}
+    </div>
     <div role="tablist" aria-label="Review workflow steps" className="mt-3 flex flex-wrap gap-2">
       <button type="button" role="tab" aria-selected={showPending} className={`pill ${showPending?'font-bold underline':''}`} disabled={loading} onClick={()=>{setShowPending(true);setOffset(0);setSelected(null)}}>Step 1: Under review and moderation</button>
       <button type="button" role="tab" aria-selected={!showPending} className={`pill ${!showPending?'font-bold underline':''}`} disabled={loading} onClick={()=>{setShowPending(false);setOffset(0);setSelected(null)}}>Step 2: Administration - waiting approval and review</button>
     </div>
     {showPending&&<p className="mt-2 text-sm text-amber-900">Step 1: these reviews are with the moderators and have not been moderated yet. Once a moderator approves or rejects a review it moves to Step 2.</p>}
-    {!showPending&&<p className="mt-2 text-sm">Step 2: moderated reviews are in the administration bucket. Review, reply to, or archive them here.</p>}
+    {!showPending&&<p className="mt-2 text-sm">Step 2: approved and rejected reviews are in the administration bucket. Choose All history to view active and archived reviews together.</p>}
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+    {photoMessage&&<p role="status" className="mt-3 text-sm text-teal-800">{photoMessage}</p>}
     {loading?<p role="status" className="mt-3">Checking admin access and loading reviews...</p>:!error&&<>
       {!rows.length&&<p className="mt-3 text-sm">No reviews found.</p>}
       <div className="mt-4 space-y-3">{rows.map(row=><article key={row.id} className="rounded-xl border p-3">
-        <h3 className="font-bold">{row.restroom_name?`${row.restroom_name} - `:''}{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status==='pending'?'Not moderated yet':row.status}</h3>
+        <h3 className="font-bold">{row.restroom_name?`${row.restroom_name} - `:''}{row.osm_type} #{row.osm_id} - {row.rating}/5 - {row.status==='pending'?'Not moderated yet':row.status}{row.archived_at?' - Archived':''}</h3>
         <p className="mt-1 text-xs text-slate-500">Submitted <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</time></p>
         <p className="mt-1 break-all text-xs">Review ID: <button
           type="button"
@@ -174,6 +199,21 @@ export default function AdminReviewReplies({
         </dl>
         <p className="mt-2 whitespace-pre-wrap break-words text-sm">{row.comment||'No written comment.'}</p>
         {row.photo_urls.length>0&&<div className="mt-3 grid grid-cols-3 gap-2">{row.photo_urls.map((url,index)=><a key={`${row.id}-${index}`} href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open review photo ${index+1}`}><img src={url} alt={`Photo ${index+1} attached to review`} className="aspect-square w-full rounded-lg object-cover"/></a>)}</div>}
+        {!!row.owner_photos?.length&&<section className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-3" aria-label="Owner-submitted photos">
+          <h4 className="font-semibold">Owner-submitted photos</h4>
+          <p className="mt-1 text-xs text-slate-600">Pending photos are private. Added photos appear publicly with an owner-provided label.</p>
+          <div className="mt-3 flex flex-wrap gap-3">{row.owner_photos.map((photo,index)=><div key={photo.id} className="w-32">
+            <a href={photo.photo_url} target="_blank" rel="noopener noreferrer" aria-label={`Open owner-submitted photo ${index+1}`}>
+              <img src={photo.photo_url} alt={`Owner-submitted photo ${index+1}`} className="h-28 w-28 rounded-lg border object-cover"/>
+            </a>
+            {photo.status==='added'?<p className="mt-2 text-xs font-semibold text-teal-800">Added to review</p>:
+              <button type="button" disabled={photoBusy!==null||row.status!=='approved'||row.photo_urls.length+(row.owner_photos?.filter(item=>item.status==='added').length??0)>=3} onClick={()=>void addOwnerPhoto(photo.id)} className="mt-2 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                {photoBusy===photo.id?'Adding...':'Add to review'}
+              </button>}
+          </div>)}</div>
+          {row.status!=='approved'&&<p className="mt-2 text-xs text-slate-600">Approve the review before adding owner photos.</p>}
+          {row.photo_urls.length+(row.owner_photos.filter(photo=>photo.status==='added').length)>=3&&<p className="mt-2 text-xs text-slate-600">This review already has the maximum of 3 photos.</p>}
+        </section>}
         {row.status==='pending'?<p className="mt-3 text-sm font-semibold text-amber-900">Not moderated yet - replies and archiving unlock after moderation.</p>:<>
         <button type="button" className="pill mt-3" onClick={()=>setSelected(row)}>Open private replies</button>
         <button type="button" className="pill mt-3 ml-2" onClick={()=>void archive(row)}>{row.archived_at?'Unarchive':'Archive'}</button></>}

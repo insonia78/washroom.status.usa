@@ -5,7 +5,7 @@ import ReviewGrade from '@/components/ReviewGrade';
 
 type Review={
   id:string;rating:number;availability:string|null;cleanliness_status:string|null;
-  issues:string[];comment:string;created_at:string;photo_urls:string[];
+  issues:string[];comment:string;created_at:string;photo_urls:string[];owner_photo_urls?:string[];
 };
 
 function isReview(value:unknown):value is Review{
@@ -16,7 +16,8 @@ function isReview(value:unknown):value is Review{
     (review.cleanliness_status===null||typeof review.cleanliness_status==='string')&&
     Array.isArray(review.issues)&&review.issues.every(issue=>typeof issue==='string')&&
     typeof review.comment==='string'&&typeof review.created_at==='string'&&Number.isFinite(Date.parse(review.created_at))&&
-    Array.isArray(review.photo_urls)&&review.photo_urls.every(url=>typeof url==='string');
+    Array.isArray(review.photo_urls)&&review.photo_urls.every(url=>typeof url==='string')&&
+    (review.owner_photo_urls===undefined||Array.isArray(review.owner_photo_urls)&&review.owner_photo_urls.every(url=>typeof url==='string'));
 }
 
 export default function LatestReview({restroom}:{restroom:Restroom}){
@@ -55,6 +56,10 @@ export default function LatestReview({restroom}:{restroom:Restroom}){
       <p className="mt-1 whitespace-pre-wrap break-words">{latest.comment||'No written comment.'}</p>
       {latest.issues.length>0&&<p className="mt-1 text-xs text-slate-500">Reported: {latest.issues.join(', ').replaceAll('_',' ')}</p>}
       {latest.photo_urls.length>0&&<div className="mt-2 flex gap-2 overflow-x-auto">{latest.photo_urls.map((url,index)=><img key={`${latest.id}-${index}`} src={url} alt={`Photo ${index+1} attached to review`} className="h-16 w-16 shrink-0 rounded-lg object-cover"/>)}</div>}
+      {!!latest.owner_photo_urls?.length&&<div className="mt-2">
+        <p className="text-xs font-semibold text-slate-600">Owner-provided photos (added by an administrator)</p>
+        <div className="mt-1 flex gap-2 overflow-x-auto">{latest.owner_photo_urls.map((url,index)=><img key={`${latest.id}-owner-${index}`} src={url} alt={`Owner-provided photo ${index+1}, added by an administrator`} className="h-16 w-16 shrink-0 rounded-lg object-cover"/>)}</div>
+      </div>}
     </>:<p className="mt-1 text-xs text-slate-500">No approved reviews yet.</p>}
   </div>;
 }
