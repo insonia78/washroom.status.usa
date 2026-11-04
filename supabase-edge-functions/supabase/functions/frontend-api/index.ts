@@ -102,6 +102,68 @@ async function signedReviewPhotos(paths: unknown): Promise<string[]> {
   }));
 }
 
+type EmailPhotoAttachment = {
+  filename: string;
+  contentType: string;
+  content: Uint8Array;
+  encodedContent: string;
+};
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+async function approvedOwnerPhotoAttachments(reviewId: string): Promise<EmailPhotoAttachment[]> {
+  const rows: unknown = await (await database("owner_review_photos", new URLSearchParams({
+    select: "photo_path", review_id: `eq.${reviewId}`, status: "eq.added",
+    order: "uploaded_at.asc", limit: "3",
+  }))).json();
+  if (!Array.isArray(rows) || !rows.every(isRecord) ||
+    rows.some(row => typeof row.photo_path !== "string" || !reviewPhotoPathPattern.test(row.photo_path))) {
+    throw new ApiError(502, "Invalid approved owner photo list");
+  }
+  const attachments: EmailPhotoAttachment[] = [];
+  let totalBytes = 0;
+  for (const [index, row] of rows.entries()) {
+    const path = row.photo_path as string;
+    const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+    const contentType = extension === "jpg" ? "image/jpeg" : extension === "png" ? "image/png" : "image/webp";
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    const response = await upstream(new URL(`/storage/v1/object/${reviewPhotoBucket}/${encodedPath}`, config("SUPABASE_URL")), {
+      headers: {
+        apikey: config("SUPABASE_SERVICE_ROLE_KEY"),
+        Authorization: `******"SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      console.error("frontend-api approved owner photo download failed", { status: response.status });
+      throw new ApiError(503, "Approved owner photos could not be attached. No email was sent.");
+    }
+    const declaredSize = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredSize) && declaredSize > reviewPhotoMaxBytes) {
+      await response.body?.cancel();
+      throw new ApiError(502, "Approved owner photo exceeds the email attachment limit");
+    }
+    const content = new Uint8Array(await response.arrayBuffer());
+    totalBytes += content.byteLength;
+    if (!content.byteLength || content.byteLength > reviewPhotoMaxBytes || totalBytes > 15 * 1024 * 1024) {
+      throw new ApiError(502, "Approved owner photos exceed the email attachment limit");
+    }
+    attachments.push({
+      filename: `owner-photo-${index + 1}.${extension}`,
+      contentType,
+      content,
+      encodedContent: encodeBase64(content),
+    });
+  }
+  return attachments;
+}
+
 // Reads a required environment variable or reports a configuration error.
 function config(name: string): string {
   const value = Deno.env.get(name);
@@ -777,11 +839,40 @@ async function adminOwnerInvites(req: Request): Promise<Response> {
   if (!["GET", "POST"].includes(req.method)) throw new ApiError(405, "Method not allowed");
   const adminId = await requireAllowlistedUser(req, "admin");
   if (req.method === "GET") {
+    const query = new URL(req.url).searchParams;
+    const reviewId = query.get("review_id");
+    if (reviewId !== null && !uuidPattern.test(reviewId)) throw new ApiError(400, "Invalid review ID");
     const rows: unknown = await (await database("owner_invites", new URLSearchParams({
-      select: "id,email,review_id,created_at", order: "created_at.desc", limit: "50",
+      select: "id,email,review_id,created_at",
+      ...(reviewId ? { review_id: `eq.${reviewId}` } : {}),
+      order: "created_at.desc", limit: "50",
     }))).json();
-    if (!Array.isArray(rows)) throw new ApiError(502, "Invalid invite list");
-    return json(200, { invites: rows });
+    if (!Array.isArray(rows) || !rows.every(isRecord)) throw new ApiError(502, "Invalid invite list");
+    const inviteIds = rows.map(row => row.id).filter((id): id is string => typeof id === "string" && uuidPattern.test(id));
+    const replies: unknown = inviteIds.length ? await (await database("owner_replies", new URLSearchParams({
+      select: "id,invite_id,status,created_at", invite_id: `in.(${inviteIds.join(",")})`,
+      order: "created_at.desc", limit: String(inviteIds.length * 10),
+    }))).json() : [];
+    if (!Array.isArray(replies) || !replies.every(isRecord)) throw new ApiError(502, "Invalid owner reply status list");
+    const latestReply = new Map<string, Record<string, unknown>>();
+    for (const reply of replies) {
+      if (typeof reply.invite_id === "string" && uuidPattern.test(reply.invite_id) &&
+        typeof reply.status === "string" && !latestReply.has(reply.invite_id)) {
+        latestReply.set(reply.invite_id, reply);
+      }
+    }
+    return json(200, { invites: rows.map(invite => {
+      if (typeof invite.id !== "string" || typeof invite.email !== "string" ||
+        typeof invite.review_id !== "string" || typeof invite.created_at !== "string") {
+        throw new ApiError(502, "Invalid owner invite record");
+      }
+      const reply = latestReply.get(invite.id);
+      return {
+        ...invite,
+        response_status: reply?.status ?? "waiting",
+        response_created_at: typeof reply?.created_at === "string" ? reply.created_at : null,
+      };
+    }) });
   }
   const body = await readJson(req);
   if (typeof body.email !== "string" || typeof body.review_id !== "string" || !uuidPattern.test(body.review_id)) {
@@ -1119,7 +1210,8 @@ async function adminReviewReplies(req: Request): Promise<Response> {
   const reply = await replyAction(adminId, "claim", replyId);
   if (reply.status === "sent") return json(200, { reply });
   if (reply.status !== "sending" || typeof reply.recipient_user_id !== "string" ||
-    !uuidPattern.test(reply.recipient_user_id) || typeof reply.body !== "string") throw new ApiError(502, "Invalid saved reply");
+    !uuidPattern.test(reply.recipient_user_id) || typeof reply.review_id !== "string" ||
+    !uuidPattern.test(reply.review_id) || typeof reply.body !== "string") throw new ApiError(502, "Invalid saved reply");
   const finish = async (action: "sent" | "failed" | "unknown", providerId?: string) =>
     await replyAction(adminId, action, replyId, providerId ? { p_provider_id: providerId } : {});
   const serviceKey = config("SUPABASE_SERVICE_ROLE_KEY");
@@ -1142,15 +1234,31 @@ async function adminReviewReplies(req: Request): Promise<Response> {
     await finish("failed");
     throw new ApiError(422, "The reviewer does not have a verified email account. No email was sent.");
   }
+  let photoAttachments: EmailPhotoAttachment[];
+  try {
+    photoAttachments = await approvedOwnerPhotoAttachments(reply.review_id);
+  } catch (error) {
+    await finish("failed");
+    if (error instanceof ApiError) throw error;
+    console.error("frontend-api owner photo attachment preparation failed");
+    throw new ApiError(503, "Approved owner photos could not be attached. The reply is saved; no email was sent.");
+  }
   const subject = "A reply to your Washroom Status USA review";
-  const text = `An administrator replied to your review.\n\n${reply.body}\n\nWashroom Status USA\nThis is a private reply, not a public review response.`;
+  const attachmentNote = photoAttachments.length
+    ? "\n\nApproved owner-provided photos are attached to this email."
+    : "";
+  const text = `An administrator replied to your review.\n\n${reply.body}${attachmentNote}\n\nWashroom Status USA\nThis is a private reply, not a public review response.`;
   if (useGmail) {
     // SMTP gives no idempotency key, so any failure is treated as uncertain to avoid duplicate sends.
     try {
       const nodemailer = (await import("npm:nodemailer@6.9.16")).default;
       const transport = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true,
         auth: { user: gmailUser, pass: gmailPassword } });
-      await transport.sendMail({ from, to: recipient.email, subject, text });
+      await transport.sendMail({ from, to: recipient.email, subject, text,
+        attachments: photoAttachments.map(photo => ({
+          filename: photo.filename, content: photo.content, contentType: photo.contentType,
+        })),
+      });
     } catch (error) {
       await finish("unknown");
       console.error("frontend-api gmail send failed", { reason: error instanceof Error ? error.message.replaceAll(/[\w.+-]+@[\w.-]+/g, "[email]") : "unknown" });
@@ -1163,7 +1271,12 @@ async function adminReviewReplies(req: Request): Promise<Response> {
     delivered = await upstream("https://api.resend.com/emails", {
       method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
         "Idempotency-Key": `review-reply/${replyId}` },
-      body: JSON.stringify({ from, to: [recipient.email], subject, text }),
+      body: JSON.stringify({
+        from, to: [recipient.email], subject, text,
+        ...(photoAttachments.length ? { attachments: photoAttachments.map(photo => ({
+          filename: photo.filename, content: photo.encodedContent, content_type: photo.contentType,
+        })) } : {}),
+      }),
     });
   } catch {
     await finish("unknown");

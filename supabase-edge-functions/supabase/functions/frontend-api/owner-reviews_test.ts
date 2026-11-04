@@ -29,9 +29,18 @@ Deno.test("owner review cards include verified listing coordinates for a read-on
         return Response.json({ id: ownerId, email: "owner@example.test", email_confirmed_at: "2026-01-01" });
       }
       if (url.pathname === "/rest/v1/owner_invites") {
-        assert(url.searchParams.get("email") === "eq.owner@example.test", "Only use invitations for the verified owner email");
-        return Response.json([{ id: inviteId, review_id: reviewId }]);
+        if (url.searchParams.has("email")) {
+          assert(url.searchParams.get("email") === "eq.owner@example.test", "Only use invitations for the verified owner email");
+          return Response.json([{ id: inviteId, review_id: reviewId }]);
+        } else {
+          assert(url.searchParams.get("review_id") === `eq.${reviewId}`, "Filter admin invite status by the selected review");
+          return Response.json([{
+            id: inviteId, email: "owner@example.test", review_id: reviewId,
+            created_at: "2026-11-03T00:00:00Z",
+          }]);
+        }
       }
+      if (url.pathname === "/rest/v1/owner_response_admins") return Response.json([{ user_id: ownerId }]);
       if (url.pathname === "/rest/v1/reviews") {
         return Response.json([{
           id: reviewId, osm_type: "node", osm_id: 123, restroom_name: "Business restroom",
@@ -45,6 +54,7 @@ Deno.test("owner review cards include verified listing coordinates for a read-on
         return Response.json([]);
       }
       if (url.pathname === "/rest/v1/owner_replies" || url.pathname === "/rest/v1/owner_review_photos") {
+        if (url.pathname.endsWith("/owner_replies") && url.searchParams.has("invite_id")) return Response.json([]);
         if (url.pathname.endsWith("/owner_replies")) return Response.json([{
           id: replyId, invite_id: inviteId, review_id: reviewId,
           owner_email: "owner@example.test", business_name: "Business", body: "Thanks for letting us know.",
@@ -95,6 +105,13 @@ Deno.test("owner review cards include verified listing coordinates for a read-on
       result.items[0].review.latitude === 40.71 && result.items[0].review.longitude === -74 &&
       result.items[0].replies[0].photos[0].photo_url.includes("review-photos"),
     "Return verified coordinates with the invited complaint for the owner map");
+    const inviteStatusResponse = await api.fetch(new Request(
+      `https://project.example/frontend-api/admin/owner-invites?review_id=${reviewId}`, { headers },
+    ));
+    const inviteStatus = await inviteStatusResponse.json();
+    assert(inviteStatusResponse.status === 200 &&
+      inviteStatus.invites[0].response_status === "waiting",
+    "Show forwarded reviews as waiting until the invited owner replies");
     const publicResponse = await api.fetch(new Request(
       "https://project.example/frontend-api/owner-responses?osm_type=node&osm_id=123", { headers },
     ));
@@ -115,6 +132,91 @@ Deno.test("owner review cards include verified listing coordinates for a read-on
       body: JSON.stringify({ reply_id: replyId, archived: true }),
     }));
     assert(archiveResponse.status === 200, "Allow an owner to archive their completed response");
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of previous) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+});
+
+Deno.test("private review email includes approved owner photos as attachments", async () => {
+  const config = {
+    GATEWAY_INTERNAL_SECRET: "test-secret",
+    SUPABASE_URL: "https://project.example",
+    SUPABASE_ANON_KEY: "test-anon",
+    SUPABASE_SERVICE_ROLE_KEY: "test-service",
+    RESEND_API_KEY: "test-resend-key",
+    REVIEW_REPLY_FROM: "replies@example.test",
+    EMAIL_PROVIDER: "resend",
+  };
+  const previous = new Map(Object.keys(config).map(key => [key, Deno.env.get(key)]));
+  const originalFetch = globalThis.fetch;
+  for (const [key, value] of Object.entries(config)) Deno.env.set(key, value);
+  const adminId = "60000000-0000-4000-8000-000000000001";
+  const reviewerId = "70000000-0000-4000-8000-000000000001";
+  const reviewId = "80000000-0000-4000-8000-000000000001";
+  const replyId = "90000000-0000-4000-8000-000000000001";
+  const photoId = "a0000000-0000-4000-8000-000000000001";
+  const photoPath = `${adminId}/${photoId}.jpg`;
+  const headers = { ...buildGatewayHeaders(config.GATEWAY_INTERNAL_SECRET), Authorization: "Bearer admin-token" };
+  try {
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/auth/v1/user") {
+        return Response.json({ id: adminId, email: "admin@example.test", email_confirmed_at: "2026-01-01" });
+      }
+      if (url.pathname === "/rest/v1/owner_response_admins") return Response.json([{ user_id: adminId }]);
+      if (url.pathname === `/auth/v1/admin/users/${reviewerId}`) {
+        return Response.json({ id: reviewerId, email: "reviewer@example.test", email_confirmed_at: "2026-01-01" });
+      }
+      if (url.pathname === "/rest/v1/rpc/admin_review_reply") {
+        const body = JSON.parse(String(init?.body));
+        if (body.p_action === "claim") {
+          return Response.json([{
+            id: replyId, review_id: reviewId, recipient_user_id: reviewerId,
+            body: "The business submitted an update.", status: "sending",
+          }]);
+        }
+        assert(body.p_action === "sent", "Finish the reply after the provider accepts the email");
+        return Response.json([{
+          id: replyId, review_id: reviewId, recipient_user_id: reviewerId,
+          body: "The business submitted an update.", status: "sent",
+        }]);
+      }
+      if (url.pathname === "/rest/v1/owner_review_photos") {
+        assert(url.searchParams.get("review_id") === `eq.${reviewId}` &&
+          url.searchParams.get("status") === "eq.added",
+        "Include only owner photos approved for this review");
+        return Response.json([{ photo_path: photoPath }]);
+      }
+      if (url.pathname === `/storage/v1/object/review-photos/${photoPath}`) {
+        assert(init?.method !== "POST", "Fetch the approved owner photo from private storage");
+        return new Response(new Uint8Array([0xff, 0xd8, 0xff]), {
+          headers: { "Content-Type": "image/jpeg", "Content-Length": "3" },
+        });
+      }
+      if (url.hostname === "api.resend.com") {
+        const payload = JSON.parse(String(init?.body));
+        assert(payload.attachments?.length === 1 &&
+          payload.attachments[0].filename === "owner-photo-1.jpg" &&
+          payload.attachments[0].content_type === "image/jpeg" &&
+          payload.attachments[0].content === "/9j/" &&
+          payload.text.includes("Approved owner-provided photos are attached"),
+        "Attach the approved owner photo to the email reply");
+        return Response.json({ id: "provider-message-id" });
+      }
+      throw new Error(`Unexpected upstream request: ${url.pathname}`);
+    };
+    const response = await api.fetch(new Request("https://project.example/frontend-api/admin/review-replies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "send", id: replyId }),
+    }));
+    const result = await response.json();
+    assert(response.status === 200 && result.reply.status === "sent",
+      "Send the reply and persist the provider confirmation");
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of previous) {

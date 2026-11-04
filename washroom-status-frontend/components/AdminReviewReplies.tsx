@@ -21,6 +21,7 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
   const [message,setMessage]=useState('');
   const inFlight=useRef(false);
   const lifetime=useRef<AbortController|null>(null);
+  const approvedOwnerPhotos=review.owner_photos?.filter(photo=>photo.status==='added')??[];
   useEffect(()=>{
     const controller=new AbortController();lifetime.current=controller;
     return()=>{controller.abort();lifetime.current=null};
@@ -74,6 +75,13 @@ function ReplyEditor({review,session}:{review:AdminReview;session:Session}){
   return <section className="mt-4 border-t pt-4" aria-label="Private review replies">
     <h3 className="font-bold">Private replies</h3>
     <p className="mt-1 text-sm text-slate-600">Replies are stored privately. The server looks up the verified recipient email; this panel never receives it. Sent means accepted by the provider, not confirmed delivery.</p>
+    {!!approvedOwnerPhotos.length&&<div className="mt-3 rounded-lg border p-3">
+      <p className="text-sm font-semibold">Approved owner photos will be attached to the email reply.</p>
+      <div className="mt-2 flex flex-wrap gap-2">{approvedOwnerPhotos.map((photo,index)=>
+        <a key={photo.id} href={photo.photo_url} target="_blank" rel="noopener noreferrer" aria-label={`Open approved owner photo ${index+1}`}>
+          <img src={photo.photo_url} alt={`Approved owner photo ${index+1}`} className="h-20 w-20 rounded-lg border object-cover"/>
+        </a>)}</div>
+    </div>}
     {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {message&&<p role="status" className="mt-3 text-sm text-teal-800">{message}</p>}
     <button type="button" disabled={busy||loading} className="pill mt-3" onClick={()=>setRefresh(value=>value+1)}>Refresh reply history</button>
