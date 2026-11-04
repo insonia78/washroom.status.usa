@@ -68,15 +68,19 @@ export default function OwnerReplyQueue({session,stage}:{session:Session;stage:'
       <p className="mt-1 text-xs text-slate-500">From {row.owner_email} on {new Date(row.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}</p>
       {row.review?.comment&&<p className="mt-2 text-sm"><span className="font-semibold">Original review:</span> {row.review.comment}</p>}
       <p className="mt-2 whitespace-pre-wrap text-sm"><span className="font-semibold">Owner reply:</span> {row.body}</p>
-      {!!row.photos.length&&<div className="mt-3 border-t pt-2">
+      <div className="mt-3 border-t pt-2" aria-label="Owner reply photos">
         <h4 className="text-sm font-semibold">Owner reply photos</h4>
+        {!row.photos.length?<p className="mt-1 text-xs text-slate-600">No photos were attached to this reply.</p>:
         <div className="mt-2 flex flex-wrap gap-3">{row.photos.map((photo,index)=><div key={photo.id}>
           <a href={photo.photo_url} target="_blank" rel="noreferrer" aria-label={`Open owner reply photo ${index+1}`}>
             <img src={photo.photo_url} alt={`Owner reply photo ${index+1}`} className="h-24 w-24 rounded-lg border object-cover"/>
           </a>
-          <p className="mt-1 text-xs">{photo.status}</p>
+          <p className="mt-1 text-xs">{photo.status==='pending'?'Waiting for moderation':
+            photo.status==='moderated'?'Waiting for administrator':
+            photo.status==='published'?'Published':'Not approved'}</p>
         </div>)}</div>
-      </div>}
+        }
+      </div>
       {stage==='publish'&&row.status&&<p className="mt-1 text-xs font-semibold uppercase">{row.status}{row.archived_at?' (archived)':''}</p>}
       <div className="mt-3 flex gap-2">
         {(stage==='moderate'||row.status==='moderated')&&<>

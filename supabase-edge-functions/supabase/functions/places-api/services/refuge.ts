@@ -1,5 +1,6 @@
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
+import { fetchAndArchiveProviderResponse } from "../../_shared/third-party-data-lake.ts"
 
 const REFUGE_API_URL = "https://www.refugerestrooms.org/api/v1/restrooms/by_location"
 const PAGE_SIZE = 100
@@ -94,7 +95,7 @@ export async function findNearbyRefugeRestrooms(
       url.searchParams.set("per_page", String(PAGE_SIZE))
       url.searchParams.set("page", String(page))
 
-      const response = await fetch(url, {
+      const response = await fetchAndArchiveProviderResponse("refuge-restrooms", url, {
         headers: { Accept: "application/json", "User-Agent": "WashroomStatusUSA/1.0" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })

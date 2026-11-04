@@ -95,10 +95,30 @@ To let owners archive completed responses and attach up to three photos to a rep
 apply `../supabase-edge-functions/supabase/migrations/20261103230000_owner_reply_owner_archive.sql`
 and `../supabase-edge-functions/supabase/migrations/20261104010000_owner_reply_photos.sql`,
 then deploy `frontend-api` and the frontend. Reply photos remain private through
-moderation and administrator review, then appear with the published owner response.
-Pending replies cannot be archived.
+moderation and administrator review; the moderator and administrator queues display
+the attached photos and their review status. Photos appear publicly only with a
+published owner response. Pending replies cannot be archived.
 
 The admin review panel's **All history** filter combines active and archived
 approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin
 toilets panel provides the separate final-approval and map-publication step for
 moderator-approved toilet submissions.
+
+## Third-party restroom search archive
+
+Apply
+`../supabase-edge-functions/supabase/migrations/20261105010000_third_party_api_data_lake.sql`
+and deploy the updated `places-api` before enabling the archive. Successful and
+failed calls to Refuge Restrooms and Zippopotam.us are written as individual JSON
+objects under the private `third-party-api-data-lake` bucket, partitioned by
+provider and UTC date. The archive retains full request URLs (including exact
+search coordinates or ZIP codes) and raw response bodies indefinitely. It does
+not archive internal Supabase queries or store outbound authorization headers.
+Archive upload errors are logged and do not fail restroom searches. Review
+storage access and backup policies as the archive grows.
+
+Run the focused edge-function tests from the repository root:
+
+```powershell
+npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions\_shared\third-party-data-lake_test.ts
+```

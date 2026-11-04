@@ -4,6 +4,7 @@ import { getCachedValue, setCachedValue } from "../utils/cache.ts"
 import { RequestError } from "../utils/errors.ts"
 import { logWithColor } from "../utils/logger.ts"
 import { parseFiniteNumber } from "../utils/request.ts"
+import { fetchAndArchiveProviderResponse } from "../../_shared/third-party-data-lake.ts"
 
 // Restricts geocoding requests to the supported US country code.
 function validateCountryCode(countryCode: string): void {
@@ -14,7 +15,11 @@ function validateCountryCode(countryCode: string): void {
 
 // Calls the ZIP provider and validates its response before returning coordinates.
 async function geocodeUsZipCode(url: URL, zipCode: string): Promise<SearchOrigin | null> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+  const response = await fetchAndArchiveProviderResponse(
+    "zippopotam",
+    url,
+    { signal: AbortSignal.timeout(15_000) },
+  )
   logWithColor("geocode", ANSI_COLORS.magenta, `Zippopotam response status: ${response.status}`)
 
   if (response.status === 404) {
