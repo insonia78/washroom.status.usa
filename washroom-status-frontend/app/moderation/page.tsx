@@ -122,16 +122,17 @@ export default function ModerationPage(){
       </form>:<>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-sm">Signed in as {session.user.email}</p>
           <div className="flex items-center gap-3">
-          <NotificationBell session={session} role="moderator" onSelect={category=>setTab(category==='responses'?'replies':category)}/>
-          <button type="button" onClick={()=>{setMessage('');setRefresh(value=>value+1)}} disabled={busy||loading} className="pill disabled:opacity-50">Refresh queue</button>
+          <NotificationBell key={`bell:${refresh}`} session={session} role="moderator" onSelect={category=>setTab(category==='responses'?'replies':category)}/>
           <button type="button" onClick={signOut} disabled={busy} className="pill disabled:opacity-50">Sign out</button>
           </div>
         </div>
-        <nav role="tablist" aria-label="Moderation sections" className="sticky top-0 z-10 mt-5 flex flex-wrap gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
+        <nav role="tablist" aria-label="Moderation sections" className="sticky top-0 z-10 mt-5 flex flex-wrap items-center gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
           {([['toilets','Toilets'],['replies','Owner replies'],['reviews','Reviews']] as const).map(([id,label])=><button key={id} type="button" role="tab" aria-selected={tab===id} onClick={()=>setTab(id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{label}</button>)}
+          <button type="button" onClick={()=>{setMessage('');setRefresh(value=>value+1)}} disabled={busy||loading} aria-label="Refresh the moderation queues and notifications"
+            className="ml-auto rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{loading?'Refreshing...':'Refresh'}</button>
         </nav>
         {tab==='toilets'&&<ToiletModerationQueue session={session} refresh={refresh}/>}
-        {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="moderate"/>}
+        {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}:${refresh}`} session={session} stage="moderate"/>}
         {tab==='reviews'&&<>
         <h2 className="mt-6 text-xl font-bold">Pending reviews</h2>
         <p className="mt-1 text-xs text-slate-500">Oldest first, 3 per page.</p>

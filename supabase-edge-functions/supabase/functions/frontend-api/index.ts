@@ -2,7 +2,14 @@ import { authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
 import { geocodeZipCode } from "../places-api/services/geocoding.ts";
 import { RequestError } from "../places-api/utils/errors.ts";
 import { locationDatabaseHeaders } from "../_shared/database-schema.ts";
-import { emailOwnerPhotoPaths, reviewHistory, toiletHistory } from "./workflow-history.ts";
+import { emailOwnerPhotoPaths, reviewHistory, reviewStage, toiletHistory, toiletStage } from "./workflow-history.ts";
+
+// Admin lists use 3 per page; the workflow board loads up to 25 per request.
+function adminPageLimit(query: URLSearchParams): number {
+  const limit = query.get("limit") ?? "3";
+  if (limit !== "3" && limit !== "25") throw new ApiError(400, "Invalid page size");
+  return Number(limit);
+}
 
 // Carries an HTTP status alongside a frontend API error message.
 class ApiError extends Error {
@@ -692,12 +699,13 @@ async function adminReviews(req: Request): Promise<Response> {
   const archived = query.get("archived") ?? "0";
   if (archived !== "0" && archived !== "1" && archived !== "all") throw new ApiError(400, "Invalid archived filter");
   const moderation = query.get("moderation") ?? "moderated";
-  if (moderation !== "moderated" && moderation !== "pending") throw new ApiError(400, "Invalid moderation filter");
+  if (!["moderated", "pending", "all"].includes(moderation)) throw new ApiError(400, "Invalid moderation filter");
+  const limit = adminPageLimit(query);
   const reviewParams = new URLSearchParams({
     select: "id,user_id,osm_type,osm_id,restroom_name,rating,availability,cleanliness_status,issues,comment,status,created_at,archived_at,photo_paths",
-    status: moderation === "pending" ? "eq.pending" : "in.(approved,rejected)",
-    order: "created_at.desc,id.desc", limit: "3", offset,
+    order: "created_at.desc,id.desc", limit: String(limit), offset,
   });
+  if (moderation !== "all") reviewParams.set("status", moderation === "pending" ? "eq.pending" : "in.(approved,rejected)");
   if (archived !== "all") reviewParams.set("archived_at", archived === "1" ? "not.is.null" : "is.null");
   const { rows, total } = await databasePage("reviews", reviewParams);
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin review list");
@@ -776,9 +784,18 @@ async function adminReviews(req: Request): Promise<Response> {
         ownerPhotos: ownerPhotos.filter(row => row.review_id === review.id),
         privateReplies: privateReplies.filter(row => row.review_id === review.id),
       }),
+      stage: reviewStage({
+        review,
+        invites: invites.filter(row => row.review_id === review.id),
+        ownerReplies: repliesForReview,
+        privateReplies: privateReplies.filter(row => row.review_id === review.id),
+      }),
     };
   }));
-  return json(200, { reviews: await withRestroomNames(reviewsWithOwnerPhotos), total, next_offset: rows.length === 3 ? Number(offset) + 3 : null });
+  return json(200, {
+    reviews: await withRestroomNames(reviewsWithOwnerPhotos), total,
+    next_offset: rows.length === limit ? Number(offset) + limit : null,
+  });
 }
 
 async function adminToilets(req: Request): Promise<Response> {
@@ -821,21 +838,27 @@ async function adminToilets(req: Request): Promise<Response> {
   const archived = query.get("archived") ?? "0";
   if (archived !== "0" && archived !== "1") throw new ApiError(400, "Invalid archived filter");
   const moderation = query.get("moderation") ?? "moderated";
-  if (!["moderated", "pending", "awaiting_admin"].includes(moderation)) throw new ApiError(400, "Invalid moderation filter");
+  if (!["moderated", "pending", "awaiting_admin", "all"].includes(moderation)) throw new ApiError(400, "Invalid moderation filter");
+  const limit = adminPageLimit(query);
   const { rows, total } = await databasePage("toilet_submissions", new URLSearchParams({
     select: "id,user_id,name,latitude,longitude,wheelchair,fee,notes,status,created_at,moderated_at,archived_at,published_at,photo_paths",
     archived_at: archived === "1" ? "not.is.null" : "is.null",
-    status: moderation === "pending" ? "eq.pending" : moderation === "awaiting_admin" ? "eq.approved" : "in.(approved,rejected)",
+    ...(moderation === "all" ? {} : {
+      status: moderation === "pending" ? "eq.pending" : moderation === "awaiting_admin" ? "eq.approved" : "in.(approved,rejected)",
+    }),
     ...(moderation === "awaiting_admin" ? { published_at: "is.null" } : {}),
-    order: "created_at.desc,id.desc", limit: "3", offset,
+    order: "created_at.desc,id.desc", limit: String(limit), offset,
   }));
   if (!Array.isArray(rows)) throw new ApiError(502, "Invalid admin toilet list");
   const toilets = await Promise.all(rows.map(async row => {
     if (!isRecord(row)) throw new ApiError(502, "Invalid admin toilet list");
     const { photo_paths, ...details } = row;
-    return { ...details, photo_urls: await signedReviewPhotos(photo_paths), history: toiletHistory(row) };
+    return {
+      ...details, photo_urls: await signedReviewPhotos(photo_paths),
+      history: toiletHistory(row), stage: toiletStage(row),
+    };
   }));
-  return json(200, { toilets, total, next_offset: rows.length === 3 ? Number(offset) + 3 : null });
+  return json(200, { toilets, total, next_offset: rows.length === limit ? Number(offset) + limit : null });
 }
 
 async function readJson(req: Request): Promise<Record<string, unknown>> {

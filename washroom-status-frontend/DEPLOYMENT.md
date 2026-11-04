@@ -115,6 +115,17 @@ moderator decision, final approval, archiving). No migration is required; deploy
 npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions\frontend-api\workflow-history_test.ts supabase-edge-functions\supabase\functions\frontend-api\owner-reviews_test.ts
 ```
 
+The **Reviews & submitted toilets** tab opens on a **Board** view (switch to **List**
+for the paginated cards). The board places every review and submitted toilet as a
+ticket in a horizontal column for its current step: reviews move through Moderation,
+Administration review, Waiting for owner, Owner reply in review, Completed and
+Archived; toilets through Moderation, Final approval, Published on map, Rejected and
+Archived. Selecting a ticket opens a modal with its details, photos, steps taken and
+actions. The board loads the newest 25 active and 25 archived items of each kind
+(`limit=25&moderation=all` on the admin review and toilet endpoints; the server
+computes each item's `stage`). The administration and moderation tab ribbons both
+have a **Refresh** button that reloads the open section and the notification bell.
+
 The admin review panel's **All history** filter combines active and archived
 approved/rejected reviews; Step 1 remains the moderator-pending queue. The admin
 toilets panel provides the separate final-approval and map-publication step for

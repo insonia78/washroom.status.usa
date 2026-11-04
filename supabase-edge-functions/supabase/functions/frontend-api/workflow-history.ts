@@ -74,6 +74,29 @@ export function toiletHistory(toilet: Row): WorkflowStep[] {
   ]);
 }
 
+export type ReviewStage = "moderation" | "administration" | "waiting_owner" | "owner_reply" | "completed" | "archived";
+export type ToiletStage = "moderation" | "awaiting_admin" | "published" | "rejected" | "archived";
+
+// The single board column a review belongs to, based on the steps already taken.
+export function reviewStage(input: { review: Row; invites: Row[]; ownerReplies: Row[]; privateReplies: Row[] }): ReviewStage {
+  const { review } = input;
+  if (text(review.archived_at)) return "archived";
+  if (review.status === "pending") return "moderation";
+  const activeReplies = input.ownerReplies.filter(reply => !text(reply.archived_at));
+  if (activeReplies.some(reply => reply.status === "pending" || reply.status === "moderated")) return "owner_reply";
+  if (input.ownerReplies.some(reply => reply.status === "published") ||
+    input.privateReplies.some(reply => reply.status === "sent")) return "completed";
+  if (input.invites.length) return "waiting_owner";
+  return "administration";
+}
+
+export function toiletStage(toilet: Row): ToiletStage {
+  if (text(toilet.archived_at)) return "archived";
+  if (toilet.status === "pending") return "moderation";
+  if (toilet.status === "rejected") return "rejected";
+  return text(toilet.published_at) ? "published" : "awaiting_admin";
+}
+
 // Owner photos attached to a private reply email: the latest published owner reply photos first,
 // then legacy administrator-added owner photos, capped at the 3-photo email limit.
 export function emailOwnerPhotoPaths(publishedReplyPhotoPaths: string[], addedOwnerPhotoPaths: string[]): string[] {

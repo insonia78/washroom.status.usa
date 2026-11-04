@@ -7,6 +7,7 @@ import {browserSupabase} from '@/lib/supabase';
 import {isAdminOwnerResponse,isEvidenceUrl,type AdminOwnerResponse} from '@/lib/owner-responses';
 import AdminReviewReplies from '@/components/AdminReviewReplies';
 import AdminToilets from '@/components/AdminToilets';
+import AdminWorkflowBoard from '@/components/AdminWorkflowBoard';
 import AdminOwnerInvites from '@/components/AdminOwnerInvites';
 import OwnerReplyQueue from '@/components/OwnerReplyQueue';
 import NotificationBell from '@/components/NotificationBell';
@@ -165,6 +166,9 @@ export default function AdminPage(){
   const [denied,setDenied]=useState(false);
   const [checked,setChecked]=useState(false);
   const [tab,setTab]=useState<(typeof tabs)[number]['id']>('moderation');
+  const [view,setView]=useState<'board'|'list'>('board');
+  const [reload,setReload]=useState(0);
+  const [inviteClosed,setInviteClosed]=useState(0);
   const [inviteReviewId,setInviteReviewId]=useState<string|null>(null);
   const inviteOpener=useRef<HTMLButtonElement|null>(null);
   useEffect(()=>{
@@ -216,24 +220,33 @@ export default function AdminPage(){
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm">Signed in as {session.user.email}</p>
         <div className="flex items-center gap-3">
-          <NotificationBell session={session} role="admin" onSelect={category=>setTab(category==='responses'?'replies':'moderation')}/>
+          <NotificationBell key={`bell:${reload}`} session={session} role="admin" onSelect={category=>setTab(category==='responses'?'replies':'moderation')}/>
           <button type="button" disabled={busy} onClick={()=>void signOut()} className="pill">Sign out</button>
         </div>
       </div>
-      <nav role="tablist" aria-label="Administration sections" className="sticky top-0 z-10 mt-5 flex flex-wrap gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
+      <nav role="tablist" aria-label="Administration sections" className="sticky top-0 z-10 mt-5 flex flex-wrap items-center gap-2 rounded-xl border bg-white/95 p-2 shadow-sm">
         {tabs.map(item=><button key={item.id} type="button" role="tab" aria-selected={tab===item.id} onClick={()=>setTab(item.id)} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab===item.id?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{item.label}</button>)}
+        <button type="button" onClick={()=>setReload(value=>value+1)} aria-label="Refresh this section and notifications"
+          className="ml-auto rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white">Refresh</button>
       </nav>
-      {tab==='moderation'&&<div className="mt-5 grid items-start gap-5 lg:grid-cols-2">
-        <AdminReviewReplies key={`replies:${session.access_token}`} session={session} onInviteOwner={(reviewId,opener)=>{inviteOpener.current=opener;setInviteReviewId(reviewId)}}/>
-        <AdminToilets key={`toilets:${session.access_token}`} session={session}/>
-      </div>}
-      {tab==='responses'&&<OwnerResponseDashboard key={session.access_token} session={session}/>}
-      {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}`} session={session} stage="publish"/>}
+      {tab==='moderation'&&<>
+        <div role="group" aria-label="Reviews and toilets view" className="mt-5 inline-flex rounded-xl border bg-white p-1">
+          {([['board','Board'],['list','List']] as const).map(([value,label])=><button key={value} type="button" aria-pressed={view===value} onClick={()=>setView(value)}
+            className={`rounded-lg px-4 py-1.5 text-sm font-bold ${view===value?'bg-teal-700 text-white':'text-teal-900 hover:bg-teal-50'}`}>{label}</button>)}
+        </div>
+        {view==='board'?<AdminWorkflowBoard key={`board:${session.access_token}:${reload}`} session={session} reloadSignal={inviteClosed} onInviteOwner={(reviewId,opener)=>{inviteOpener.current=opener;setInviteReviewId(reviewId)}}/>:
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <AdminReviewReplies key={`replies:${session.access_token}:${reload}`} session={session} onInviteOwner={(reviewId,opener)=>{inviteOpener.current=opener;setInviteReviewId(reviewId)}}/>
+          <AdminToilets key={`toilets:${session.access_token}:${reload}`} session={session}/>
+        </div>}
+      </>}
+      {tab==='responses'&&<OwnerResponseDashboard key={`${session.access_token}:${reload}`} session={session}/>}
+      {tab==='replies'&&<OwnerReplyQueue key={`owner-replies:${session.access_token}:${reload}`} session={session} stage="publish"/>}
       {inviteReviewId&&<AdminOwnerInvites
         key={`invite:${session.access_token}:${inviteReviewId}`}
         session={session}
         reviewId={inviteReviewId}
-        onClose={()=>{setInviteReviewId(null);inviteOpener.current?.focus()}}
+        onClose={()=>{setInviteReviewId(null);setInviteClosed(value=>value+1);inviteOpener.current?.focus()}}
       />}
     </>:<form onSubmit={signIn} className="panel mt-5 max-w-md">
       <h2 className="text-xl font-bold">Administrator sign-in</h2>

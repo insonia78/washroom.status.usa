@@ -7,7 +7,10 @@ export type AdminReview={
     photos:{id:string;photo_url:string;status:'pending'|'moderated'|'published'|'rejected'}[]}[];
   email_photos?:{id:string;photo_url:string}[];
   history?:WorkflowStep[];
+  stage?:ReviewStage;
   };
+export type ReviewStage='moderation'|'administration'|'waiting_owner'|'owner_reply'|'completed'|'archived';
+export const reviewStages:readonly ReviewStage[]=['moderation','administration','waiting_owner','owner_reply','completed','archived'];
 export type WorkflowStep={at:string;label:string;detail?:string};
 export const isWorkflowHistory=(value:unknown):value is WorkflowStep[]|undefined=>value===undefined||Array.isArray(value)&&value.every(step=>
   typeof step==='object'&&step!==null&&typeof step.at==='string'&&typeof step.label==='string'&&
@@ -43,6 +46,7 @@ export function isAdminReview(value:unknown):value is AdminReview{
     (value.email_photos===undefined||Array.isArray(value.email_photos)&&value.email_photos.every(photo=>
       record(photo)&&typeof photo.id==='string'&&typeof photo.photo_url==='string'))&&
     isWorkflowHistory(value.history)&&
+    (value.stage===undefined||typeof value.stage==='string'&&(reviewStages as readonly string[]).includes(value.stage))&&
     ['pending','approved','rejected'].includes(value.status)&&date(value.created_at)&&nullableDate(value.archived_at);
 }
 export function isReviewReply(value:unknown):value is ReviewReply{
