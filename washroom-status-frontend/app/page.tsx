@@ -136,7 +136,7 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
 <AddressSearch value={city} onChange={value=>{setCity(value);setCurrentLocationActive(false);locationRequest.current++;setLocating(false)}} searching={searching} onSelect={suggestion=>{setCurrentLocationActive(false);focusAfterSearch.current=true;focusMapArea();locationRequest.current++;setLocating(false);setLocationError('');setError('');setZoom(12);setHasSearchOrigin(true);setCenter([suggestion.longitude,suggestion.latitude])}}/>
 </form></section>
 <div className="order-1 min-w-0 lg:order-2">
-<p id="radius-search-help" className="mb-2 text-xs text-slate-500">{hasSearchOrigin?'Searching':'Search'} within {radiusMiles} {radiusMiles==='1'?'mile':'miles'}. {hasSearchOrigin?'Radius changes automatically reload restrooms and imported gas stations.':'Choose a location to find nearby restrooms and imported gas stations.'}</p>
+<p id="radius-search-help" className="mb-2 text-xs text-slate-500">{hasSearchOrigin?'Searching':'Search'} within {radiusMiles} {radiusMiles==='1'?'mile':'miles'}. {hasSearchOrigin?'Radius changes automatically reload restrooms, gas stations, and supermarkets.':'Choose a location to find nearby restrooms, gas stations, and supermarkets.'}</p>
 <div className="relative isolate" aria-busy={searching||busy}>
   <OpenFreeMap ref={mapRef} center={center} zoom={zoom} overview={!hasSearchOrigin} location={location} items={items} filter={filter} onSelect={handleSelect}/>
   {(searching||busy)&&<div role="status" aria-live="polite" aria-label="Map search progress" className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/40">
@@ -155,7 +155,7 @@ return <main className="mx-auto max-w-6xl px-4 py-7"><header className="mb-9 fle
   <button type="button" aria-label="Next restrooms" aria-controls="nearby-restroom-list" className="pill" onClick={()=>resultsList.current?.scrollBy({left:resultsList.current.clientWidth,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}><ChevronRight size={18}/></button>
 </div>}
 </div>
-<p className="mb-4 text-sm text-slate-500">Includes imported gas stations. Restroom availability may be unconfirmed.</p>
+<p className="mb-4 text-sm text-slate-500">Includes imported gas stations and supermarkets. Restroom availability may be unconfirmed.</p>
 {warning&&<div role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p>{warning}</p><button className="mt-2 font-semibold underline" onClick={()=>setCenter(c=>[...c])}>Retry loading all places</button></div>}
 {busy&&<div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl bg-teal-50 p-4 text-sm text-teal-900">
   <span aria-hidden="true" className="h-6 w-6 shrink-0 animate-spin rounded-full border-[3px] border-teal-200 border-t-teal-700 motion-reduce:animate-none"/>

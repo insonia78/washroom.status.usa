@@ -81,7 +81,7 @@ test('gateway override supports local deployments and searches outside Philadelp
 });
 
 test('business categories and explicit or unknown restroom availability reach the UI', async () => {
-  for (const [category, toilets] of [['fuel', 'unknown'], ['supermarket', 'yes'], ['supermarket', 'no']]) {
+  for (const [category, toilets] of [['fuel', 'unknown'], ['supermarket', 'unknown'], ['supermarket', 'yes'], ['supermarket', 'no']]) {
     globalThis.fetch = async () => Response.json({ success: true, data: [{ ...place, category, toilets }] });
     const response = await GET(request());
     assert.equal(response.status, 200);
