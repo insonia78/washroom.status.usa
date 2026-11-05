@@ -57,7 +57,7 @@ export default function PhotoPicker({photos,onChange,preparing,onPreparingChange
     {full&&<p className="mt-1 text-xs text-slate-600">3 photos attached. Remove a photo to add another.</p>}
     {photos.length>0&&<ul className="mt-2 space-y-1 text-xs">{photos.map((photo,index)=><li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2">
       <span className="truncate">{photo.name}</span>
-      <button type="button" disabled={locked} onClick={()=>onChange(photos.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button>
+      <button type="button" aria-label={`Remove photo ${index+1}: ${photo.name}`} disabled={locked} onClick={()=>onChange(photos.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button>
     </li>)}</ul>}
   </div>;
 }

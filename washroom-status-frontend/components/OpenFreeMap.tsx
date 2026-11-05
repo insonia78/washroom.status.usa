@@ -1,6 +1,6 @@
 'use client';
 
-import {forwardRef, useEffect, useImperativeHandle, useRef, useState} from 'react';
+import {forwardRef, useEffect, useId, useImperativeHandle, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import type {Map as MapInstance} from 'maplibre-gl';
 import type {Restroom} from '@/components/RestroomDetails';
@@ -28,6 +28,7 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
   {center, zoom, overview, location, items, filter, onSelect}, ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapId = useId();
   const mapRef = useRef<MapInstance | null>(null);
   const [map, setMap] = useState<MapInstance | null>(null);
   const [interactive, setInteractive] = useState(false);
@@ -39,7 +40,7 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
       (mapRef.current?.getCanvas() ?? containerRef.current)?.focus({preventScroll: true});
     },
     focus(point, nextZoom) {
-      mapRef.current?.flyTo({center: point, zoom: nextZoom});
+      mapRef.current?.flyTo({center: point, zoom: nextZoom,animate:!window.matchMedia('(prefers-reduced-motion: reduce)').matches});
     },
   }), []);
 
@@ -133,7 +134,7 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
     if (!map) return;
     const updateView = () => {
       if (overview) map.fitBounds([[-125, 24], [-66, 50]], {padding: 24, duration: 0});
-      else map.flyTo({center, zoom});
+      else map.flyTo({center, zoom,animate:!window.matchMedia('(prefers-reduced-motion: reduce)').matches});
     };
     updateView();
     if (overview) map.on('resize', updateView);
@@ -205,9 +206,10 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
         button.className = 'map-restroom-marker';
         button.textContent = item.category === 'fuel' ? '⛽' : item.category === 'supermarket' ? '🛒' : '🚻';
         button.setAttribute('aria-label', `View ${item.name}`);
+        button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-expanded', 'false');
         button.disabled = !interactive;
-        button.style.cssText = 'background:white;border:2px solid #0d9488;border-radius:50%;width:36px;height:36px;cursor:pointer';
+        button.style.cssText = 'background:white;border:2px solid #0d9488;border-radius:50%;width:44px;height:44px;cursor:pointer';
         const showPreview = () => {
           cancelClose();
           if (previewButton === button) return;
@@ -278,10 +280,11 @@ const OpenFreeMap = forwardRef<OpenFreeMapHandle, Props>(function OpenFreeMap(
   }, [filter, interactive, items, map, onSelect]);
 
   return <div className="relative h-[420px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-    <div ref={containerRef} tabIndex={interactive ? 0 : -1} aria-label={interactive ? 'Interactive restroom map' : 'Restroom map. Interaction is disabled.'} className="h-full w-full" />
+    <div ref={containerRef} id={mapId} role="region" tabIndex={-1} aria-label="Restroom map" className="h-full w-full" />
     <button
       type="button"
       aria-pressed={interactive}
+      aria-controls={mapId}
       aria-label={interactive ? 'Disable map interaction' : 'Enable map interaction'}
       onClick={() => setInteractive(enabled => !enabled)}
       className="absolute left-3 top-3 z-10 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow"

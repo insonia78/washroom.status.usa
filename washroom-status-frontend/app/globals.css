@@ -21,3 +21,14 @@ button:not(.map-restroom-marker):not(.nearby-restrooms button):not(.ticket):hove
 .admin-dashboard .pill[aria-pressed=true],.moderator-dashboard .pill[aria-pressed=true],.admin-dashboard [role=tab][aria-selected=true],.moderator-dashboard [role=tab][aria-selected=true]{background:#93c5fd;border-color:#93c5fd;color:#1e3a8a}
 .admin-dashboard .pill:focus-visible,.moderator-dashboard .pill:focus-visible,.admin-dashboard [role=tab]:focus-visible,.moderator-dashboard [role=tab]:focus-visible{outline:3px solid #0f766e;outline-offset:2px}
 :root{font-family:Arial,sans-serif;color:#12243b;background:#f6fafb}body{margin:0}button,input{font:inherit}button{cursor:pointer}a{color:inherit}footer{text-align:center;padding:22px;background:#e9f5f5;font-size:14px}footer a{font-weight:800;color:#087f82} .panel{background:white;border:1px solid #dce9eb;border-radius:18px;padding:20px;box-shadow:0 8px 24px #1233 5%} .pill{border:1px solid #d1e4e5;border-radius:100px;padding:8px 12px;background:white} .pill[aria-pressed=true]{background:#d4f4ee;border-color:#159b90} .maplibregl-map{border-radius:16px}
+.dashboard :focus-visible,.public-dialog :focus-visible{outline:3px solid #0f766e;outline-offset:3px}
+.dashboard .text-slate-500,.public-dialog .text-slate-500{color:var(--color-slate-600)}
+.dashboard :is(input,select,textarea),.public-dialog :is(input,select,textarea){border-color:var(--color-slate-500)}
+.dashboard .maplibregl-canvas:focus-visible{outline-offset:-4px}
+.dashboard button,.public-dialog button,.public-dialog label.pill{min-height:44px;min-width:44px}
+.public-dialog label.pill{display:inline-flex;align-items:center}
+.dashboard button:disabled,.public-dialog button:disabled{cursor:not-allowed}
+.dashboard button.pill[aria-pressed=true]{background-color:#134e4a!important;border-color:#134e4a!important;text-decoration:underline;text-underline-offset:3px}
+.dashboard .skip-link{position:fixed;top:8px;left:8px;z-index:100;padding:12px 16px;border:2px solid #0f766e;border-radius:8px;background:#fff;color:#134e4a;font-weight:700;transform:translateY(-200%)}
+.dashboard .skip-link:focus{transform:translateY(0)}
+@media(prefers-reduced-motion:reduce){.dashboard *,.public-dialog *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}

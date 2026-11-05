@@ -9,8 +9,8 @@ export default function MapRestroomPreview({restroom,onSelect,onClose,onLayout}:
   useLayoutEffect(onLayout,[onLayout]);
   return <section aria-label={`Map preview for ${restroom.name}`} className="max-h-[280px] overflow-y-auto p-1 text-left text-slate-900">
     <div className="flex items-start justify-between gap-2">
-      <h3 className="break-words text-base font-bold">{restroom.name}</h3>
-      <button type="button" onClick={onClose} aria-label="Close map preview" className="shrink-0 rounded-lg p-1 focus-visible:outline-2 focus-visible:outline-teal-700"><X size={18}/></button>
+      <h2 className="break-words text-base font-bold">{restroom.name}</h2>
+      <button type="button" onClick={onClose} aria-label="Close map preview" className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-teal-700"><X size={18} aria-hidden="true"/></button>
     </div>
     <p className="mt-1 text-xs font-semibold text-amber-800">{restroomLabel(restroom)}</p>
     {restroom.distanceMiles!==undefined&&<p className="mt-1 text-xs text-teal-800">{formatDistance(restroom.distanceMiles)} from search location (straight-line)</p>}
@@ -21,6 +21,6 @@ export default function MapRestroomPreview({restroom,onSelect,onClose,onLayout}:
     </dl>
     <p className="mt-2 text-xs text-slate-500">Availability is unverified, not live.</p>
     <LatestReview key={`${restroom.osm_type}-${restroom.id}`} restroom={restroom}/>
-    <button type="button" onClick={onSelect} className="mt-3 rounded-lg bg-teal-700 px-3 py-2 text-sm font-bold text-white">View full details and reviews</button>
+    <button type="button" aria-haspopup="dialog" onClick={onSelect} className="mt-3 rounded-lg bg-teal-700 px-3 py-2 text-sm font-bold text-white">View full details and reviews</button>
   </section>;
 }

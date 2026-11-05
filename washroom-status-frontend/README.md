@@ -1,5 +1,25 @@
 # Washroom Status USA
 
+## Dashboard accessibility and listing presentation
+
+Restroom cards, map previews and contribution dialogs do not display listing
+providers or source IDs. Internal identities are unchanged for searching and
+reviews. Map/data credits remain beneath the map and in its built-in attribution.
+
+Keyboard users can use the two skip links to reach controls or results. Search
+opens with focus in its labelled address field; arrow keys browse suggestions,
+Enter selects and Escape dismisses them. Result counts are announced politely.
+Automatic location lookup and radius changes do not move keyboard focus; explicit
+location/address searches retain the map-focus behavior described below.
+
+Details and contribution dialogs use native modal focus containment, labelled
+headings, Escape dismissal and focus restoration. Background scrolling remains
+locked until the last stacked dialog closes. Controls have visible focus,
+selected filters have a check mark and underline, and primary touch targets are
+at least 44 pixels. Map movement and dashboard animations respect reduced motion.
+Every mapped location is also available in the results list. These improvements
+are not a claim of full WCAG certification.
+
 ## Private admin review replies
 
 The `/admin` dashboard includes a separate review-reply panel showing reviewer

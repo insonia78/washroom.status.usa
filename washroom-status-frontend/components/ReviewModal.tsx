@@ -1,16 +1,17 @@
 'use client';
-import {useEffect,useId,useRef,useState} from 'react';
+import {useEffect,useId,useState} from 'react';
 import {X} from 'lucide-react';
 import type {Restroom} from '@/components/RestroomDetails';
 import {clearContributionContext,useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
 import {maxPhotoUploadBytes} from '@/lib/photo-preparation';
 import PhotoPicker from '@/components/PhotoPicker';
+import {useModalDialog} from '@/lib/use-modal-dialog';
 
 const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
 
 export default function ReviewModal({restroom,userLocation,onClose}:{restroom:Restroom;userLocation:[number,number];onClose:()=>void}){
-  const dialog=useRef<HTMLDialogElement>(null);
+  const dialog=useModalDialog();
   const titleId=useId();
   const descriptionId=useId();
   const questionId=useId();
@@ -24,22 +25,8 @@ export default function ReviewModal({restroom,userLocation,onClose}:{restroom:Re
   const [message,setMessage]=useState('');
   const [sending,setSending]=useState(false);
   const [submitted,setSubmitted]=useState(false);
-  const isRefugeRestroom=restroom.source==='refuge-restrooms';
   const auth=useContributionAuth();
   const locked=sending||preparingPhotos||auth.checking||!auth.session;
-
-  useEffect(()=>{
-    const element=dialog.current;
-    const trigger=document.activeElement;
-    const overflow=document.body.style.overflow;
-    element?.showModal();
-    document.body.style.overflow='hidden';
-    return()=>{
-      element?.close();
-      document.body.style.overflow=overflow;
-      if(trigger instanceof HTMLElement&&trigger.isConnected)trigger.focus({preventScroll:true});
-    };
-  },[]);
 
   useEffect(()=>{
     if(!submitted)return;
@@ -93,9 +80,9 @@ export default function ReviewModal({restroom,userLocation,onClose}:{restroom:Re
       const bounds=event.currentTarget.getBoundingClientRect();
       if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom)onClose();
     }}
-    className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60 sm:p-6">
+    className="public-dialog fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60 sm:p-6">
     <div className="flex items-start justify-between gap-3">
-      <div><h2 id={titleId} className="text-xl font-bold">Add a review</h2><p className="mt-1 break-words font-semibold text-teal-800">{restroom.name}</p><p className="mt-1 text-xs text-slate-500">{isRefugeRestroom?'Refuge Restrooms':`OpenStreetMap ${restroom.osm_type}`} #{restroom.id}</p></div>
+      <div><h2 id={titleId} className="text-xl font-bold">Add a review</h2><p className="mt-1 break-words font-semibold text-teal-800">{restroom.name}</p></div>
       <button type="button" autoFocus onClick={onClose} aria-label="Close review modal" className="pill"><X size={18}/></button>
     </div>
     <p id={descriptionId} className="mt-3 text-sm text-slate-600">Sign in to add a review. Each account can submit up to 3 reviews per UTC day (resets at midnight UTC). Reports are screened before publication. An administrator may send a private reply to your verified account email. The admin reply panel shows your user ID, not your email address. Describe your visit without including names or private information. Availability reports are not live verification.</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {Search} from 'lucide-react';
 import {apiFailureMessage} from '@/lib/user-messages';
 
@@ -16,6 +16,9 @@ function isSuggestion(value:unknown):value is Suggestion {
 
 export default function AddressSearch({value,onChange,onSelect,searching}:Props){
   const input=useRef<HTMLInputElement>(null);
+  const inputId=useId();
+  const suggestionsId=useId();
+  const helpId=useId();
   const [open,setOpen]=useState(false);
   const [suggestions,setSuggestions]=useState<Suggestion[]>([]);
   const [loading,setLoading]=useState(false);
@@ -58,12 +61,14 @@ export default function AddressSearch({value,onChange,onSelect,searching}:Props)
   const expanded=open&&eligible&&!searching;
   return <>
     <div className="relative min-w-52 flex-1">
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
+      <label htmlFor={inputId} className="mb-1 block text-sm font-medium">US city, address, or ZIP code</label>
+      <p id={helpId} className="sr-only">Use the up and down arrow keys to browse address suggestions, Enter to select, and Escape to dismiss.</p>
+      <div className="flex items-center gap-2 rounded-xl border border-slate-500 px-3">
         <Search size={19} aria-hidden="true"/>
-        <input ref={input} role="combobox" aria-autocomplete="list" aria-expanded={expanded}
-          aria-controls="address-suggestions" aria-activedescendant={expanded&&active>=0?`address-suggestion-${active}`:undefined}
-          aria-label="US city, address, or ZIP code" autoComplete="off" maxLength={200}
-          className="min-w-0 flex-1 py-3 outline-none" placeholder="City, address, or ZIP code" value={value}
+        <input ref={input} id={inputId} role="combobox" aria-autocomplete="list" aria-expanded={expanded}
+          aria-controls={expanded?suggestionsId:undefined} aria-activedescendant={expanded&&active>=0&&suggestions[active]?`${suggestionsId}-${active}`:undefined}
+          aria-describedby={helpId} autoComplete="off" maxLength={200}
+          className="min-w-0 flex-1 rounded py-3" placeholder="City, address, or ZIP code" value={value}
           onFocus={()=>setOpen(true)} onBlur={()=>setOpen(false)}
           onChange={e=>{onChange(e.target.value);setSuggestions([]);setActive(-1);setOpen(true)}}
           onKeyDown={e=>{
@@ -78,8 +83,9 @@ export default function AddressSearch({value,onChange,onSelect,searching}:Props)
         {loading&&<p role="status" className="p-3 text-sm text-slate-500">Finding address suggestions...</p>}
         {error&&<p role="status" className="p-3 text-sm text-amber-900">{error}</p>}
         {!loading&&!error&&!suggestions.length&&<p role="status" className="p-3 text-sm text-slate-500">No matching US addresses found.</p>}
-        <ul id="address-suggestions" role="listbox" aria-label="Address suggestions">
-          {suggestions.map((suggestion,index)=><li key={`${suggestion.label}-${index}`} id={`address-suggestion-${index}`}
+        {!loading&&!error&&suggestions.length>0&&<p role="status" className="sr-only">{suggestions.length} address suggestions available.</p>}
+        <ul id={suggestionsId} role="listbox" aria-label="Address suggestions" aria-busy={loading}>
+          {suggestions.map((suggestion,index)=><li key={`${suggestion.label}-${index}`} id={`${suggestionsId}-${index}`}
             role="option" aria-selected={index===active} onMouseDown={e=>e.preventDefault()}
             onMouseEnter={()=>setActive(index)} onClick={()=>select(suggestion)}
             className={`cursor-pointer rounded-lg p-3 text-sm ${index===active?'bg-teal-50 text-teal-900':'hover:bg-slate-50'}`}>
