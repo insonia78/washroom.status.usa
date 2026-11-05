@@ -4,7 +4,8 @@ import {X} from 'lucide-react';
 import type {Restroom} from '@/components/RestroomDetails';
 import {clearContributionContext,useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
-import {acceptedPhotoTypes,maxPhotoInputBytes,maxPhotoUploadBytes,preparePhoto} from '@/lib/photo-preparation';
+import {maxPhotoUploadBytes} from '@/lib/photo-preparation';
+import PhotoPicker from '@/components/PhotoPicker';
 
 const issueOptions=[['dirty_floor','Dirty floors'],['broken_fixture','Broken fixture'],['odor','Bad odor'],['missing_supplies','Missing supplies'],['other','Other issue']];
 
@@ -106,26 +107,8 @@ export default function ReviewModal({restroom,userLocation,onClose}:{restroom:Re
         <fieldset disabled={sending}><legend className="text-sm font-medium">Clean or Dirty Status: What condition was it in? (required)</legend><div className="mt-2 flex flex-wrap gap-2">{[['excellent','Excellent'],['clean','Clean'],['average','Average'],['poor','Poor'],['very_dirty','Very Dirty']].map(([value,label])=><label key={value} className="pill text-sm"><input required type="radio" name={`${questionId}-condition`} value={value} checked={cleanlinessStatus===value} onChange={()=>setCleanlinessStatus(value)} className="mr-2"/>{label}</label>)}</div></fieldset>
         <fieldset disabled={sending}><legend className="text-sm font-medium">Problems noticed (optional)</legend><div className="mt-2 flex flex-wrap gap-2">{issueOptions.map(([key,label])=><label key={key} className="pill text-xs"><input type="checkbox" checked={issues.includes(key)} onChange={event=>setIssues(previous=>event.target.checked?[...previous,key]:previous.filter(value=>value!==key))} className="mr-2"/>{label}</label>)}</div></fieldset>
         <label className="block text-sm font-medium">Details (optional)<textarea disabled={sending} maxLength={1000} value={comment} onChange={event=>setComment(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Describe what you observed without identifying other restroom users"/></label>
-        <div><label className="block text-sm font-medium">Photos (optional, up to 3; automatically compressed for upload)<input disabled={locked} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={async event=>{
-          const input=event.currentTarget;
-          const selected=[...(input.files??[])];
-          input.value='';
-          setMessage('');
-          if(photos.length+selected.length>3){setMessage('Choose no more than 3 photos.');return}
-          if(selected.some(file=>!acceptedPhotoTypes.includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
-            setMessage('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
-          }
-          setPreparingPhotos(true);
-          try{
-            const prepared=await Promise.all(selected.map(preparePhoto));
-            setPhotos(previous=>[...previous,...prepared]);
-          }
-          catch(error){setMessage(error instanceof Error?error.message:'Could not prepare the photos. Try another image.')}
-          finally{setPreparingPhotos(false)}
-        }} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm"/></label>
+        <div><PhotoPicker photos={photos} onChange={setPhotos} preparing={preparingPhotos} onPreparingChange={setPreparingPhotos} disabled={locked} onError={setMessage}/>
           <p className="mt-1 text-xs text-slate-600">If you attach photos, at least one must clearly show the business/restroom name or identifying sign. Reviews without this evidence may be rejected.</p>
-          {preparingPhotos&&<p role="status" className="mt-1 text-xs text-slate-500">Preparing photos...</p>}
-          {photos.length>0&&<ul className="mt-2 space-y-1 text-xs">{photos.map((photo,index)=><li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2"><span className="truncate">{photo.name}</span><button type="button" disabled={sending} onClick={()=>setPhotos(previous=>previous.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button></li>)}</ul>}
         </div>
         <button disabled={sending||!rating||!availability||!cleanlinessStatus} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Submitting...':'Submit for moderation'}</button>
       </fieldset></form>}

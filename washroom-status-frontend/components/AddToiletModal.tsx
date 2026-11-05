@@ -3,7 +3,7 @@ import {useEffect,useId,useRef,useState} from 'react';
 import {X} from 'lucide-react';
 import {clearContributionContext,useContributionAuth} from '@/lib/contribution-auth';
 import ContributionSignIn from '@/components/ContributionSignIn';
-import {acceptedPhotoTypes,maxPhotoInputBytes,preparePhoto} from '@/lib/photo-preparation';
+import PhotoPicker from '@/components/PhotoPicker';
 
 export default function AddToiletModal({coordinates,onClose}:{coordinates:[number,number];onClose:()=>void}){
   const dialog=useRef<HTMLDialogElement>(null);
@@ -100,25 +100,7 @@ export default function AddToiletModal({coordinates,onClose}:{coordinates:[numbe
         <label className="block text-sm font-medium">Wheelchair accessible<select value={wheelchair} onChange={event=>setWheelchair(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"><option value="unknown">Not sure</option><option value="yes">Yes</option><option value="no">No</option></select></label>
         <label className="block text-sm font-medium">Fee required<select value={fee} onChange={event=>setFee(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-3"><option value="unknown">Not sure</option><option value="yes">Yes</option><option value="no">No (free)</option></select></label>
         <label className="block text-sm font-medium">Access details (optional)<textarea maxLength={1000} value={notes} onChange={event=>setNotes(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3" placeholder="Entrance, opening hours, or how to find the toilet"/></label>
-        <div><label className="block text-sm font-medium">Photos (optional, up to 3; automatically compressed for upload)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={async event=>{
-          const input=event.currentTarget;
-          const selected=[...(input.files??[])];
-          input.value='';
-          setError('');
-          if(photos.length+selected.length>3){setError('Choose no more than 3 photos.');return}
-          if(selected.some(file=>!acceptedPhotoTypes.includes(file.type)||file.size<=0||file.size>maxPhotoInputBytes)){
-            setError('Choose JPEG, PNG, or WebP photos smaller than 12 MB each.');return;
-          }
-          setPreparingPhotos(true);
-          try{
-            const prepared=await Promise.all(selected.map(preparePhoto));
-            setPhotos(previous=>[...previous,...prepared]);
-          }catch(error){setError(error instanceof Error?error.message:'Could not prepare the photos. Try another image.')}
-          finally{setPreparingPhotos(false)}
-        }} className="mt-1 block w-full rounded-lg border border-slate-300 p-2 text-sm"/></label>
-          {preparingPhotos&&<p role="status" className="mt-1 text-xs text-slate-500">Preparing photos...</p>}
-          {photos.length>0&&<ul className="mt-2 space-y-1 text-xs">{photos.map((photo,index)=><li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2"><span className="truncate">{photo.name}</span><button type="button" disabled={sending} onClick={()=>setPhotos(previous=>previous.filter((_,photoIndex)=>photoIndex!==index))} className="shrink-0 underline">Remove</button></li>)}</ul>}
-        </div>
+        <PhotoPicker photos={photos} onChange={setPhotos} preparing={preparingPhotos} onPreparingChange={setPreparingPhotos} disabled={sending||checking||!session} onError={setError}/>
         <button disabled={!name.trim()||sending||preparingPhotos||checking||!session} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{sending?'Saving...':'Submit for moderation'}</button>
       </fieldset>
     </form>:<div className="mt-4"><p role="status" className="rounded-xl bg-teal-50 p-3 text-teal-900">Thank you for your addition! Your toilet was saved and is awaiting moderation. It will not appear in nearby results yet. Returning to the main page in 5 seconds...</p><button type="button" onClick={onClose} className="mt-4 rounded-xl bg-teal-700 px-5 py-3 font-bold text-white">Done</button></div>}

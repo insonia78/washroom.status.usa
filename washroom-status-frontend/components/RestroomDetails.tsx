@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {X,ShieldCheck} from 'lucide-react';
 import {formatDistance} from '@/lib/distance';
 import NavigationLinks from '@/components/NavigationLinks';
@@ -31,6 +31,13 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState('');
   const isRefugeRestroom=restroom.source==='refuge-restrooms';
+  const dialog=useRef<HTMLDialogElement>(null);
+  const titleId=useId();
+  useEffect(()=>{
+    const element=dialog.current;
+    if(element&&!element.open)element.showModal();
+    return()=>element?.close();
+  },[]);
   useEffect(()=>{
     let active=true;
     setLoading(true);
@@ -52,10 +59,18 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
       }).finally(()=>{if(active)setLoading(false)});
     return()=>{active=false};
   },[restroom.id,restroom.osm_type]);
-  return <section className="panel mt-5" aria-label="Restroom details">
+  return <dialog ref={dialog} aria-labelledby={titleId}
+    onCancel={event=>{event.preventDefault();onClose()}}
+    onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();onClose()}}}
+    onClick={event=>{
+      if(event.target!==event.currentTarget)return;
+      const bounds=event.currentTarget.getBoundingClientRect();
+      if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom)onClose();
+    }}
+    className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60 sm:p-6">
     <div className="flex items-start justify-between gap-3">
-      <div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">{isRefugeRestroom?'Refuge Restrooms listing':'Restroom details'}</p><h2 className="mt-1 text-2xl font-extrabold">{restroom.name}</h2><p className="mt-1 text-sm text-slate-500">{isRefugeRestroom?'Refuge Restrooms':`OpenStreetMap ${restroom.osm_type}`} #{restroom.id}</p></div>
-      <button onClick={onClose} aria-label="Close details" className="pill"><X size={18}/></button>
+      <div><p className="text-xs font-bold uppercase tracking-wider text-teal-700">{isRefugeRestroom?'Refuge Restrooms listing':'Restroom details'}</p><h2 id={titleId} className="mt-1 break-words text-2xl font-extrabold">{restroom.name}</h2><p className="mt-1 text-sm text-slate-500">{isRefugeRestroom?'Refuge Restrooms':`OpenStreetMap ${restroom.osm_type}`} #{restroom.id}</p></div>
+      <button type="button" autoFocus onClick={onClose} aria-label="Close details" className="pill"><X size={18}/></button>
     </div>
     <p className="mt-3 text-sm font-semibold text-amber-800">{restroomLabel(restroom)}</p>
     {isRefugeRestroom&&restroom.created_at&&<p className="mt-2 text-sm text-slate-600">Added {new Date(restroom.created_at).toLocaleDateString('en-US')}</p>}
@@ -85,5 +100,5 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
         </div>}
         <p className="mt-2 break-all text-xs text-slate-500">Review ID: {review.id}</p></article>)}</div>}</div>
     <OwnerResponses key={`${restroom.osm_type}-${restroom.id}`} restroom={restroom}/>
-  </section>;
+  </dialog>;
 }
