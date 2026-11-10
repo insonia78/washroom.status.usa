@@ -28,7 +28,15 @@ Deno.test("gateway forwards public place requests with internal authorization to
     if (url.hostname === "redis.example") {
       return Response.json({ result: [1, 199, 60] });
     }
-    if (["/rest/v1/rpc/find_nearby_fuel", "/rest/v1/rpc/find_nearby_supermarkets"].includes(url.pathname)) {
+    if (url.pathname === "/rest/v1/rpc/find_nearby_businesses") {
+      const body = await request.json();
+      if (request.method !== "POST" ||
+        !["fuel", "supermarket"].includes(body.business_kind) ||
+        body.search_latitude !== 39.9526 || body.search_longitude !== -75.1652 ||
+        body.radius_meters !== 1000 || body.result_limit !== 201 ||
+        request.headers.get("Content-Profile") !== "app_locations") {
+        throw new Error("Business searches must use bounded RPCs in the private location schema.");
+      }
       return Response.json([]);
     }
     if (url.pathname === "/rest/v1/review_locations" || url.pathname.startsWith("/storage/v1/object/")) {
@@ -49,10 +57,14 @@ Deno.test("gateway forwards public place requests with internal authorization to
       }
       return await placesApi.fetch(request);
     }
-    if (url.pathname === "/rest/v1/restrooms") {
+    if (url.pathname === "/rest/v1/rpc/find_nearby_restrooms") {
       databaseCalls += 1;
-      if (!url.searchParams.get("select")?.split(",").includes("opening_hours")) {
-        throw new Error("Places API must load opening hours for the map filters.");
+      const body = await request.json();
+      if (request.method !== "POST" ||
+        body.search_latitude !== 39.9526 || body.search_longitude !== -75.1652 ||
+        body.radius_meters !== 1000 || body.result_limit !== 201 ||
+        request.headers.get("Content-Profile") !== "app_locations") {
+        throw new Error("Restroom searches must preserve the origin, radius and candidate cap.");
       }
       return Response.json([{
         osm_type: "way",

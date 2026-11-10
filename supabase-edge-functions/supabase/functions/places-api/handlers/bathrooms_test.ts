@@ -45,6 +45,10 @@ Deno.test("nearby searches merge stored restrooms, businesses, and Refuge Restro
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
     if (url.origin === "https://project.example") {
+      if (url.pathname.startsWith("/storage/v1/object/")) {
+        assert(init?.method === "POST", "Provider archives use Storage uploads, not database queries")
+        return new Response(null, { status: 201 })
+      }
       const profile = init?.method === "POST" ? "Content-Profile" : "Accept-Profile"
       assert(new Headers(init?.headers).get(profile) === "app_locations", "Every database search/RPC/write uses the private location schema")
       if (url.pathname === "/rest/v1/review_locations") {
