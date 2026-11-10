@@ -24,12 +24,29 @@ Do not rerun the historical `public.*` setup SQL below after cutover. Moderator
 and administrator allowlist inserts must then target `app_locations`, not `public`.
 
 1. Run `npm ci` and `npm run build`.
-2. In Vercel, import this Next.js project. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` using your existing Supabase project. Do not configure `SUPABASE_SERVICE_ROLE_KEY` in Next.js: database access now belongs to the edge backend only.
+2. In Vercel, import this repository and set **Settings > Build and Deployment > Root Directory** to `washroom-status-frontend`, with **Framework Preset: Next.js**. Use `npm ci` for installation, `npm run build` for the build, and the default Next.js output settings. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` using your existing Supabase project. Do not configure `SUPABASE_SERVICE_ROLE_KEY` in Next.js: database access now belongs to the edge backend only.
 3. Do not upload `.env.local` to GitHub or the ZIP. For local testing, create your own `.env.local` from `.env.example`.
 4. Deploy `frontend-api`, `places-api`, then the updated `gateway` using the checked-in Supabase config. Set `PLACES_API_URL` to `https://<project>.supabase.co/functions/v1/places-api`, `FRONTEND_API_URL` to `https://<project>.supabase.co/functions/v1/frontend-api`, and configure the same `GATEWAY_INTERNAL_SECRET` for all three functions. Backend functions need `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in their edge-function environment. Keep internal/database secrets out of Next.js. `FRONTEND_API_URL` can also be derived as a sibling of the configured Places API URL.
 5. Restroom requests follow `browser -> /api/restrooms -> gateway/places/bathrooms -> places-api/bathrooms`. The gateway URL defaults to `NEXT_PUBLIC_SUPABASE_URL/functions/v1/gateway`; set server-only `WASHROOM_GATEWAY_URL` to override it. Confirm `/api/restrooms?lat=39.9526&lon=-75.1652` returns locations and that map pins, accessible/free filters and opening hours work. Searches default to five miles and combine stored restrooms, imported gas stations and supermarkets with live Refuge Restrooms. Imported Refuge copies preserve their provider identity and are deduplicated against live results. The `/places/overpass` route is removed; there is no live Overpass fallback.
 6. OpenFreeMap requires no map API key or billing setup. Verify the Liberty basemap and visible attribution load, that multiple markers and filters work, and that selecting a result recenters the map and offers Google Maps directions. Verify reviews, city searches and magic-link sign-in through `/gateway/frontend/*`. No direct-provider fallback exists. A missing deployment returns 404. Application data calls stay same-origin through the gateway; MapLibre loads map resources from `https://tiles.openfreemap.org`. The frontend CSP permits this host and the bundled same-origin map worker. Obsolete Google/HERE map environment variables can be removed from deployment settings.
 7. Production readiness: verify tile-provider traffic terms and replace public demo geocoding at scale; consider shared geocoding caching; configure privacy/terms, retention, monitoring and recovery procedures. Gateway IP quotas, account daily submission caps and moderation controls are implemented, but require their secrets, migrations and allowlists. Verify them in the target environment rather than treating source code or CI success as proof of deployment.
+
+## Vercel Python entrypoint error after registration retirement
+
+`PYTHON_ENTRYPOINT_NOT_FOUND` means the deployment is attempting to build a
+Python web application. The registration API was retired; do not add a dummy
+Python entrypoint or point Vercel at the ETL to make this build succeed.
+
+For the website project, select root directory `washroom-status-frontend` and
+the Next.js preset, remove any old Python-specific build/install/output
+overrides, then create a new deployment from the latest commit.
+If the failing project was dedicated to the old registration API, disconnect
+its Git integration or delete that obsolete Vercel project instead; do not
+delete the active website project.
+
+The monthly ETL is a CLI scheduled by
+[GitHub Actions](../.github/workflows/monthly-refuge-etl.yml), not a Vercel web
+service. Keep its GitHub environment secrets; it needs no ASGI/WSGI entrypoint.
 
 ## Review authentication and historical migrations
 
