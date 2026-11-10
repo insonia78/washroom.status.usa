@@ -20,17 +20,10 @@ export const defaultCorsHeaders = {
 export const FUNCTION_NAME = "gateway";
 export const FUNCTION_BASE_PATH = `/functions/v1/${FUNCTION_NAME}`;
 export const FUNCTION_PATH_PREFIXES = [FUNCTION_BASE_PATH, `/${FUNCTION_NAME}`];
-export const registrationApiUrl = Deno.env.get("WASHROOM_REGISTRATION_API_URL");
-export const turnstileProtectionEnabled = false;
-export const turnstileSecretKey = Deno.env.get("TURNSTILE_SECRET_KEY");
-export const turnstileVerifyUrl = Deno.env.get("TURNSTILE_VERIFY_URL") ??
-  "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 export const jwtCreatorUrl = Deno.env.get("JWT_CREATOR_URL");
 export const jwtValidatorUrl = Deno.env.get("JWT_VALIDATOR_URL");
 export const gatewayInternalSecret = Deno.env.get("GATEWAY_INTERNAL_SECRET");
 export const CONTAINER_HOSTNAME = "host.docker.internal";
-export const adminRole = "admin";
-export const defaultRetryDelayMs = 250;
 
 // Derives a sibling edge-function URL by replacing the final path segment.
 export function deriveSiblingFunctionUrl(

@@ -94,7 +94,7 @@ Deno.test("proxy preserves JSON, text, binary, streams and no-body responses", a
 Deno.test("proxy URL construction preserves service routing and local fallback", async () => {
   assert(extractProxyPath("/functions/v1/gateway/places/bathrooms") === "/places/bathrooms",
     "Remove deployed gateway prefix");
-  assert(extractProxyPath("/gateway/accounts") === "/accounts", "Remove local gateway prefix");
+  assert(extractProxyPath("/gateway/frontend/reviews") === "/frontend/reviews", "Remove local gateway prefix");
   const target = buildTargetUrl("http://localhost:8000/functions/v1/places-api",
     "/places/bathrooms", "?lat=40", SERVICES.PLACES);
   assert(target.pathname === "/functions/v1/places-api/bathrooms", "Strip places prefix");

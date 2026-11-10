@@ -35,27 +35,19 @@ Deno.test("private review replies expose admin reads and saved reply actions but
   assertFalse(findRoute("/frontend/review-replies"));
 });
 
-Deno.test("supportedRoutes allow washroom places lookups and account deactivation", () => {
+Deno.test("supportedRoutes allow washroom places lookups", () => {
   const bathroomsRoute = findRoute("/places/bathrooms");
-  const deactivateRoute = findRoute("/accounts/deactivate");
 
   assert(bathroomsRoute);
-  assert(deactivateRoute);
   assertEquals(bathroomsRoute.methods.sort(), ["GET", "POST"]);
-  assertEquals(deactivateRoute.methods, ["POST"]);
 });
 
-Deno.test("supportedRoutes allow administrator authentication routes", () => {
-  const accessRoute = findRoute("/admin/access");
-  const loginRoute = findRoute("/admin/login");
-  const createPasswordRoute = findRoute("/admin/create-password");
-
-  assert(accessRoute);
-  assert(loginRoute);
-  assert(createPasswordRoute);
-  assertEquals(accessRoute.methods, ["POST"]);
-  assertEquals(loginRoute.methods, ["POST"]);
-  assertEquals(createPasswordRoute.methods, ["POST"]);
+Deno.test("supportedRoutes keep Supabase authentication and legacy JWT logout", () => {
+  for (const action of ["otp", "verify", "token", "logout"]) {
+    assertEquals(findRoute(`/frontend/auth/v1/${action}`)?.methods, ["POST"]);
+  }
+  assertEquals(findRoute("/frontend/auth/v1/user")?.methods, ["GET", "PUT"]);
+  assertEquals(findRoute("/auth/logout")?.methods, ["POST"]);
 });
 
 Deno.test("supportedRoutes no longer expose removed provider or legacy routes", () => {

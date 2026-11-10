@@ -4,7 +4,6 @@ import {
   FUNCTION_PATH_PREFIXES,
   jwtRevokeUrl,
   placesApiUrl,
-  registrationApiUrl,
 } from "./config.ts";
 import { SERVICES } from "./models.ts";
 import { supportedRoutes } from "./supported-routes.ts";
@@ -33,14 +32,6 @@ export function inferService(proxyPath: string): SERVICES | null {
   if (proxyPath.startsWith(`/${SERVICES.FRONTEND}/`)) {
     return SERVICES.FRONTEND;
   }
-  if (proxyPath.startsWith(`/${SERVICES.ACCOUNTS}`)) {
-    return SERVICES.ACCOUNTS;
-  }
-
-  if (proxyPath.startsWith(`/${SERVICES.ADMIN}`)) {
-    return SERVICES.ADMIN;
-  }
-
   if (proxyPath.startsWith(`/${SERVICES.PLACES}`)) {
     return SERVICES.PLACES;
   }
@@ -57,10 +48,6 @@ export function resolveBackendUrl(service: SERVICES | null): string | null {
   if (service === SERVICES.FRONTEND) {
     return frontendApiUrl ?? null;
   }
-  if (service === SERVICES.ACCOUNTS || service === SERVICES.ADMIN) {
-    return registrationApiUrl ?? null;
-  }
-
   if (service === SERVICES.PLACES) {
     return placesApiUrl ?? null;
   }
@@ -69,7 +56,7 @@ export function resolveBackendUrl(service: SERVICES | null): string | null {
     return jwtRevokeUrl ?? null;
   }
 
-  return registrationApiUrl ?? null;
+  return null;
 }
 
 // Combines the backend base path, proxy route, and query string into the target URL.
@@ -122,32 +109,7 @@ export function buildContainerReachableBackendUrl(baseUrl: string) {
   return parsedUrl.toString();
 }
 
-// Identifies the administrator login route for specialized gateway handling.
-export function isAdminLoginPath(proxyPath: string) {
-  return proxyPath === "/admin/login";
-}
-
-// Identifies the administrator access-check route.
-export function isAdminAccessPath(proxyPath: string) {
-  return proxyPath === "/admin/access";
-}
-
-// Identifies the administrator password-setup route.
-export function isAdminCreatePasswordPath(proxyPath: string) {
-  return proxyPath === "/admin/create-password";
-}
-
-// Identifies the account deactivation route.
-export function isAccountDeactivatePath(proxyPath: string) {
-  return proxyPath === "/accounts/deactivate";
-}
-
 // Identifies unauthenticated place-search routes.
 export function isPublicPlacesPath(proxyPath: string) {
   return /^\/places\/bathrooms\/?$/.test(proxyPath);
-}
-
-// Identifies the account login route.
-export function isAccountLoginPath(proxyPath: string) {
-  return proxyPath === "/accounts/login";
 }

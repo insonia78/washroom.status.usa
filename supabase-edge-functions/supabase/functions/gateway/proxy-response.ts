@@ -1,4 +1,3 @@
-import { appendTokenForAccountRoutes } from "./account-token.ts";
 import {
   buildProxiedResponse,
   buildResponseHeaders,
@@ -7,7 +6,7 @@ import {
   shouldProxyRawResponseBody,
   summarizeProxiedBody,
 } from "./http.ts";
-import { logGatewayEvent, summarizeBodyPayload } from "./logging.ts";
+import { logGatewayEvent } from "./logging.ts";
 import { SERVICES } from "./models.ts";
 
 export async function respondToBackend(
@@ -66,27 +65,6 @@ export async function respondToBackend(
     ),
     durationMs: Date.now() - startedAt,
   });
-
-  if (service === SERVICES.ACCOUNTS && backendResponse.ok) {
-    const payloadWithToken = await appendTokenForAccountRoutes(
-      req,
-      responseBody,
-    );
-
-    logGatewayEvent("info", "accounts.token-appended", {
-      requestId,
-      proxyPath,
-      tokenAdded: payloadWithToken !== responseBody,
-      ...summarizeBodyPayload(payloadWithToken),
-    });
-
-    return buildProxiedResponse(
-      req,
-      backendResponse.status,
-      responseHeaders,
-      payloadWithToken,
-    );
-  }
 
   return buildProxiedResponse(
     req,

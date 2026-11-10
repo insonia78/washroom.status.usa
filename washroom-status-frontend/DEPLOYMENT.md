@@ -18,7 +18,7 @@ too. See [the complete quota contract](../API.md#per-ip-request-limit).
 It moves existing data, rather than copying/deleting it. Accounts/connections use
 `app_accounts`; all location-related data use `app_locations`; managed Supabase
 Auth stays in `auth`. Follow the coordinated backup, traffic pause, hosted
-Data API schema configuration, backend/registration-service deployment and
+Data API schema configuration, backend deployment and
 verification steps in [the edge deployment guide](../supabase-edge-functions/README.md#data-preserving-private-schema-migration).
 Do not rerun the historical `public.*` setup SQL below after cutover. Moderator
 and administrator allowlist inserts must then target `app_locations`, not `public`.
@@ -204,8 +204,8 @@ npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions
 
 The [CI workflow](../.github/workflows/ci.yml) runs frontend typechecking, the
 repository-wide 200-line source cap, Node tests, a production build, all Deno
-tests, Python registration unittests, and Python ETL tests against a dedicated
-PostgreSQL database. Its final job waits for all four check jobs and runs Chromium journeys
+tests, and Python ETL tests against a dedicated PostgreSQL database. Its final
+job waits for all three check jobs and runs Chromium journeys
 through the production Next.js server, gateway and actual edge handlers to a
 fresh local Supabase stack (PostgreSQL/PostGIS, Auth, REST and Storage) and Redis.
 No hosted project credentials or production secrets are needed.

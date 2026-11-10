@@ -1,84 +1,25 @@
-﻿# Live tests for the deployed `gateway` edge function.
-# Requires the VS Code "REST Client" extension (humao.rest-client).
-# IP limiting: unsigned direct requests below now return 403 before routing.
-# Use the deployed Next.js adapters for live client tests, e.g.
-# GET https://YOUR_APP/api/restrooms?zip=40385
-# Only OPTIONS preflights bypass signed IP verification. Project API keys and
-# user JWTs do not replace the dedicated server-generated IP assertion.
-#
-# Values are read from ./.env (gitignored). Add these keys there:
-#   SUPABASE_ANON_KEY=<project anon/publishable key>
-#   TEST_EMAIL=<an existing account email>
-#   TEST_PASSWORD=<that account's password>
-#
-# /places/bathrooms needs no user login but does require a trusted IP assertion.
-# Run "Login" before logout; it reuses the token.
+# Live checks using the VS Code REST Client extension (humao.rest-client).
+# Set these public deployment URLs; no passwords or tokens are needed.
+# Application adapters sign the trusted client IP server-side.
+@appUrl = https://YOUR_APP
+@gatewayUrl = https://YOUR_PROJECT_REF.supabase.co/functions/v1/gateway
 
-@baseUrl = https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/gateway
-@anonKey = {{$dotenv SUPABASE_ANON_KEY}}
-@email = {{$dotenv TEST_EMAIL}}
-@password = {{$dotenv TEST_PASSWORD}}
-@token = {{login.response.body.token}}
+### Public restroom search through the signed-IP adapter
+GET {{appUrl}}/api/restrooms?lat=39.9526&lon=-75.1652&radius=1500
 
-### Health check (GET only - the route rejects POST with 405)
-GET {{baseUrl}}/health
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
+### ZIP search through the adapter
+GET {{appUrl}}/api/restrooms?zip=40385&radius=1500
 
-### Bathrooms by ZIP - public
-POST {{baseUrl}}/places/bathrooms
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
+### Expected 403: direct gateway calls lack a signed-IP assertion
+GET {{gatewayUrl}}/places/bathrooms?lat=39.9526&lon=-75.1652&radius=1500
 
-{
-  "zip": "40385",
-  "radius": "1500"
-}
+### Expected 200: preflights bypass quota and do not call a backend
+OPTIONS {{gatewayUrl}}/places/bathrooms
+Origin: {{appUrl}}
+Access-Control-Request-Method: GET
 
-### Bathrooms by coordinates - public
-POST {{baseUrl}}/places/bathrooms
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
-
-{
-  "lat": "50.7506",
-  "lon": "-73.9972",
-  "radius": "1500"
-}
-
-### Account access state
-POST {{baseUrl}}/accounts/access
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
-
-{
-  "email": "{{email}}"
-}
-
-### Login (returns a gateway JWT in `token`)
-# @name login
-POST {{baseUrl}}/accounts/login
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
-
-{
-  "email": "{{email}}",
-  "password": "{{password}}"
-}
-
-### Expect 404 - legacy weather route is no longer exposed
-POST {{baseUrl}}/weather/dashboard
-apikey: {{anonKey}}
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
-
-{}
-
-### Logout (revokes the token)
-POST {{baseUrl}}/auth/logout
-apikey: {{anonKey}}
-Authorization: Bearer {{token}}
+# Legacy /accounts/*, /admin/access, /admin/login, /admin/create-password
+# and /health no longer exist. With a trusted assertion they return 404;
+# unsigned direct requests still return 403 before route matching.
+# Use the application's Supabase magic-link flow for contribution/dashboard
+# sign-in; /frontend/auth/v1/logout is separate from legacy JWT /auth/logout.

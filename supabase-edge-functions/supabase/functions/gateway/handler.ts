@@ -1,8 +1,3 @@
-import { buildAccountDeactivateResponse } from "./account-deactivate.ts";
-import { buildAccountLoginResponse } from "./account-login.ts";
-import { buildAdminAccessResponse } from "./admin-access.ts";
-import { buildAdminLoginResponse } from "./admin-login.ts";
-import { buildAdminCreatePasswordResponse } from "./admin-password.ts";
 import { buildCorsHeaders, jsonResponse } from "./http.ts";
 import {
   buildRequestLogContext,
@@ -14,18 +9,11 @@ import { SERVICES } from "./models.ts";
 import { fetchBackendResponse } from "./proxy.ts";
 import { respondToBackend } from "./proxy-response.ts";
 import { resolveProxyRequest } from "./resolve-request.ts";
-import {
-  isAccountDeactivatePath,
-  isAccountLoginPath,
-  isAdminAccessPath,
-  isAdminCreatePasswordPath,
-  isAdminLoginPath,
-  isPublicPlacesPath,
-} from "./routing.ts";
+import { isPublicPlacesPath } from "./routing.ts";
 import type { VerifiedToken } from "./utils.ts";
 import { verifyTokenWithValidator } from "./verify-token-validator.ts";
 
-// Authorizes routes, performs specialized auth flows, then proxies requests and responses.
+// Authorizes routes and proxies requests and responses.
 export async function handleGatewayRequest(req: Request): Promise<Response> {
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
@@ -60,26 +48,7 @@ export async function handleGatewayRequest(req: Request): Promise<Response> {
       });
     }
 
-    if (service === SERVICES.ADMIN && isAdminAccessPath(proxyPath)) {
-      return await buildAdminAccessResponse(req, requestBody);
-    }
-
-    if (service === SERVICES.ACCOUNTS && isAccountLoginPath(proxyPath)) {
-      return await buildAccountLoginResponse(req, requestBody);
-    }
-
-    if (service === SERVICES.ADMIN && isAdminLoginPath(proxyPath)) {
-      return await buildAdminLoginResponse(req, requestBody);
-    }
-
-    if (service === SERVICES.ADMIN && isAdminCreatePasswordPath(proxyPath)) {
-      return await buildAdminCreatePasswordResponse(req, requestBody);
-    }
-
-    if (
-      (service === SERVICES.ACCOUNTS && isAccountDeactivatePath(proxyPath)) ||
-      (service === SERVICES.PLACES && !isPublicPlacesPath(proxyPath))
-    ) {
+    if (service === SERVICES.PLACES && !isPublicPlacesPath(proxyPath)) {
       logGatewayEvent("info", "token.validation.started", {
         requestId,
         proxyPath,
@@ -110,10 +79,6 @@ export async function handleGatewayRequest(req: Request): Promise<Response> {
             verifiedToken.payload.sub.length > 0,
         ),
       });
-    }
-
-    if (service === SERVICES.ACCOUNTS && isAccountDeactivatePath(proxyPath)) {
-      return await buildAccountDeactivateResponse(req, verifiedToken);
     }
 
     const backendResponse = await fetchBackendResponse(

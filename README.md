@@ -33,7 +33,7 @@ remain unconfirmed.
 
 ```text
 Browser -> Next.js adapters -> Supabase gateway -> Places / frontend APIs
-                                              -> Python account API / JWT functions
+                                              -> legacy JWT logout
 Backends -> Supabase PostgreSQL/PostGIS, Auth and private Storage
 Gateway -> Upstash Redis
 Monthly Python ETL -> private Refuge archives -> app_locations.restrooms
@@ -47,8 +47,16 @@ database URLs, and gateway secrets server-only.
 - [Deployment checklist](washroom-status-frontend/DEPLOYMENT.md)
 - [Edge functions and schema migration](supabase-edge-functions/README.md)
 - [API contracts and IP quotas](API.md)
-- [Python registration API](registration-api-python/README.md)
 - [Monthly ETL setup and retry semantics](registration-api-python/etl/README.md)
+
+The legacy Python account API routes (`/accounts/*`, `/admin/access`,
+`/admin/login`, `/admin/create-password`, and its `/health` proxy) are retired.
+With a valid signed-IP assertion they return 404 without backend forwarding.
+Supabase magic-link sign-in and `/frontend/admin/*` remain supported. Remove
+`WASHROOM_REGISTRATION_API_URL` from gateway secrets after redeploying; the
+gateway no longer reads it. Existing database records and JWT functions are
+not removed by this routing cleanup. The Python ETL remains under the historical
+`registration-api-python/etl` directory; it is independent of the retired API.
 
 Migrations, secrets, allowlists, and service deployments must be configured
 explicitly. Checked-in functionality does not establish that it is enabled in a
@@ -58,7 +66,7 @@ not be rerun after the private-schema cutover.
 ## Validation and remaining work
 
 The [CI workflow](.github/workflows/ci.yml) checks frontend types, tests and build,
-Deno functions, Python registration, real PostgreSQL ETL integration, and vertical
+Deno functions, real PostgreSQL ETL integration, and vertical
 Chromium journeys through an isolated Supabase/Redis stack. External providers
 are substituted; these tests do not certify hosted production configuration.
 

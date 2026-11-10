@@ -67,9 +67,7 @@ export function buildProxyHeaders(
 
   if (
     (
-      service === SERVICES.ACCOUNTS ||
       service === SERVICES.AUTH ||
-      service === SERVICES.ADMIN ||
       service === SERVICES.FRONTEND ||
       service === SERVICES.PLACES
     ) &&

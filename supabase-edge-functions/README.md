@@ -100,15 +100,32 @@ and `supabase\tests\review_replies.sql` against an isolated migrated test databa
 
 | Function | Purpose |
 | --- | --- |
-| `gateway` | Public API entry point. Routes place, account, review, and authentication requests to the appropriate backend. |
+| `gateway` | Public API entry point. Routes place, review, application dashboard and Supabase authentication requests, plus legacy JWT logout. |
 | `places-api` | Handles restroom searches and related place data. Requests are authorized by the gateway. |
-| `frontend-api` | Handles frontend-facing account and review operations. Requests are authorized by the gateway. |
+| `frontend-api` | Handles Supabase Auth proxying, reviews, contributions and dashboard operations. Requests are authorized by the gateway. |
 | `jwt-creator` | Creates application JWTs for gateway authentication flows. |
 | `jwt-validator` | Validates application or Supabase JWTs. |
 | `jwt-revoke` | Revokes application JWTs. |
 
 The gateway and its backend functions communicate using `GATEWAY_INTERNAL_SECRET`.
 Do not call the internal functions directly from the browser.
+
+### Retired registration API
+
+The gateway no longer calls the Python registration service. `/accounts/*`,
+`/accounts`, `/admin/access`, `/admin/login`, `/admin/create-password` and its
+`/health` proxy are removed. A trusted signed-IP request to these paths returns
+404; unsigned direct requests still return 403 at the IP boundary.
+Deploy the updated gateway, then remove `WASHROOM_REGISTRATION_API_URL` and any
+unused legacy `TURNSTILE_SECRET_KEY`/`TURNSTILE_VERIFY_URL` settings. They are no
+longer read. There is no password-login replacement at these paths: current
+contribution, admin, moderator and owner sign-in uses Supabase Auth.
+
+Current `/frontend/*` routes, `/places/bathrooms` and legacy `/auth/logout`
+remain supported. JWT functions and historical account/token database records
+are unchanged; do not drop those tables as part of this routing cleanup.
+The [monthly Python ETL](../registration-api-python/etl/README.md) is independent
+and remains supported.
 
 The JWT creator, validator, and revoker share direct PostgreSQL persistence in
 `app_accounts.jwt_tokens`, explicitly qualified independently of `search_path`.
@@ -174,7 +191,8 @@ Do not change migration history just to bypass mismatches.
 
 There is a coordinated cutover: the old functions expect `public`, whereas the
 new functions explicitly select their owning schema. Pause application traffic
-and account writes (including the registration service) during migration.
+and database writes (including scheduled ETL) during migration. Ensure any older
+registration service still deployed is stopped before the historical cutover.
 
 1. In hosted **Project Settings > Data API > Exposed schemas**, add `app_accounts`
    and `app_locations` **after the migration creates them**, then remove `public`
@@ -192,7 +210,7 @@ and account writes (including the registration service) during migration.
    ```
 
    Then apply the hosted Data API setting above before enabling the updated functions.
-3. Deploy all updated database consumers, including the registration API:
+3. Deploy all updated database consumers:
 
    ```powershell
    supabase functions deploy frontend-api
@@ -203,9 +221,10 @@ and account writes (including the registration service) during migration.
    supabase functions deploy gateway
    ```
 
-   Redeploy the Python registration service and Next.js frontend using their
-   existing deployment process. No new Supabase project URL or browser key is needed.
-4. Verify account registration/login/token revocation, stored restroom/business
+   Redeploy the Next.js frontend using its existing deployment process. The
+   retired registration service is not required. No new Supabase project URL
+   or browser key is needed.
+4. Verify Supabase magic-link sign-in and, if used, legacy token revocation, stored restroom/business
    search, public approved review reads, verified-account submissions,
    moderator/admin allowlists, owner responses and exact-coordinate toilet
    moderation before resuming traffic. Confirm both three-per-account UTC
@@ -288,7 +307,7 @@ and `GATEWAY_INTERNAL_SECRET` must never be committed or exposed to the browser.
 | `SUPABASE_JWT_SECRET` | `jwt-validator` | Optional signing secret for validating Supabase JWTs, if that validation path is used. |
 | `PLACES_API_URL` | `gateway` | URL of the deployed `places-api`; for example, `https://YOUR_PROJECT_REF.supabase.co/functions/v1/places-api`. |
 | `FRONTEND_API_URL` | `gateway` | URL of the deployed `frontend-api`; for example, `https://YOUR_PROJECT_REF.supabase.co/functions/v1/frontend-api`. |
-| `JWT_CREATOR_URL` | `gateway` | URL of `jwt-creator`. |
+| `JWT_CREATOR_URL` | `gateway` | Legacy base for deriving sibling function URLs; no account routes call the creator after retirement. Prefer explicit backend URLs. |
 | `JWT_VALIDATOR_URL` | `gateway` | URL of `jwt-validator`. |
 | `JWT_REVOKE_URL` | `gateway` | URL of `jwt-revoke`. |
 
@@ -308,18 +327,18 @@ Use your project's function base URL:
 https://YOUR_PROJECT_REF.supabase.co/functions/v1
 ```
 
-Check that the gateway responds:
+Use the deployed Next.js adapter to verify the complete signed-IP gateway path:
 
 ```text
-GET https://YOUR_PROJECT_REF.supabase.co/functions/v1/gateway/health
+GET https://YOUR_APP/api/restrooms?lat=39.9526&lon=-75.1652
 ```
 
 The live REST Client examples in
 [`supabase/functions/gateway.http`](./supabase/functions/gateway.http) cover
-the health route and public restroom searches. To run them, install the VS Code
-REST Client extension and provide `SUPABASE_ANON_KEY`, `TEST_EMAIL`, and
-`TEST_PASSWORD` in a local `.env` file as described at the top of that file.
-Never commit those values.
+public adapter searches, unsigned gateway denial and preflight handling.
+Install the VS Code REST Client extension and set the example application and
+project URLs. No test-account credentials are required. The former Python-backed
+gateway `/health` route is retired, not a readiness probe.
 
 For a frontend smoke test, follow the deployment and verification steps in
 [`washroom-status-frontend/DEPLOYMENT.md`](../washroom-status-frontend/DEPLOYMENT.md).

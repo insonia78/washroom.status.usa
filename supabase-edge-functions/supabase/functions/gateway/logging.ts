@@ -6,7 +6,6 @@ import {
   jwtCreatorUrl,
   jwtRevokeUrl,
   placesApiUrl,
-  registrationApiUrl,
 } from "./config.ts";
 
 export type LogLevel = "info" | "warn" | "error";
@@ -84,15 +83,11 @@ export function getErrorMessage(error: unknown) {
 // Summarizes configured backend URLs and secret presence for startup logging.
 export function getConfiguredBackendsSummary() {
   return {
-    hasRegistrationApiUrl: Boolean(registrationApiUrl),
     hasPlacesApiUrl: Boolean(placesApiUrl),
     hasFrontendApiUrl: Boolean(frontendApiUrl),
     hasJwtCreatorUrl: Boolean(jwtCreatorUrl),
     hasJwtRevokeUrl: Boolean(jwtRevokeUrl),
     hasGatewayInternalSecret: Boolean(gatewayInternalSecret),
-    registrationBackend: registrationApiUrl
-      ? summarizeBackendUrl(registrationApiUrl)
-      : null,
     placesBackend: placesApiUrl ? summarizeBackendUrl(placesApiUrl) : null,
     jwtRevokeBackend: jwtRevokeUrl ? summarizeBackendUrl(jwtRevokeUrl) : null,
   };

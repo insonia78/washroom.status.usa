@@ -352,8 +352,8 @@ Production requires explicit migration and deployment of `frontend-api`,
 With Node.js 24 (as used in CI), run `npm ci`, `npm run typecheck`, `npm test`
 and `npm run build`. Stop the development server before building to avoid
 overwriting its generated output. Node tests mock HTTP boundaries; Deno backend
-tests live with the functions. The five-job CI also tests Python registration,
-the Python ETL against real PostgreSQL, and vertical Chromium flows through
+tests live with the functions. The four-job CI also tests
+the Python ETL against real PostgreSQL and vertical Chromium flows through
 local Supabase and Redis. See [CI and vertical E2E](./DEPLOYMENT.md#ci-and-vertical-e2e)
 for prerequisites, substituted providers and local commands. Hosted production
 configuration still requires a deployed smoke check.

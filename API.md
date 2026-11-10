@@ -59,6 +59,20 @@ grants deny `anon`/`authenticated`. Service-role credentials remain server-only.
 
 ## Application gateway boundary
 
+### Retired registration routes
+
+The gateway no longer exposes `/accounts` or `/accounts/*`, `/admin/access`,
+`/admin/login`, `/admin/create-password`, or the Python-backed `/health`.
+Requests with a valid signed-IP assertion return 404 without calling the retired
+service; unsigned requests still fail the IP boundary with 403. These routes
+consume normal quota and `OPTIONS` retains its existing preflight behavior.
+`WASHROOM_REGISTRATION_API_URL` is no longer read.
+
+Use `/frontend/auth/v1/*` for the supported Supabase Auth flow and
+`/frontend/admin/*` for allowlisted application administration. These are not
+aliases for the old password-based API. Existing `/auth/logout` JWT revocation
+is unchanged; Supabase sessions use `/frontend/auth/v1/logout`.
+
 ### Per-IP request limit
 
 The gateway permits **200 requests per IP address per 60-second window**,
