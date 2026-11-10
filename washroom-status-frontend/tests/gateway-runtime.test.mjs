@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import './gateway-ip-env.mjs';
 import { afterEach, beforeEach, test } from 'node:test';
 import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { proxyGateway } from '../lib/gateway.ts';
 import { gatewayAuthFetch } from '../lib/gateway-auth-fetch.ts';
 import nextConfig from '../next.config.mjs';
@@ -92,7 +93,7 @@ test('application source has no direct database queries or external fetches outs
   for (const folder of ['app', 'components', 'lib']) {
     for (const entry of await readdir(new URL(folder, root), { recursive: true, withFileTypes: true })) {
       if (!entry.isFile() || !/\.(ts|tsx)$/.test(entry.name)) continue;
-      const file = `${entry.parentPath ?? entry.path}\\${entry.name}`;
+      const file = join(entry.parentPath, entry.name);
       const source = await readFile(file, 'utf8');
       assert.doesNotMatch(source, /\.from\s*\(/, file);
       assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY|serverSupabase/, file);

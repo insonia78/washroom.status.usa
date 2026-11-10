@@ -31,11 +31,11 @@ app.add_middleware(
     allowed_origins=allowed_inbound_origins,
 )
 
-# app.add_middleware(
-#     GatewayAuthMiddleware,
-#     public_paths={"/health", "/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"},
-#     protected_path_prefixes={"/accounts"},
-# )
+app.add_middleware(
+    GatewayAuthMiddleware,
+    public_paths={"/health", "/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"},
+    protected_path_prefixes={"/accounts"},
+)
 
 app.include_router(accounts_router)
 
