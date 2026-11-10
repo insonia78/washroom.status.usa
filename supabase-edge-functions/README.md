@@ -6,6 +6,27 @@ configuration. Deploy from this folder so the Supabase CLI finds
 
 ## Functions
 
+Gateway IP quota: configure Upstash Redis before deploying the gateway and
+frontend. All non-OPTIONS requests share an atomic
+40-request / 60-second window per IP across edge instances.
+The gateway uses `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and the
+dedicated `GATEWAY_IP_SIGNING_SECRET` (32+ random characters). Set that signing
+secret in the Next.js server environment too; never share backend credentials
+or use `NEXT_PUBLIC_*`. Next.js on Vercel signs a hash of the platform-provided
+client IP, and the gateway rejects missing/invalid assertions with 403.
+Use the Next.js adapters for all clients; unsigned direct gateway calls no
+longer work. Keep `GATEWAY_INTERNAL_SECRET` backend-only and distinct.
+Use the HTTPS REST URL and a read/write REST token from the Upstash console.
+Store Redis credentials only in Supabase Edge Function secrets.
+No PostgreSQL quota migration is required. Redis Lua `EVAL` atomically enforces
+the quota and gives each counter a 60-second TTL; use a dedicated database
+without eviction of active counters. Storage/configuration failures fail closed with 503.
+HTTP 429 includes `Retry-After`; quota headers are exposed for clients. No request
+counts or identity values are stored in localStorage or browser cookies. See
+[IP quota and proxy trust requirements](../API.md#per-ip-request-limit).
+Run `npx deno test --allow-env supabase\functions\gateway\ip-rate-limit_test.ts supabase\functions\gateway\ip-rate-store_test.ts`
+to verify enforcement and Redis REST error handling.
+
 Contribution authentication: `POST /frontend/reviews` and
 `POST /frontend/toilet-submissions` require verified, non-anonymous Supabase
 sessions. Public approved review reads and place searches remain unsigned.
@@ -236,6 +257,17 @@ supabase db push
 This migration adds the spatial search RPC used by Places API fuel searches. It
 is not a prerequisite for deploying the functions when fuel data has not been
 imported. See [the fuel import instructions](./scripts/README.md).
+
+### Supermarket searches
+
+Apply the supermarkets, schema-move, and supermarket-search migrations in
+order before deploying `places-api`. The private `app_locations.supermarkets`
+table is queried through the service-role-only `find_nearby_supermarkets`
+PostGIS RPC, which uses a geography index and paginates results. Existing rows,
+indexes, and the identity sequence are preserved when the table moves from
+`public`. The API merges supermarkets with the existing sources by OSM identity;
+stored restrooms and fuel take precedence. A supermarket listing does not
+confirm restroom availability or accessibility.
 
 ## Function secrets and configuration
 

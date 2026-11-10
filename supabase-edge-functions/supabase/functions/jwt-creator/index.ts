@@ -1,96 +1,13 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
-// Setup type definitions for built-in Supabase Runtime APIs
-// import "@supabase/functions-js/edge-runtime.d.ts";
+import { gatewayCallerHeader, gatewaySecretHeader, authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
+import { encoder, isJwtCreatorRequestBody, buildTokenRecord, persistTokenRecordIfConfigured } from "./token-record.ts";
 import { SignJWT } from "npm:jose@5";
-import {
-  isJwtTokenDatabaseConfigured,
-  jwtTokenDatabaseUrlEnvVar,
-  jwtTokenTableName,
-  saveJwtTokenRecord,
-} from "../_shared/jwt-token-store.ts";
-import {
-  authorizeGatewayRequest,
-  gatewayCallerHeader,
-  gatewaySecretHeader,
-} from "../_shared/gateway-auth.ts";
+import { requiredDatabaseFields } from "./database-fields.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": `authorization, x-client-info, apikey, content-type, ${gatewayCallerHeader}, ${gatewaySecretHeader}`,
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
-
-const jwtIssuer = "washroom-gateway";
-const jwtLifetimeSeconds = 2 * 60 * 60;
-const encoder = new TextEncoder();
-
-type JwtCreatorRequestBody = {
-  userId?: string;
-  role?: string;
-};
-
-type TokenRecordPayload = {
-  tokenId: string;
-  tokenSha: string;
-  userId: string;
-  role: string;
-  issuer: string;
-  issuedAt: number;
-  expiresAt: number;
-  revokedAt: number | null;
-};
-
-type TokenPersistenceResult = {
-  configured: boolean;
-  saved: boolean;
-  envVar: string;
-  tableName: string;
-};
-
-const requiredDatabaseFields = [
-  {
-    name: "token_id",
-    type: "uuid",
-    description: "Stores the JWT jti so each token can be uniquely tracked"
-  },
-  {
-    name: "token_sha",
-    type: "varchar(64)",
-    description: "Stores the SHA-256 fingerprint also included in the JWT payload as sha"
-  },
-  {
-    name: "user_id",
-    type: "varchar(255)",
-    description: "Associates the token with the authenticated user"
-  },
-  {
-    name: "role",
-    type: "varchar(100)",
-    description: "Persists the authorization role embedded in the token"
-  },
-  {
-    name: "issuer",
-    type: "varchar(100)",
-    description: "Stores the token issuer, currently washroom-gateway"
-  },
-  {
-    name: "issued_at",
-    type: "bigint",
-    description: "Unix timestamp for when the token was created"
-  },
-  {
-    name: "expires_at",
-    type: "bigint",
-    description: "Unix timestamp for when the token expires"
-  },
-  {
-    name: "revoked_at",
-    type: "bigint null",
-    description: "Optional revocation timestamp if the token is invalidated before expiry"
-  }
-] as const;
 
 // Creates a JSON response with the function's CORS headers.
 function jsonResponse(status: number, body: unknown) {
@@ -101,96 +18,6 @@ function jsonResponse(status: number, body: unknown) {
       "Content-Type": "application/json"
     }
   });
-}
-
-// Applies safe defaults and trims user and role values from the request.
-function normalizeRequestBody(body: JwtCreatorRequestBody) {
-  return {
-    userId: typeof body.userId === "string" && body.userId.trim() ? body.userId.trim() : "anonymous",
-    role: typeof body.role === "string" && body.role.trim() ? body.role.trim() : "user"
-  };
-}
-
-// Creates the SHA-256 fingerprint stored with a newly generated token.
-async function createTokenSha(input: {
-  userId: string;
-  role: string;
-  tokenId: string;
-  issuedAt: number;
-  expiresAt: number;
-}) {
-  const hashSource = JSON.stringify({
-    iss: jwtIssuer,
-    sub: input.userId,
-    role: input.role,
-    jti: input.tokenId,
-    iat: input.issuedAt,
-    exp: input.expiresAt
-  });
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(hashSource));
-  return Array.from(new Uint8Array(hashBuffer)).map((value: number)=>value.toString(16).padStart(2, "0")).join("");
-}
-
-// Builds the token claims and persistence record with a unique ID and lifetime.
-async function buildTokenRecord(body: JwtCreatorRequestBody): Promise<TokenRecordPayload> {
-  const normalizedBody = normalizeRequestBody(body);
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const expiresAt = issuedAt + jwtLifetimeSeconds;
-  const tokenId = crypto.randomUUID();
-  const tokenSha = await createTokenSha({
-    userId: normalizedBody.userId,
-    role: normalizedBody.role,
-    tokenId,
-    issuedAt,
-    expiresAt
-  });
-  return {
-    tokenId,
-    tokenSha,
-    userId: normalizedBody.userId,
-    role: normalizedBody.role,
-    issuer: jwtIssuer,
-    issuedAt,
-    expiresAt,
-    revokedAt: null
-  };
-}
-
-// Persists a token when the database is configured and reports persistence status.
-async function persistTokenRecordIfConfigured(
-  tokenRecord: TokenRecordPayload,
-): Promise<TokenPersistenceResult> {
-  const configured = isJwtTokenDatabaseConfigured();
-  if (!configured) {
-    return {
-      configured: false,
-      saved: false,
-      envVar: jwtTokenDatabaseUrlEnvVar,
-      tableName: jwtTokenTableName
-    };
-  }
-
-  await saveJwtTokenRecord(tokenRecord);
-  return {
-    configured: true,
-    saved: true,
-    envVar: jwtTokenDatabaseUrlEnvVar,
-    tableName: jwtTokenTableName
-  };
-}
-
-// Checks that the request body contains only supported string fields.
-function isJwtCreatorRequestBody(value: unknown): value is JwtCreatorRequestBody {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.userId === "undefined" || typeof candidate.userId === "string"
-  ) && (
-    typeof candidate.role === "undefined" || typeof candidate.role === "string"
-  );
 }
 
 console.log("JWT Creator function loaded.");
@@ -249,9 +76,4 @@ export default {
       });
     }
   }
-}; /* To invoke locally:
-
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Call this function through gateway with GATEWAY_INTERNAL_SECRET configured.
-
-*/ 
+};

@@ -25,6 +25,18 @@ RestMap
 Toilet Hunter
 Google Maps
 Identify their strengths, weaknesses, and opportunities to make our platform more useful.
+## Source file size
+
+Keep every source file at **200 physical lines or fewer**, including comments
+and blank lines. Split cohesive helpers, components and tests instead of
+compressing code. Generated files, dependency lockfiles and documentation are
+not source-code modules. The frontend test suite checks this repository-wide:
+
+```powershell
+cd washroom-status-frontend
+node --experimental-strip-types --test tests\source-line-limit.test.mjs
+```
+
 Important Development Requirements:
 
 Use real restroom location data from reliable sources such as OpenStreetMap.
@@ -62,4 +74,3 @@ email: washroom.status.usa@gmail.com
 pw Tz123$$$
 Supabase: washroom.status.usa@gmail.com's Project
 vercel: washroom.status.usa@gmail.com
-

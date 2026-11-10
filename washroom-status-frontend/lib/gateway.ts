@@ -1,4 +1,5 @@
 import { apiFailureMessage } from './user-messages.ts';
+import { gatewayIpHeaders, gatewayRateResponseHeaders, GatewayIpConfigurationError } from './gateway-ip.ts';
 
 export class GatewayConfigurationError extends Error {}
 
@@ -18,7 +19,7 @@ export async function gatewayFetch(path: string, init: RequestInit = {}): Promis
 
 export async function proxyGateway(req: Request, path: string): Promise<Response> {
   try {
-    const headers = new Headers();
+    const headers = await gatewayIpHeaders(req);
     for (const name of ['accept', 'content-type', 'authorization', 'apikey', 'x-client-info', 'x-supabase-api-version']) {
       const value = req.headers.get(name);
       if (value) headers.set(name, value);
@@ -27,7 +28,7 @@ export async function proxyGateway(req: Request, path: string): Promise<Response
       method: req.method, headers,
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : await req.arrayBuffer(),
     });
-    const responseHeaders = new Headers({ 'Cache-Control': 'no-store' });
+    const responseHeaders = gatewayRateResponseHeaders(response);
     for (const name of ['content-type', 'retry-after', 'www-authenticate']) {
       const value = response.headers.get(name);
       if (value) responseHeaders.set(name, value);
@@ -35,7 +36,7 @@ export async function proxyGateway(req: Request, path: string): Promise<Response
     return new Response(response.body, { status: response.status, headers: responseHeaders });
   } catch (error) {
     console.error('Gateway proxy failed:', error);
-    const status = error instanceof GatewayConfigurationError ? 503 :
+    const status = error instanceof GatewayConfigurationError || error instanceof GatewayIpConfigurationError ? 503 :
       error instanceof Error && error.name === 'TimeoutError' ? 504 : 502;
     return Response.json({ error: apiFailureMessage(null, 'Gateway API') }, { status });
   }

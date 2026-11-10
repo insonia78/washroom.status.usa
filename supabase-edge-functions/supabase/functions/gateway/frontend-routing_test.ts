@@ -1,9 +1,13 @@
 import api from "../frontend-api/index.ts";
+import { testIpSecret, withTestClientIp } from "./test-ip-helpers.ts";
 
 Deno.test("gateway routes frontend API calls with internal authorization and strips the service prefix", async () => {
   const config = {
     FRONTEND_API_URL: "https://project.example/functions/v1/frontend-api",
     GATEWAY_INTERNAL_SECRET: "test-gateway-secret",
+    GATEWAY_IP_SIGNING_SECRET: testIpSecret,
+    UPSTASH_REDIS_REST_URL: "https://redis.example",
+    UPSTASH_REDIS_REST_TOKEN: "test-token",
     SUPABASE_URL: "https://project.example",
     SUPABASE_ANON_KEY: "test-anon",
     SUPABASE_SERVICE_ROLE_KEY: "test-service-role",
@@ -15,6 +19,9 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
   globalThis.fetch = async (input, init) => {
     const req = new Request(input, init);
     const url = new URL(req.url);
+    if (url.hostname === "redis.example") {
+      return Response.json({ result: [1, 39, 60] });
+    }
     if (url.pathname.startsWith("/functions/v1/frontend-api/")) {
       forwarded++;
       if (req.headers.get("x-washroom-gateway-secret") !== config.GATEWAY_INTERNAL_SECRET) {
@@ -39,7 +46,8 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
     throw new Error(`Unexpected URL ${url}`);
   };
   try {
-    const { default: gateway } = await import("./index.ts");
+    const { default: rawGateway } = await import("./index.ts");
+    const gateway = withTestClientIp(rawGateway);
     for (const [path, method] of [
       ["/reviews?osm_type=node&osm_id=123", "GET"], ["/auth/v1/otp", "POST"], ["/geocode?q=Boston", "GET"],
     ]) {
@@ -60,7 +68,8 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
     }
     const submission = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/toilet-submissions", {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-user-token" },
-      body: JSON.stringify({ name: "Park toilet", latitude: 40.71, longitude: -74, wheelchair: "unknown", fee: "no", notes: "" }),
+      body: JSON.stringify({ name: "Park toilet", latitude: 40.71, longitude: -74, wheelchair: "unknown", fee: "no", notes: "",
+        current_location: true, user_latitude: 40.71, user_longitude: -74 }),
     }));
     if (submission.status !== 201 || Number(forwarded) !== 5) throw new Error("Toilet submission must forward and insert");
     const unauthorized = await gateway.fetch(new Request("https://project.example/functions/v1/gateway/frontend/moderation/reviews"));

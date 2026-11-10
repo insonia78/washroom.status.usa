@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server.js';
 import type { Restroom } from '@/components/RestroomDetails';
 import { gatewayFetch, GatewayConfigurationError } from '../../../lib/gateway.ts';
+import { gatewayIpHeaders, gatewayRateResponseHeaders, GatewayIpConfigurationError } from '../../../lib/gateway-ip.ts';
 import { LOCATION_RESULTS_ERROR, apiFailureMessage } from '../../../lib/user-messages.ts';
 
 export const dynamic = 'force-dynamic';
@@ -70,11 +71,18 @@ export async function GET(req: NextRequest) {
       url.searchParams.set('lon', String(lon));
     }
     url.searchParams.set('radius', radiusMeters[radiusMiles]);
-    const response = await gatewayFetch(url.pathname + url.search, { headers: { Accept: 'application/json' } });
+    const headers = await gatewayIpHeaders(req);
+    headers.set('Accept', 'application/json');
+    const response = await gatewayFetch(url.pathname + url.search, { headers });
+    const responseHeaders = gatewayRateResponseHeaders(response);
     if (!response.ok) {
       console.error('Restroom gateway returned an error:', response.status);
       const detail: unknown = await response.json().catch(() => null);
-      return NextResponse.json({ error: apiFailureMessage(isRecord(detail) ? detail.error : null) }, { status: response.status });
+      const error = response.status === 429
+        ? 'Too many requests. Please wait a minute before searching again.'
+        : apiFailureMessage(isRecord(detail) ? detail.error : null);
+      return NextResponse.json({ error },
+        { status: response.status, headers: responseHeaders });
     }
     const payload: unknown = await response.json();
     if (!isRecord(payload) || payload.success !== true || !Array.isArray(payload.data)) {
@@ -98,10 +106,10 @@ export async function GET(req: NextRequest) {
       searchOrigin = { latitude: origin.latitude, longitude: origin.longitude, zipCode: zip };
     }
     return NextResponse.json({ restrooms, source: 'Gateway · Places API · OpenStreetMap', count: restrooms.length, ...(searchOrigin ? { searchOrigin } : {}), ...(warning ? { warning } : {}) },
-      { headers: { 'Cache-Control': warning ? 'no-store' : 'public, s-maxage=60, stale-while-revalidate=300' } });
+      { headers: responseHeaders });
   } catch (err) {
     console.error('Restroom gateway lookup failed:', err);
-    if (err instanceof GatewayConfigurationError) {
+    if (err instanceof GatewayConfigurationError || err instanceof GatewayIpConfigurationError) {
       return NextResponse.json({ error: apiFailureMessage(null, 'Gateway API') }, { status: 503 });
     }
     const timedOut = err instanceof Error && err.name === 'TimeoutError';

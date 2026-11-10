@@ -7,7 +7,7 @@ function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message)
 }
 
-Deno.test("nearby searches use only stored locations and Refuge Restrooms", async () => {
+Deno.test("nearby searches merge stored restrooms, businesses, and Refuge Restrooms", async () => {
   const originalFetch = globalThis.fetch
   const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GATEWAY_INTERNAL_SECRET"]
   const originalEnv = keys.map(key => Deno.env.get(key))
@@ -19,6 +19,10 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
     osm_identity: "node/456", latitude: 40.75, longitude: -73.99,
     tags: { amenity: "fuel", name: "Imported station" },
   }
+  const supermarket = {
+    osm_identity: "node/789", latitude: 40.75, longitude: -73.99,
+    tags: { shop: "supermarket", name: "Imported supermarket" },
+  }
   const refuge = {
     id: 123, name: "Refuge restroom", latitude: 40.75, longitude: -73.99,
     accessible: true, unisex: true, changing_table: false,
@@ -27,9 +31,11 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   }
   let databaseRows: unknown[] = [stored]
   let fuelRows: unknown[] = [fuel]
+  let supermarketRows: unknown[] = [supermarket]
   let refugeRows: unknown[] = [refuge]
   let failRefuge = false
   let failDatabase = false
+  let failSupermarket = false
   let failRegistration = false
   let registered: Array<{ osm_type: string; osm_id: number; latitude: number; longitude: number }> = []
   const unexpectedRequests: string[] = []
@@ -55,6 +61,13 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
           body.radius_meters === 8046.72, "Preserve the requested origin and five-mile radius")
         return Response.json(fuelRows)
       }
+      if (url.pathname === "/rest/v1/rpc/find_nearby_supermarkets") {
+        const body = JSON.parse(String(init?.body))
+        assert(body.search_latitude === 40.75 && body.search_longitude === -73.99 &&
+          body.radius_meters === 8046.72, "Search supermarkets within the same radius")
+        if (failSupermarket) return new Response("Database unavailable", { status: 503 })
+        return Response.json(supermarketRows)
+      }
       if (url.pathname === "/rest/v1/restrooms") {
         if (failDatabase) return new Response("Database unavailable", { status: 503 })
         return Response.json(databaseRows)
@@ -72,7 +85,7 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   type Result = {
     count: number; warning?: string;
     data: Array<{
-      id: number; name: string; osmType: string; toilets: string; provider?: string;
+      id: number; name: string; osmType: string; toilets: string; category?: string; provider?: string;
       coordinates: { latitude: number; longitude: number };
     }>
   }
@@ -86,11 +99,14 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
   }
   try {
     const complete = await search()
-    assert(complete.count === 3 && !complete.warning, "Merge stored restrooms, imported fuel, and Refuge")
+    assert(complete.count === 4 && !complete.warning, "Merge stored restrooms, imported businesses, and Refuge")
     assert(complete.data[0].provider === "refuge-restrooms", "Keep timestamped Refuge listings first")
     assert(complete.data.filter(place => place.id === 123).length === 2, "Keep distinct source identities")
     assert(complete.data.find(place => place.id === 456)?.toilets === "unknown",
       "Imported business presence must not imply restroom availability")
+    assert(complete.data.find(place => place.id === 789)?.category === "supermarket" &&
+      complete.data.find(place => place.id === 789)?.toilets === "unknown",
+      "Include supermarkets without claiming restroom availability")
     assert(JSON.stringify(registered) === JSON.stringify(complete.data.map(place => ({
       osm_type: place.osmType, osm_id: place.id,
       latitude: place.coordinates.latitude, longitude: place.coordinates.longitude,
@@ -105,21 +121,33 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
 
     databaseRows = [stored, { ...stored, osm_id: 456 }]
     const deduplicated = await search()
-    assert(deduplicated.count === 3 &&
+    assert(deduplicated.count === 4 &&
       deduplicated.data.find(place => place.id === 456)?.name === stored.name,
       "Stored restrooms take precedence over fuel with the same OSM identity")
+
+    databaseRows = [stored]
+    supermarketRows = [supermarket, { ...supermarket, osm_identity: "node/456" }]
+    const businessOverlap = await search()
+    assert(businessOverlap.count === 4 &&
+      businessOverlap.data.find(place => place.id === 456)?.name === fuel.tags.name,
+      "Existing fuel results take precedence over matching supermarkets")
+    supermarketRows = [supermarket]
 
     failRefuge = true
     databaseRows = [stored]
     const partial = await search()
-    assert(partial.count === 2 && partial.warning?.includes("Refuge Restrooms API"),
+    assert(partial.count === 3 && partial.warning?.includes("Refuge Restrooms API"),
       "Preserve stored results and identify the unavailable provider")
-    assert(registered.length === 2 && registered.every(place => place.osm_type === "node"),
+    assert(registered.length === 3 && registered.every(place => place.osm_type === "node"),
       "Partial search results also support reviews")
     databaseRows = []
-    const fuelOnly = await search()
-    assert(fuelOnly.count === 1 && fuelOnly.warning, "Preserve imported fuel during Refuge outages")
+    const businessesOnly = await search()
+    assert(businessesOnly.count === 2 && businessesOnly.warning, "Preserve imported businesses during Refuge outages")
     fuelRows = []
+    const supermarketOnly = await search()
+    assert(supermarketOnly.count === 1 && supermarketOnly.warning,
+      "Supermarkets remain available during Refuge outages even without other results")
+    supermarketRows = []
     let caught: unknown
     try { await search() } catch (error) { caught = error }
     assert(caught instanceof RequestError && caught.status === 502 &&
@@ -132,6 +160,12 @@ Deno.test("nearby searches use only stored locations and Refuge Restrooms", asyn
     refugeRows = []
     const empty = await search()
     assert(empty.count === 0 && !empty.warning, "Successful empty searches remain valid")
+    failSupermarket = true
+    caught = undefined
+    try { await search() } catch (error) { caught = error }
+    assert(caught instanceof RequestError && caught.status === 502 &&
+      caught.message === "Stored supermarkets could not be loaded.", "Do not hide supermarket database failures")
+    failSupermarket = false
     failDatabase = true
     caught = undefined
     try { await search() } catch (error) { caught = error }

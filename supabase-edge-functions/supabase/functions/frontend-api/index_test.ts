@@ -20,15 +20,14 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
     return new Request(`https://project.example/functions/v1/frontend-api${path}`, { ...init, headers });
   };
-  const review = { osm_type: "node", osm_id: 123, rating: 4, availability: "open", cleanliness_status: "clean", issues: ["odor"], comment: " Needs cleaning " };
-
+  const review = { osm_type: "node", osm_id: 123, rating: 4, availability: "open", cleanliness_status: "clean", issues: ["odor"], comment: " Needs cleaning ",
+    current_location: true, user_latitude: 42.36, user_longitude: -71.06, restroom_latitude: 42.36, restroom_longitude: -71.06 };
   try {
     await t.step("direct callers and bad internal secrets cannot reach upstreams", async () => {
       globalThis.fetch = async () => { throw new Error("Must not call upstream"); };
       assert((await api.fetch(new Request("https://project.example/frontend-api/reviews"))).status === 403, "Direct access must be denied");
       assert((await api.fetch(request("/reviews", { headers: { "x-washroom-gateway-secret": "wrong" } }))).status === 403, "Bad secret must be denied");
     });
-
     await t.step("reviews return only approved rows, limited to fifty with an all-review average", async () => {
       globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
@@ -42,7 +41,6 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       const result = await response.json();
       assert(response.status === 200 && result.count === 2 && result.average === 3 && result.limited_to === 50, "Reviews shape must be preserved");
     });
-
     await t.step("writes validate verified ownership, imported location and moderation", async () => {
       const calls: string[] = [];
       globalThis.fetch = async (input, init) => {
@@ -52,7 +50,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
           assert(new Headers(init?.headers).get("authorization") === "Bearer user-token", "Validate original user's session");
           return Response.json({ id: "user-id", email_confirmed_at: "2026-01-01" });
         }
-        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 123 }]);
+        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 123, latitude: 42.36, longitude: -71.06 }]);
         assert(url.pathname === "/rest/v1/reviews" && init?.method === "POST", "Expected review insert");
         const payload = JSON.parse(String(init?.body));
         assert(payload.user_id === "user-id" && payload.status === "pending" && payload.comment === "Needs cleaning", "Verified reviews retain moderation and trimming");
@@ -62,9 +60,9 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       const response = await api.fetch(request("/reviews", {
         method: "POST", headers: { Authorization: "Bearer user-token" }, body: JSON.stringify(review),
       }));
-      assert(response.status === 201 && calls.length === 3 && calls.includes("/auth/v1/user"), "Expected verified submission");
+      assert(response.status === 201 && calls.join(",") === "/auth/v1/user,/rest/v1/restrooms,/rest/v1/restrooms,/rest/v1/reviews",
+        "Authenticate, verify proximity and listing, then insert");
     });
-
     await t.step("invalid input fails before network calls", async () => {
       globalThis.fetch = async () => { throw new Error("No network calls expected"); };
       assert((await api.fetch(request("/reviews?osm_type=bad&osm_id=1"))).status === 400, "Invalid restroom");
@@ -73,7 +71,6 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
         assert((await api.fetch(request("/reviews", { method: "POST", headers: { Authorization: "Bearer user-token" }, body }))).status === 400, "Reject invalid payload");
       }
     });
-
     await t.step("unavailable database, unknown locations and duplicates keep error status", async () => {
       for (const expected of [503, 422, 409]) {
         globalThis.fetch = async input => {
@@ -82,7 +79,7 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
             return Response.json({ id: "user-id", email_confirmed_at: "2026-01-01" });
           }
           if (url.pathname === "/rest/v1/restrooms") {
-            return Response.json(expected === 422 ? [] : [{ osm_id: 123 }], { status: expected === 503 ? 500 : 200 });
+            return Response.json(expected === 422 ? [] : [{ osm_id: 123, latitude: 42.36, longitude: -71.06 }], { status: expected === 503 ? 500 : 200 });
           }
           if (url.pathname === "/rest/v1/review_locations") return Response.json([]);
           return Response.json({ code: "23505" }, { status: 409 });
@@ -93,7 +90,6 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
         assert(response.status === expected, `Expected ${expected}, got ${response.status}`);
       }
     });
-
     await t.step("auth proxies OTP, verification, refresh and user calls without service role", async () => {
       for (const [endpoint, method] of [["otp", "POST"], ["verify", "POST"], ["token", "POST"], ["logout", "POST"], ["user", "GET"]]) {
         globalThis.fetch = async (input, init) => {
@@ -114,7 +110,6 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       }
       assert((await api.fetch(request("/auth/v1/admin", { method: "POST" }))).status === 404, "No admin auth proxy");
     });
-
     await t.step("geocoding is US-only and returns validated coordinates", async () => {
       globalThis.fetch = async input => {
         const url = new URL(String(input));
@@ -132,7 +127,6 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       globalThis.fetch = async () => Response.json({ features: [{ geometry: { type: "Point", coordinates: [-71.06, 42.36] }, properties: { countrycode: "CA" } }] });
       assert((await api.fetch(request("/geocode?q=Unknown"))).status === 502, "Non-US results must fail");
     });
-
     await t.step("address suggestions provide bounded labeled US results and explicit failures", async () => {
       globalThis.fetch = async input => {
         const url = new URL(String(input));
@@ -161,25 +155,31 @@ Deno.test("internal frontend API preserves reviews, magic-link auth and location
       ] });
       assert((await api.fetch(request("/geocode?q=Boston&suggest=1"))).status === 502, "Reject non-US suggestions");
     });
-
     await t.step("ZIP 43085 resolves without database or Overpass requests", async () => {
-      let calls = 0;
-      globalThis.fetch = async input => {
-        calls++;
+      let calls = 0, archives = 0;
+      globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
+        if (url.hostname === "project.example" && url.pathname.startsWith("/storage/v1/object/third-party-api-data-lake/zippopotam/")) {
+          const exchange = JSON.parse(String(init?.body));
+          assert(init?.method === "POST" && exchange.request.url === "https://api.zippopotam.us/us/43085" &&
+            exchange.response.status === 200, "Archive only the ZIP provider exchange");
+          archives++;
+          return Response.json({ Key: "stored" });
+        }
+        calls++;
         assert(url.hostname === "api.zippopotam.us" && url.pathname === "/us/43085", "ZIP lookup must call only geocoder");
         return Response.json({ places: [{ latitude: "40.0999", longitude: "-83.0157" }] });
       };
       const response = await api.fetch(request("/geocode?zip=43085"));
       const result = await response.json();
       assert(response.status === 200 && result.latitude === 40.0999 && result.longitude === -83.0157, "ZIP coordinates");
-      assert(calls === 1, "ZIP resolution must not wait for restroom discovery");
+      assert(calls === 1 && archives === 1, "ZIP resolution calls only the geocoder and its archive, never restroom discovery");
       const suggestions = await api.fetch(request("/geocode?zip=43085&suggest=1"));
       const suggestionBody = await suggestions.json();
       assert(suggestions.status === 200 && suggestionBody.suggestions[0].label === "ZIP 43085, USA" &&
         suggestionBody.suggestions[0].latitude === 40.0999, "ZIP suggestions reuse cached ZIP origin");
       const invalid = await api.fetch(request("/geocode?zip=1234"));
-      assert(invalid.status === 400 && calls === 1, "Reject malformed ZIP before upstream calls");
+      assert(invalid.status === 400 && calls === 1 && archives === 1, "Cached and malformed ZIPs make no upstream calls");
       globalThis.fetch = async () => new Response(null, { status: 404 });
       assert((await api.fetch(request("/geocode?zip=00000"))).status === 404, "Unknown ZIP must remain an explicit error");
     });

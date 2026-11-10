@@ -1,12 +1,17 @@
 ﻿# Live tests for the deployed `gateway` edge function.
 # Requires the VS Code "REST Client" extension (humao.rest-client).
+# IP limiting: unsigned direct requests below now return 403 before routing.
+# Use the deployed Next.js adapters for live client tests, e.g.
+# GET https://YOUR_APP/api/restrooms?zip=40385
+# Only OPTIONS preflights bypass signed IP verification. Project API keys and
+# user JWTs do not replace the dedicated server-generated IP assertion.
 #
 # Values are read from ./.env (gitignored). Add these keys there:
 #   SUPABASE_ANON_KEY=<project anon/publishable key>
 #   TEST_EMAIL=<an existing account email>
 #   TEST_PASSWORD=<that account's password>
 #
-# /places/bathrooms is public (anon key only).
+# /places/bathrooms needs no user login but does require a trusted IP assertion.
 # Run "Login" before logout; it reuses the token.
 
 @baseUrl = https://fpgjugfmkjznfowbxirs.supabase.co/functions/v1/gateway

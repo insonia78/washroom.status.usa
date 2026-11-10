@@ -52,7 +52,8 @@ Deno.test("owner responses require separate admin access and explicit publicatio
         const url = new URL(String(input));
         assert(url.pathname === "/rest/v1/owner_responses", "Only query owner responses after authorization");
         assert(url.searchParams.get("select")?.includes("verification_note"), "Admins can inspect verification notes");
-        assert(url.searchParams.get("limit") === "50" && url.searchParams.get("offset") === "50", "Bound and paginate dashboard");
+        assert(url.searchParams.get("limit") === "3" && url.searchParams.get("offset") === "50", "Bound and paginate dashboard");
+        assert(url.searchParams.get("archived_at") === "is.null", "Exclude archived responses by default");
         assert(!url.searchParams.has("status"), "Include drafts and published responses");
         return Response.json([]);
       };
@@ -113,10 +114,11 @@ Deno.test("owner responses require separate admin access and explicit publicatio
           const url = new URL(String(input));
           assert(url.pathname === "/rest/v1/owner_responses", "Public reads need no auth or private-table lookup");
           assert(url.searchParams.get("status") === "eq.published", "Exclude drafts");
+          assert(url.searchParams.get("archived_at") === "is.null", "Never expose archived responses");
           assert(url.searchParams.get("osm_type") === `eq.${type}` && url.searchParams.get("osm_id") === "eq.123", "Scope by source and ID");
           const select = url.searchParams.get("select")!;
           assert(!select.includes("*") && !select.includes("verification") && !select.includes("created_by") && !select.includes("updated_by"), "Never request private metadata");
-          return Response.json([{ id: responseId, review_id: null, body: "Owner update" }]);
+          return Response.json([{ id: responseId, review_id: null, body: "Owner update", photo_paths: [] }]);
         };
         assert((await api.fetch(request(undefined, false, `/owner-responses?osm_type=${type}&osm_id=123`))).status === 200, "All listing sources supported");
       }
@@ -128,7 +130,7 @@ Deno.test("owner responses require separate admin access and explicit publicatio
       globalThis.fetch = async input => {
         const url = new URL(String(input));
         if (url.pathname === "/rest/v1/owner_responses") return Response.json([
-          { id: responseId, review_id: null }, { id: "reply", review_id: reviewId },
+          { id: responseId, review_id: null, photo_paths: [] }, { id: "reply", review_id: reviewId, photo_paths: [] },
         ]);
         assert(url.pathname === "/rest/v1/reviews" && url.searchParams.get("status") === "eq.approved", "Validate linked review is still approved");
         assert(url.searchParams.get("osm_type") === "eq.refuge", "Never link reviews across listing namespaces");

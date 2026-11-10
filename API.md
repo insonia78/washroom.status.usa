@@ -57,6 +57,55 @@ grants deny `anon`/`authenticated`. Service-role credentials remain server-only.
 
 ## Application gateway boundary
 
+### Per-IP request limit
+
+The gateway permits **40 requests per IP address per 60-second window**,
+shared across all routes, methods and gateway instances. `OPTIONS` preflights
+are excluded; errors and denied authorization attempts still consume quota.
+The window starts with the IP's first request, not the wall-clock minute.
+Request 41 returns HTTP 429 before backend forwarding with `Retry-After` seconds.
+Responses include `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset`
+(seconds until the window resets). Responses are `no-store`.
+
+Counters live in Upstash Redis, never in localStorage or client-provided headers.
+Next.js on Vercel reads only the platform-overwritten `x-vercel-forwarded-for`
+header ([Vercel documentation](https://vercel.com/docs/headers/request-headers)).
+It normalizes IPv4/IPv6, hashes the address using HMAC, and signs a short-lived
+assertion in `x-washroom-client-ip`. The gateway verifies that assertion with a
+dedicated shared secret; raw IP addresses are not sent to Redis or in the
+assertion. IPv4-mapped IPv6 addresses share the IPv4 counter. Neither cookies nor
+client-supplied `x-forwarded-for`/identity headers can choose another counter.
+No rate-limit cookies are created. Quota response headers are informational.
+
+Use the Next.js adapters (`/api/restrooms`, `/api/reviews`, `/api/backend/*`),
+including for non-browser clients. Direct gateway requests without a valid
+server-signed assertion return 403 before Redis or backend calls. Assertions
+expire after 30 seconds with a five-second allowance for future clock skew;
+they are never returned to browsers or forwarded to downstream backends.
+Missing or malformed Vercel IP information fails closed. Production deployments
+outside Vercel need an explicitly implemented trusted proxy integration; arbitrary
+forwarded headers are not accepted. Non-production requests to loopback hostnames
+use a fixed `127.0.0.1` identity, ignoring supplied IP headers.
+
+This identifies a network address, not hardware: clearing cookies or changing
+browsers does not reset quota, but shared Wi-Fi/NAT/VPN users share one allowance.
+Switching IP addresses or rotating IPv6 addresses creates a new allowance.
+MAC addresses are not available to internet HTTP servers.
+
+Configure `UPSTASH_REDIS_REST_URL` (HTTPS REST endpoint),
+`UPSTASH_REDIS_REST_TOKEN` (server-only read/write token) on the gateway.
+Set the same dedicated random `GATEWAY_IP_SIGNING_SECRET` (at least 32 characters)
+in both Next.js server environment and gateway Edge Function secrets before
+deploying both together. Never use `NEXT_PUBLIC_*` for this secret, and do not
+reuse `GATEWAY_INTERNAL_SECRET` (which remains backend-only).
+No PostgreSQL quota table or migration is needed. A single atomic Redis Lua
+`EVAL` checks/increments each IP counter and sets a 60-second expiry only on
+the first request. Rejected requests do not extend the window.
+Rotating the IP signing secret or switching from browser quotas resets quotas.
+Missing configuration or unavailable quota storage returns HTTP 503 rather than
+bypassing enforcement. Redis expires counters automatically; use a dedicated
+database with no eviction of active counters.
+
 Next.js proxies all application API calls through `gateway`; database queries
 run only in edge backends. `/places/*` routes forward to `places-api`.
 The gateway also exposes `/frontend/reviews` (GET/POST), `/frontend/geocode`
@@ -115,6 +164,13 @@ This documentation is intentionally limited to the **POST** endpoints a frontend
 
 ## Base URLs
 
+These are internal gateway URLs, not unsigned client entrypoints. With IP
+limiting enabled, use your deployed Next.js application's `/api/restrooms`
+(GET with coordinates or ZIP), `/api/reviews`, or `/api/backend/*` adapters.
+The historical direct gateway examples below require a trusted server-signed
+IP assertion and otherwise return 403; a project API key or user JWT alone
+does not satisfy the IP forwarding requirement.
+
 ### Hosted
 
 ```text
@@ -166,8 +222,8 @@ All documented endpoints below are:
 
 ## 1) POST /bathrooms
 
-Searches stored bathrooms, imported gas stations, and Refuge Restrooms listings near
-coordinates or a ZIP code. Imported gas stations are included even without a
+Searches stored bathrooms, imported gas stations and supermarkets, and Refuge Restrooms
+listings near coordinates or a ZIP code. Imported businesses are included even without a
 toilets tag. Their `toilets` value is `unknown` unless explicitly tagged; `no` is
 preserved. Business presence is not confirmation of restroom access.
 Overpass business searches and the `/places/overpass` route have been removed.
@@ -265,7 +321,7 @@ Content-Type: application/json
 | `searchRadiusMeters` | number | Effective search radius |
 | `count` | number | Number of results returned |
 | `data` | array | Places returned by the search |
-| `warning` | string | Present only for partial results: stored restrooms and/or imported gas stations returned while upstream coverage is unavailable |
+| `warning` | string | Present only for partial results: stored restrooms and/or imported businesses returned while upstream coverage is unavailable |
 
 ### searchOrigin
 
@@ -283,7 +339,7 @@ Content-Type: application/json
 |---|---|---|
 | `id` | number | OpenStreetMap element id or Refuge listing id |
 | `osmType` | string | `node`, `way`, `relation`, or `refuge` |
-| `placeType` | `bathroom` \| `gas-station` | Safe frontend discriminator |
+| `placeType` | `bathroom` \| `gas-station` \| `supermarket` | Safe frontend discriminator |
 | `provider` | string | `refuge-restrooms` for Refuge listings |
 | `createdAt` / `updatedAt` | string | ISO timestamps on Refuge listings |
 | `name` | string | Display name with fallback |
@@ -333,29 +389,36 @@ Content-Type: application/json
   `1609.344`, `3218.688`, `8046.72`, and `16093.44` to the gateway. Unsupported
   choices return HTTP 400 before an upstream call. The website refetches on
   selection without bypassing the gateway; the radius applies to every source
-  and category, including imported fuel. Larger radii may increase provider latency.
-- Imported gas stations are read from `public.export_fuel` through the server-only
+  and category, including imported businesses. Larger radii may increase provider latency.
+- Imported gas stations are read from `app_locations.export_fuel` through the server-only
   `find_nearby_fuel` PostGIS RPC. Apply
   `supabase-edge-functions/supabase/migrations/20261022153000_search_fuel_locations.sql`
   before deploying this version of Places API. The function uses a geography
   GiST index and exact meter-radius filtering, not a full-table download.
-- Fuel results normalize `node/123`, `way/123`, or `relation/123` into the same
-  numeric `id` and `osmType` shape as stored restrooms. Coordinates come from the point
-  geometry; names use trimmed name, brand, operator, then `Gas Station`.
+- Imported supermarkets are read from `app_locations.supermarkets` through the
+  service-role-only `find_nearby_supermarkets` RPC. Apply the supermarkets,
+  schema-move, and `20261105180000_search_supermarkets.sql` migrations before
+  deploying Places API. The RPC uses a geography GiST index, an exact meter radius,
+  and representative points for non-point geometries.
+- Business results normalize `node/123`, `way/123`, or `relation/123` into the same
+  numeric `id` and `osmType` shape as stored restrooms. Coordinates come from the
+  geometry, using a representative point when needed; names use trimmed name,
+  brand, operator, then `Gas Station` or `Supermarket`.
   Restroom tags are trimmed and categorical values lowercased; boolean aliases
   `true`/`1` and `false`/`0` normalize to `yes` and `no`. Missing toilets remain
   `unknown`, explicit `no` is preserved, and restroom-specific hours take priority.
-- Stored fuel is included with complete pagination and OSM-identity
-  deduplication. Stored restroom rows take precedence over stored fuel.
-  When Refuge fails, stored fuel can be returned even if no standalone
+- Stored businesses are included with complete pagination and OSM-identity
+  deduplication. Stored restroom rows take precedence over fuel, and existing
+  restroom or fuel rows take precedence over matching supermarkets.
+  When Refuge fails, stored businesses can be returned even if no standalone
   restrooms match, with a warning explaining that Refuge coverage is missing.
-  Failure of the fuel RPC is a database error, not an empty-match fallback.
-- Use `POST /bathrooms` for stored bathrooms, imported gas stations, and Refuge listings.
-- Searches check `public.restrooms` and `public.export_fuel` in Supabase and supplement them with Refuge Restrooms, filtered to the selected radius. There are no live shop/supermarket searches or Overpass fallbacks, even when no stored locations match.
+  Failure of either business RPC is a database error, not an empty-match fallback.
+- Use `POST /bathrooms` for stored bathrooms, imported businesses, and Refuge listings.
+- Searches check `app_locations.restrooms`, `app_locations.export_fuel`, and `app_locations.supermarkets` in Supabase and supplement them with Refuge Restrooms, filtered to the selected radius. There are no live Overpass business searches or fallbacks.
 - Stored and upstream results are merged by source type and ID, with stored rows taking precedence. Refuge listings use `osmType: "refuge"` to avoid collisions with OSM IDs. The frontend orders all results nearest first.
-- If Refuge fails with a provider error or timeout and stored restrooms or imported gas stations exist, the response is HTTP 200 with those rows and a `warning` identifying missing Refuge coverage. The frontend displays the warning with a retry button and does not cache partial responses. Without stored rows, provider failures remain HTTP 502/504, not empty success. Database failures always remain errors. A successful empty response means no matches within the selected radius (five miles by default in the frontend). Direct Places API callers retain the default 1,000-meter radius.
-- Imported gas stations use `toilets=unknown` when untagged. Their restroom access, fee, and wheelchair values use explicit `toilets:*` tags or `unknown`, not general business facilities.
-- The Edge Function uses Supabase's server-side `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables to read `public.restrooms`; do not expose the service-role key to clients.
+- If Refuge fails with a provider error or timeout and stored restrooms or imported businesses exist, the response is HTTP 200 with those rows and a `warning` identifying missing Refuge coverage. The frontend displays the warning with a retry button and does not cache partial responses. Without stored rows, provider failures remain HTTP 502/504, not empty success. Database failures always remain errors. A successful empty response means no matches within the selected radius (five miles by default in the frontend). Direct Places API callers retain the default 1,000-meter radius.
+- Imported businesses use `toilets=unknown` when untagged. Their restroom access, fee, and wheelchair values use explicit `toilets:*` tags or `unknown`, not general business facilities.
+- The Edge Function uses Supabase's server-side `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables to read private location data; do not expose the service-role key to clients.
 - Use `searchOrigin` as the map center after ZIP-based searches.
 - Use `placeType` to switch markers/icons in the UI.
 - Treat `wheelchair`, `changingTable`, `unisex`, and `toilets` as best-effort metadata.
@@ -403,7 +466,7 @@ type SearchOrigin = {
 type PlaceResult = {
   id: number;
   osmType: string;
-  placeType: "bathroom" | "gas-station";
+  placeType: "bathroom" | "gas-station" | "supermarket";
   provider?: "refuge-restrooms";
   createdAt?: string;
   updatedAt?: string;

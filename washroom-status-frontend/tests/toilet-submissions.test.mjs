@@ -1,10 +1,14 @@
+import './gateway-ip-env.mjs';
 import assert from 'node:assert/strict';
 import {afterEach,beforeEach,test} from 'node:test';
 import {POST} from '../app/api/backend/[...path]/route.ts';
 
 const originalFetch=globalThis.fetch;
 const originalUrl=process.env.WASHROOM_GATEWAY_URL;
-beforeEach(()=>{process.env.WASHROOM_GATEWAY_URL='https://gateway.example/functions/v1/gateway'});
+beforeEach(()=>{
+  process.env.WASHROOM_GATEWAY_URL='https://gateway.example/functions/v1/gateway';
+  process.env.VERCEL='1';
+});
 afterEach(()=>{
   globalThis.fetch=originalFetch;
   if(originalUrl===undefined)delete process.env.WASHROOM_GATEWAY_URL;
@@ -27,7 +31,7 @@ test('toilet submissions forward multipart photos and unchanged coordinates thro
   form.set('submission',JSON.stringify(fields));
   form.append('photos',new File(['photo'], 'sign.jpg', {type:'image/jpeg'}));
   const response=await POST(new Request('https://app.example/api/backend/toilet-submissions',{
-    method:'POST',body:form,
+    method:'POST',body:form,headers:{'x-vercel-forwarded-for':'192.0.2.1'},
   }),{params:Promise.resolve({path:['toilet-submissions']})});
   assert.equal(response.status,201);
   assert.equal(response.headers.get('cache-control'),'no-store');
@@ -37,7 +41,9 @@ test('toilet submissions forward multipart photos and unchanged coordinates thro
 test('toilet submission validation and database failures remain explicit through the adapter',async()=>{
   for(const status of [400,401,403,429,503]){
     globalThis.fetch=async()=>Response.json({error:'Toilet could not be saved'},{status});
-    const response=await POST(new Request('https://app.example/api/backend/toilet-submissions',{method:'POST',body:'{}'}),
+    const response=await POST(new Request('https://app.example/api/backend/toilet-submissions',{
+      method:'POST',body:'{}',headers:{'x-vercel-forwarded-for':'192.0.2.1'},
+    }),
       {params:Promise.resolve({path:['toilet-submissions']})});
     assert.equal(response.status,status);
     assert.equal((await response.json()).error,'Toilet could not be saved');
@@ -55,6 +61,7 @@ test('toilet moderation queue and decisions forward the moderator session throug
     const request=new Request('https://app.example/api/backend/moderation/toilets',{
       method,headers:{Authorization:'Bearer moderator-token'},body:method==='POST'?JSON.stringify({id:'toilet-id',decision:'approved'}):undefined,
     });
+    request.headers.set('x-vercel-forwarded-for','192.0.2.1');
     const response=await POST(request,{params:Promise.resolve({path:['moderation','toilets']})});
     assert.equal(response.status,200);
   }

@@ -3,6 +3,7 @@ import { findNearbyRestrooms, type RestroomPlace } from "./restrooms.ts"
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
 import { findNearbyFuel, type normalizeFuelPlace } from "./fuel.ts"
+import { findNearbySupermarkets, type normalizeSupermarketPlace } from "./supermarkets.ts"
 import { findNearbyRefugeRestrooms } from "./refuge.ts"
 import { locationDatabaseHeaders } from "../../_shared/database-schema.ts"
 
@@ -11,6 +12,7 @@ export async function searchNearbyPlaces(origin: SearchOrigin, radius: string) {
     origin.latitude, origin.longitude, Number(radius),
   )
   const fuel = await findNearbyFuel(origin.latitude, origin.longitude, Number(radius))
+  const supermarkets = await findNearbySupermarkets(origin.latitude, origin.longitude, Number(radius))
   const stored = [...fuel, ...restrooms]
 
   // Fetch restroom listings from Refuge Restrooms while keeping stored data available on outages.
@@ -26,7 +28,7 @@ export async function searchNearbyPlaces(origin: SearchOrigin, radius: string) {
     logError("places", "Refuge Restrooms search failed", error.message)
   }
 
-  const data = mergePlaces(refugeRestrooms, stored)
+  const data = mergePlaces(refugeRestrooms, stored, supermarkets)
 
   if (refugeError) {
     if (!data.length) throw new RequestError(
@@ -81,11 +83,16 @@ async function registerReviewLocations(places: Array<{
 function mergePlaces(
   refugePlaces: Awaited<ReturnType<typeof findNearbyRefugeRestrooms>>,
   storedPlaces: (ReturnType<typeof normalizeFuelPlace> | RestroomPlace)[],
+  supermarkets: ReturnType<typeof normalizeSupermarketPlace>[],
 ) {
   // Keep Refuge listings newest first and put them before sources without timestamps.
   const places = new Map<string, ReturnType<typeof normalizeFuelPlace> | RestroomPlace | typeof refugePlaces[number]>(
     refugePlaces.map(place => [`${place.osmType}:${place.id}`, place]),
   )
   for (const place of storedPlaces) places.set(`${place.osmType}:${place.id}`, place)
+  for (const place of supermarkets) {
+    const key = `${place.osmType}:${place.id}`
+    if (!places.has(key)) places.set(key, place)
+  }
   return [...places.values()]
 }

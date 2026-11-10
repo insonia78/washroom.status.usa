@@ -1,25 +1,11 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
-// Setup type definitions for built-in Supabase Runtime APIs
-// import "@supabase/functions-js/edge-runtime.d.ts";
-import { jwtVerify } from "npm:jose@5";
-import {
-  findJwtTokenRecordById,
-  isJwtTokenDatabaseConfigured,
-  jwtTokenDatabaseUrlEnvVar,
-} from "../_shared/jwt-token-store.ts";
-import { authorizeGatewayRequest, gatewayCallerHeader, gatewaySecretHeader } from "../_shared/gateway-auth.ts";
+import { gatewayCallerHeader, gatewaySecretHeader, authorizeGatewayRequest } from "../_shared/gateway-auth.ts";
+import { supabaseJwtSecret, customJwtSecret, verifyToken, validateCustomTokenAgainstDatabase, getPayloadStringValue } from "./token-validation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": `authorization, x-client-info, apikey, content-type, ${gatewayCallerHeader}, ${gatewaySecretHeader}`,
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
-
-const supabaseJwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
-const customJwtSecret = Deno.env.get("MY_JWT_SECRET") ?? Deno.env.get("CUSTOM_JWT_SECRET");
-const encoder = new TextEncoder();
 
 // Creates a JSON response with the validator's CORS headers.
 function jsonResponse(status: number, body: unknown) {
@@ -30,125 +16,6 @@ function jsonResponse(status: number, body: unknown) {
       "Content-Type": "application/json"
     }
   });
-}
-
-// Reads a string claim from a decoded JWT payload.
-function getPayloadStringValue(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key];
-  return typeof value === "string" ? value : "";
-}
-
-// Reads a finite numeric claim from a decoded JWT payload.
-function getPayloadNumberValue(payload: Record<string, unknown>, key: string): number | null {
-  const value = payload[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-type VerifiedToken = {
-  payload: Record<string, unknown>;
-  tokenType: "supabase" | "custom";
-};
-
-type CustomTokenDatabaseValidationResult =
-  | { valid: true }
-  | { valid: false; status: number; error: string };
-
-// Tries the configured Supabase and custom signing secrets in order.
-async function verifyToken(token: string): Promise<VerifiedToken | null> {
-  if (supabaseJwtSecret) {
-    try {
-      const verified = await jwtVerify(token, encoder.encode(supabaseJwtSecret));
-      return {
-        payload: verified.payload,
-        tokenType: "supabase"
-      };
-    } catch  {
-    // Try the custom JWT secret next.
-    }
-  }
-  if (customJwtSecret) {
-    try {
-      const verified = await jwtVerify(token, encoder.encode(customJwtSecret));
-      return {
-        payload: verified.payload,
-        tokenType: "custom"
-      };
-    } catch  {
-    // Both configured validations failed.
-    }
-  }
-  return null;
-}
-
-// Confirms a custom JWT matches an active, unexpired persisted token record.
-async function validateCustomTokenAgainstDatabase(
-  payload: Record<string, unknown>,
-): Promise<CustomTokenDatabaseValidationResult> {
-  if (!isJwtTokenDatabaseConfigured()) {
-    return {
-      valid: false,
-      status: 500,
-      error: `Missing ${jwtTokenDatabaseUrlEnvVar} environment variable for custom JWT validation`,
-    };
-  }
-
-  const tokenId = getPayloadStringValue(payload, "jti");
-  const tokenSha = getPayloadStringValue(payload, "sha");
-  const userId = getPayloadStringValue(payload, "sub");
-  const role = getPayloadStringValue(payload, "role");
-  const issuer = getPayloadStringValue(payload, "iss");
-  const issuedAt = getPayloadNumberValue(payload, "iat");
-  const expiresAt = getPayloadNumberValue(payload, "exp");
-
-  if (!tokenId || !tokenSha || !userId || !role || !issuer || issuedAt === null || expiresAt === null) {
-    return {
-      valid: false,
-      status: 401,
-      error: "Custom JWT is missing required claims for database validation",
-    };
-  }
-
-  const tokenRecord = await findJwtTokenRecordById(tokenId);
-  if (!tokenRecord) {
-    return {
-      valid: false,
-      status: 401,
-      error: "Custom JWT token record was not found",
-    };
-  }
-
-  if (tokenRecord.revokedAt !== null) {
-    return {
-      valid: false,
-      status: 401,
-      error: "Custom JWT has been revoked",
-    };
-  }
-
-  if (tokenRecord.expiresAt <= Math.floor(Date.now() / 1000)) {
-    return {
-      valid: false,
-      status: 401,
-      error: "Custom JWT token record has expired",
-    };
-  }
-
-  if (
-    tokenRecord.tokenSha !== tokenSha ||
-    tokenRecord.userId !== userId ||
-    tokenRecord.role !== role ||
-    tokenRecord.issuer !== issuer ||
-    tokenRecord.issuedAt !== issuedAt ||
-    tokenRecord.expiresAt !== expiresAt
-  ) {
-    return {
-      valid: false,
-      status: 401,
-      error: "Custom JWT does not match the persisted token record",
-    };
-  }
-
-  return { valid: true };
 }
 
 // This endpoint uses 'publishable' | 'secret' access, apiKey is required.
@@ -208,9 +75,4 @@ export default {
       userEmail: getPayloadStringValue(verifiedToken.payload, "email")
     });
   }
-}; /* To invoke locally:
-
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Call this function through gateway with GATEWAY_INTERNAL_SECRET configured.
-
-*/ 
+};

@@ -54,17 +54,19 @@ Deno.test("moderation requires verified allowlisted users and atomic pending dec
           return Response.json([{ user_id: moderatorId }]);
         }
         assert(url.pathname === "/rest/v1/reviews", "Expected review queue");
-        assert(url.searchParams.get("status") === "eq.pending" && url.searchParams.get("limit") === "50" &&
-          url.searchParams.get("order") === "created_at.asc,id.asc", "Bounded pending queue");
+        assert(url.searchParams.get("status") === "eq.pending" && url.searchParams.get("limit") === "3" &&
+          url.searchParams.get("offset") === "0" && url.searchParams.get("order") === "created_at.asc,id.asc", "Bounded pending queue");
+        assert(new Headers(init?.headers).get("prefer") === "count=exact", "Request pagination total");
         assert(!url.searchParams.get("select")?.includes("*"), "Use explicit columns, never private notes");
         assert(url.searchParams.get("select")?.includes("availability") && url.searchParams.get("select")?.includes("cleanliness_status"),
           "Return every structured review answer to moderators");
         assert(!url.searchParams.has("osm_type"), "Moderation includes every listing source");
-        return Response.json([{ id, osm_type: "refuge", osm_id: 123, photo_paths: [] }]);
+        return Response.json([{ id, osm_type: "refuge", osm_id: 123, photo_paths: [] }], { headers: { "Content-Range": "0-0/1" } });
       };
       const response = await api.fetch(request());
       const result = await response.json();
       assert(response.status === 200 && result.reviews[0].id === id && result.reviews[0].osm_type === "refuge", "Return pending queue for every source");
+      assert(result.limited_to === 3 && result.total === 1 && result.next_offset === null, "Report final page metadata");
     });
     await t.step("approve and reject use server identity and atomic audited RPC", async () => {
       for (const value of ["approved", "rejected"]) {

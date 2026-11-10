@@ -17,6 +17,23 @@
 - PostgreSQL
 - `uv`
 
+## Spatial GeoJSON import
+
+The `add_data.py` importer expects PostGIS and `app_locations.supermarkets`.
+Apply [the supermarkets migration](../../../supabase-edge-functions/supabase/migrations/20261105160000_supermarkets.sql)
+and [the schema-move migration](../../../supabase-edge-functions/supabase/migrations/20261105170000_move_supermarkets_to_app_locations.sql)
+to the target Supabase database before running it. The move preserves existing
+rows, indexes, and the identity sequence. The table stores the feature name,
+JSON properties, and WGS84 geometry, with a spatial index. Row level security
+is enabled; client roles cannot access the table, while the service role and
+database administrators can.
+
+The importer appends rows and does not check for duplicates, so verify whether
+an import has already completed before running it again. Apply
+[the supermarket-search migration](../../../supabase-edge-functions/supabase/migrations/20261105180000_search_supermarkets.sql)
+and deploy `places-api` to include these rows in nearby searches. Keep the
+database connection string private and do not commit credentials.
+
 ## Project structure
 
 ```text

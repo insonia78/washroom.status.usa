@@ -15,7 +15,8 @@ Deno.test("signed-in reviews validate radio questions and expose complete approv
     headers: { ...buildGatewayHeaders(values.GATEWAY_INTERNAL_SECRET), "Content-Type": "application/json", ...(body === undefined ? {} : { Authorization: "Bearer user-token" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const review = { osm_type: "way", osm_id: 456, rating: 4, availability: "open", cleanliness_status: "clean", issues: [], comment: " Clean today " };
+  const review = { osm_type: "way", osm_id: 456, rating: 4, availability: "open", cleanliness_status: "clean", issues: [], comment: " Clean today ",
+    current_location: true, user_latitude: 42.36, user_longitude: -71.06, restroom_latitude: 42.36, restroom_longitude: -71.06 };
   try {
     await t.step("unsigned, expired, anonymous and unverified callers cannot submit reviews", async () => {
       const unsigned=request("",review);
@@ -40,7 +41,7 @@ Deno.test("signed-in reviews validate radio questions and expose complete approv
         calls++;
         const url = new URL(String(input));
         if (url.pathname === "/auth/v1/user") return Response.json({ id: "verified-user", email_confirmed_at: "2026-01-01" });
-        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 456 }]);
+        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 456, latitude: 42.36, longitude: -71.06 }]);
         assert(url.pathname === "/rest/v1/reviews" && init?.method === "POST", "Only database insertion follows location validation");
         const payload = JSON.parse(String(init?.body));
         assert(payload.user_id === "verified-user" && payload.status === "pending", "Do not trust client identity or status");
@@ -49,7 +50,7 @@ Deno.test("signed-in reviews validate radio questions and expose complete approv
         return new Response(null, { status: 201 });
       };
       const response = await api.fetch(request("", { ...review, status: "approved", user_id: "forged" }));
-      assert(response.status === 201 && calls === 3, "Verify authentication before inserting");
+      assert(response.status === 201 && calls === 4, "Verify authentication and proximity before listing validation and insertion");
     });
     await t.step("photo submissions upload private images and save at most three storage paths", async () => {
       const form = new FormData();
@@ -58,7 +59,7 @@ Deno.test("signed-in reviews validate radio questions and expose complete approv
       globalThis.fetch = async (input, init) => {
         const url = new URL(String(input));
         if (url.pathname === "/auth/v1/user") return Response.json({ id: "verified-user", email_confirmed_at: "2026-01-01" });
-        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 456 }]);
+        if (url.pathname === "/rest/v1/restrooms") return Response.json([{ osm_id: 456, latitude: 42.36, longitude: -71.06 }]);
         if (url.pathname.startsWith("/storage/v1/object/review-photos/")) {
           assert(init?.method === "POST" && new Headers(init.headers).get("content-type") === "image/png", "Upload image to the private bucket");
           return Response.json({ Key: "stored" });
@@ -78,6 +79,7 @@ Deno.test("signed-in reviews validate radio questions and expose complete approv
     await t.step("all three questions and permitted radio values are required", async () => {
       globalThis.fetch = async () => { throw new Error("Invalid payload must not reach upstream"); };
       for (const fields of [
+        { current_location: false }, { current_location: undefined },
         { availability: null }, { availability: "unknown" }, { cleanliness_status: null },
         { cleanliness_status: "dirty" }, { rating: 0 }, { rating: 6 }, { rating: 2.5 },
         { osm_type: "unknown" }, { osm_id: 0 }, { osm_id: 1.5 }, { osm_id: Number.MAX_SAFE_INTEGER + 1 },

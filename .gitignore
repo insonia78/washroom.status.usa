@@ -1,2 +1,5 @@
 .vercel
 washroom-status-frontend/.env.local
+washroom-status-frontend/e2e/.runtime/
+washroom-status-frontend/playwright-report/
+washroom-status-frontend/test-results/

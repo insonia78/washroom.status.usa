@@ -1,9 +1,13 @@
 import placesApi from "../places-api/index.ts";
+import { testIpSecret, withTestClientIp } from "./test-ip-helpers.ts";
 
 Deno.test("gateway forwards public place requests with internal authorization to Places API", async () => {
   const config = {
     PLACES_API_URL: "https://project.example/functions/v1/places-api",
     GATEWAY_INTERNAL_SECRET: "test-gateway-secret",
+    GATEWAY_IP_SIGNING_SECRET: testIpSecret,
+    UPSTASH_REDIS_REST_URL: "https://redis.example",
+    UPSTASH_REDIS_REST_TOKEN: "test-token",
     SUPABASE_URL: "https://project.example",
     SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
   };
@@ -21,6 +25,16 @@ Deno.test("gateway forwards public place requests with internal authorization to
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
+    if (url.hostname === "redis.example") {
+      return Response.json({ result: [1, 39, 60] });
+    }
+    if (["/rest/v1/rpc/find_nearby_fuel", "/rest/v1/rpc/find_nearby_supermarkets"].includes(url.pathname)) {
+      return Response.json([]);
+    }
+    if (url.pathname === "/rest/v1/review_locations" || url.pathname.startsWith("/storage/v1/object/")) {
+      return new Response(null, { status: 201 });
+    }
+    if (url.hostname === "www.refugerestrooms.org") return Response.json([]);
     if (url.pathname === "/functions/v1/places-api/bathrooms") {
       placesCalls += 1;
       if (
@@ -57,7 +71,8 @@ Deno.test("gateway forwards public place requests with internal authorization to
   };
 
   try {
-    const { default: gateway } = await import("./index.ts");
+    const { default: rawGateway } = await import("./index.ts");
+    const gateway = withTestClientIp(rawGateway);
     for (const method of ["GET", "POST"]) {
       const url = new URL("https://project.example/functions/v1/gateway/places/bathrooms");
       const input = { lat: "39.9526", lon: "-75.1652", radius: "1000" };

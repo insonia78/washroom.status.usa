@@ -1,5 +1,18 @@
 # Washroom Status USA — deployment checklist
 
+**IP rate limiting:** set a dedicated random `GATEWAY_IP_SIGNING_SECRET`
+(at least 32 characters) in both the Vercel server environment and the gateway's
+Edge Function secrets. Do not reuse `GATEWAY_INTERNAL_SECRET` or prefix it with
+`NEXT_PUBLIC_`. Configure gateway-only `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN`, then deploy Next.js and the gateway together.
+Next.js reads Vercel's overwritten `x-vercel-forwarded-for`, signs a hash of the
+IP, and forwards it to the gateway. All browsers behind one IP share 40 requests
+per 60 seconds; clearing cookies does not reset quota. Direct unsigned gateway
+requests return 403; clients must use the Next.js adapters. Production outside
+Vercel fails closed until a trusted proxy integration is implemented.
+Non-production loopback requests share `127.0.0.1`; set the signing secret locally
+too. See [the complete quota contract](../API.md#per-ip-request-limit).
+
 **Private-schema cutover:** after the legacy setup/migrations, apply
 `../supabase-edge-functions/supabase/migrations/20261030230000_private_application_schemas.sql`.
 It moves existing data, rather than copying/deleting it. Accounts/connections use
@@ -161,3 +174,45 @@ Run the focused edge-function tests from the repository root:
 ```powershell
 npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions\_shared\third-party-data-lake_test.ts
 ```
+
+## CI and vertical E2E
+
+The [CI workflow](../.github/workflows/ci.yml) runs frontend typechecking, the
+repository-wide 200-line source cap, Node tests, a production build, all Deno
+tests, and the Python unittest suite. Its final job runs Chromium journeys
+through the production Next.js server, gateway and actual edge handlers to a
+fresh local Supabase stack (PostgreSQL/PostGIS, Auth, REST and Storage) and Redis.
+No hosted project credentials or production secrets are needed.
+
+The three [E2E specs](./e2e/specs) cover geolocation/search with registry and
+private archive persistence; verified sign-in, browser review submission and
+moderation; and 80 concurrent requests with exactly 40 permitted, cookie/header
+spoofing resistance, independent IPs, real 60-second expiry and direct-call denial.
+Only external search providers and map resources are substituted. The local
+HTTPS Upstash protocol bridge executes the production Lua against real Redis.
+The test ingress replaces Vercel's trusted header boundary, not the gateway.
+
+Local prerequisites: Node 24, Deno, Supabase CLI, a running Docker daemon,
+OpenSSL, and an **empty dedicated** Redis database on loopback. Reserve ports
+55320-55322, 56300-56303 and 56443. In this directory:
+
+```powershell
+npm ci
+npx playwright install chromium
+$env:E2E_REDIS_URL = 'redis://127.0.0.1:56379/15'
+npm run test:ci
+```
+
+Set `OPENSSL_BIN` if OpenSSL is not on PATH. The runner creates a uniquely named
+temporary Supabase project, applies the historical prerequisite tables followed
+by the checked-in schema and **all** real migrations, seeds one restroom, and
+cleans up its own services on exit. Existing runtime directories or non-empty
+Redis databases fail explicitly rather than being overwritten.
+
+Failure screenshots, videos and the HTML report are uploaded for seven days.
+Traces are disabled because authenticated network traces can contain tokens.
+Never upload `e2e/.runtime` (ephemeral credentials/certificates), local environment
+files or database dumps. A stopped Docker daemon is a startup failure, not a
+skipped/passing E2E result. Real Vercel ingress, hosted Upstash connectivity,
+third-party provider availability, map rendering and the separate Python service
+are outside these browser journeys; Python is tested in its own CI job.

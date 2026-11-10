@@ -4,13 +4,16 @@ import {isAdminReview,isReviewReply} from '../lib/review-replies.ts';
 
 const review={id:'11111111-1111-4111-8111-111111111111',user_id:'22222222-2222-4222-8222-222222222222',
   osm_type:'node',osm_id:123,rating:3,availability:'open',cleanliness_status:'clean',issues:[],photo_urls:[],
-  comment:'Review',status:'pending',created_at:'2026-10-31T01:00:00Z'};
+  comment:'Review',status:'pending',created_at:'2026-10-31T01:00:00Z',archived_at:null,
+  stage:'moderation',history:[{at:'2026-10-31T01:00:00Z',label:'Submitted'}]};
 const reply={id:'33333333-3333-4333-8333-333333333333',review_id:review.id,recipient_user_id:review.user_id,
   body:'Private reply',status:'draft',created_at:review.created_at,first_attempt_at:null,last_attempt_at:null,sent_at:null};
 test('admin reviews support privately linked and historical anonymous reviews',()=>{
   assert.equal(isAdminReview(review),true);
   assert.equal(isAdminReview({...review,user_id:null}),true);
-  for(const changes of [{user_id:'email@example.test'},{status:'bad'},{rating:0},{osm_type:'unknown'}]){
+  assert.equal(isAdminReview({...review,archived_at:review.created_at,stage:'archived'}),true);
+  for(const changes of [{user_id:'email@example.test'},{status:'bad'},{rating:0},{osm_type:'unknown'},
+    {archived_at:undefined},{archived_at:'invalid'},{stage:'invalid'},{history:[{at:1,label:'Submitted'}]}]){
     assert.equal(isAdminReview({...review,...changes}),false);
   }
 });
