@@ -48,6 +48,21 @@ The monthly ETL is a CLI scheduled by
 [GitHub Actions](../.github/workflows/monthly-refuge-etl.yml), not a Vercel web
 service. Keep its GitHub environment secrets; it needs no ASGI/WSGI entrypoint.
 
+## Bounded search rollout
+
+Apply `../supabase-edge-functions/supabase/migrations/20261110140000_bounded_nearby_search.sql`
+before deploying `places-api`, then deploy the updated frontend. Searches use
+parallel, bounded source queries and return at most the nearest 200 locations.
+Verify dense searches show a limit warning; filters apply to that subset.
+Source precedence and stored-result fallback during Refuge outages are unchanged.
+
+Cards and map previews defer review HTTP requests until their review section is
+within 100 pixels of the visible area. A shared queue allows at most four latest
+review fetches concurrently and cancels queued work when components unmount.
+Browsers without IntersectionObserver still load reviews through the same queue.
+Review photos load lazily. This reduces initial request amplification; scrolling
+through every card can still request every card's review.
+
 ## Review authentication and historical migrations
 
 The migration `20261026143000_anonymous_review_questions.sql` is a historical
@@ -227,13 +242,15 @@ through the production Next.js server, gateway and actual edge handlers to a
 fresh local Supabase stack (PostgreSQL/PostGIS, Auth, REST and Storage) and Redis.
 No hosted project credentials or production secrets are needed.
 
-The three [E2E specs](./e2e/specs) cover geolocation/search with registry and
+The [E2E specs](./e2e/specs) cover geolocation/search with registry and
 private archive persistence; verified sign-in, browser review submission and
 moderation; and 400 concurrent requests with exactly 200 permitted, cookie/header
 spoofing resistance, independent IPs, real 60-second expiry and direct-call denial.
 Only external search providers and map resources are substituted. The local
 HTTPS Upstash protocol bridge executes the production Lua against real Redis.
 The test ingress replaces Vercel's trusted header boundary, not the gateway.
+Additional performance regressions exercise bounded nearest SQL queries and
+verify that offscreen cards do not request reviews until scrolled into view.
 
 Local prerequisites: Node 24, Deno, Supabase CLI, a running Docker daemon,
 OpenSSL, and an **empty dedicated** Redis database on loopback. Reserve ports

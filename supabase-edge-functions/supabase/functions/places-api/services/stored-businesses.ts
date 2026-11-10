@@ -1,13 +1,13 @@
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
 import { locationDatabaseHeaders } from "../../_shared/database-schema.ts"
+import { DATABASE_TIMEOUT_MS, SOURCE_CANDIDATE_LIMIT } from "./search-limits.ts"
 
 type BusinessKind = "fuel" | "supermarket"
 
 const businessConfig = {
   fuel: {
     label: "Fuel",
-    rpc: "find_nearby_fuel",
     tag: "amenity",
     fallbackName: "Gas Station",
     invalidCategory: "Stored fuel location is not a gas station.",
@@ -15,7 +15,6 @@ const businessConfig = {
   },
   supermarket: {
     label: "Supermarket",
-    rpc: "find_nearby_supermarkets",
     tag: "shop",
     fallbackName: "Supermarket",
     invalidCategory: "Stored supermarket location is not a supermarket.",
@@ -84,27 +83,24 @@ export async function findNearbyStoredBusinesses(
   const apiKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   if (!baseUrl || !apiKey) throw new RequestError(500, `${config.label} database search requires Supabase server configuration.`)
   const places = new Map<string, ReturnType<typeof normalizeStoredBusiness>>()
-  const pageSize = 500
   try {
-    for (let offset = 0; ; offset += pageSize) {
-      const response = await fetch(new URL(`/rest/v1/rpc/${config.rpc}`, baseUrl), {
-        method: "POST",
-        headers: { ...locationDatabaseHeaders("POST"), apikey: apiKey, Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          search_latitude: latitude, search_longitude: longitude, radius_meters: radius,
-          page_offset: offset, page_size: pageSize,
-        }),
-        signal: AbortSignal.timeout(15_000),
-      })
-      if (!response.ok) throw new Error(`${config.label} database returned HTTP ${response.status}. Apply the nearby ${kind} migration before deploying.`)
-      const rows: unknown = await response.json()
-      if (!Array.isArray(rows) || rows.length > pageSize) throw new Error(`Invalid ${kind} database response.`)
-      for (const row of rows) {
-        const place = normalizeStoredBusiness(row, kind)
-        places.set(`${place.osmType}:${place.id}`, place)
-      }
-      if (rows.length < pageSize) return [...places.values()]
+    const response = await fetch(new URL("/rest/v1/rpc/find_nearby_businesses", baseUrl), {
+      method: "POST",
+      headers: { ...locationDatabaseHeaders("POST"), apikey: apiKey, Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        search_latitude: latitude, search_longitude: longitude, radius_meters: radius,
+        business_kind: kind, result_limit: SOURCE_CANDIDATE_LIMIT,
+      }),
+      signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+    })
+    if (!response.ok) throw new Error(`${config.label} database returned HTTP ${response.status}. Apply the bounded-search migration before deploying.`)
+    const rows: unknown = await response.json()
+    if (!Array.isArray(rows) || rows.length > SOURCE_CANDIDATE_LIMIT) throw new Error(`Invalid ${kind} database response.`)
+    for (const row of rows) {
+      const place = normalizeStoredBusiness(row, kind)
+      places.set(`${place.osmType}:${place.id}`, place)
     }
+    return [...places.values()]
   } catch (error) {
     logError(kind, `Stored ${kind} search failed`, error instanceof Error ? error.message : String(error))
     throw new RequestError(502, config.unavailable)

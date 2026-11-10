@@ -428,7 +428,7 @@ Content-Type: application/json
   Restroom tags are trimmed and categorical values lowercased; boolean aliases
   `true`/`1` and `false`/`0` normalize to `yes` and `no`. Missing toilets remain
   `unknown`, explicit `no` is preserved, and restroom-specific hours take priority.
-- Stored businesses are included with complete pagination and OSM-identity
+- Stored businesses use bounded nearest-candidate queries and OSM-identity
   deduplication. Stored restroom rows take precedence over fuel, and existing
   restroom or fuel rows take precedence over matching supermarkets.
   When Refuge fails, stored businesses can be returned even if no standalone
@@ -436,7 +436,22 @@ Content-Type: application/json
   Failure of either business RPC is a database error, not an empty-match fallback.
 - Use `POST /bathrooms` for stored bathrooms, imported businesses, and Refuge listings.
 - Searches check `app_locations.restrooms`, `app_locations.export_fuel`, and `app_locations.supermarkets` in Supabase and supplement them with Refuge Restrooms, filtered to the selected radius. There are no live Overpass business searches or fallbacks.
-- Stored and upstream results are merged by source type and ID, with stored rows taking precedence. Refuge listings use `osmType: "refuge"` to avoid collisions with OSM IDs. The frontend orders all results nearest first.
+- Stored and upstream results are merged by source type and ID. Live Refuge
+  results take precedence over their archived copies; stored restrooms take
+  precedence over businesses. Refuge uses `osmType: "refuge"` to avoid OSM ID
+  collisions. Results are ordered nearest first, with source type and ID as
+  deterministic distance tie-breakers.
+- Searches return at most **200 locations**. Each database source returns at
+  most 201 nearest candidates (one extra to detect truncation); Refuge fetches
+  at most three 100-record pages and retains at most 201 candidates. Source
+  queries start in parallel; only returned locations are registered for reviews.
+  A `warning` explicitly identifies limited coverage and asks users to narrow
+  the radius or move the search. UI filters apply to the returned subset, not
+  every matching location in the database. `count` is the returned count, not
+  the total number of matches. Apply `20261110140000_bounded_nearby_search.sql`
+  before deploying Places API; the new RPCs are service-role only. Database
+  radius filtering uses spherical geography distance, consistent with the
+  great-circle ordering used by search and UI.
 - If Refuge fails with a provider error or timeout and stored restrooms or imported businesses exist, the response is HTTP 200 with those rows and a `warning` identifying missing Refuge coverage. The frontend displays the warning with a retry button and does not cache partial responses. Without stored rows, provider failures remain HTTP 502/504, not empty success. Database failures always remain errors. A successful empty response means no matches within the selected radius (five miles by default in the frontend). Direct Places API callers retain the default 1,000-meter radius.
 - Imported businesses use `toilets=unknown` when untagged. Their restroom access, fee, and wheelchair values use explicit `toilets:*` tags or `unknown`, not general business facilities.
 - The Edge Function uses Supabase's server-side `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables to read private location data; do not expose the service-role key to clients.

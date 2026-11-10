@@ -55,20 +55,21 @@ Deno.test("nearby searches merge stored restrooms, businesses, and Refuge Restro
         if (failRegistration) return new Response("Unavailable", { status: 503 })
         return new Response(null, { status: 201 })
       }
-      if (url.pathname === "/rest/v1/rpc/find_nearby_fuel") {
+      if (url.pathname === "/rest/v1/rpc/find_nearby_businesses" &&
+        JSON.parse(String(init?.body)).business_kind === "fuel") {
         const body = JSON.parse(String(init?.body))
         assert(body.search_latitude === 40.75 && body.search_longitude === -73.99 &&
           body.radius_meters === 8046.72, "Preserve the requested origin and five-mile radius")
         return Response.json(fuelRows)
       }
-      if (url.pathname === "/rest/v1/rpc/find_nearby_supermarkets") {
+      if (url.pathname === "/rest/v1/rpc/find_nearby_businesses") {
         const body = JSON.parse(String(init?.body))
         assert(body.search_latitude === 40.75 && body.search_longitude === -73.99 &&
           body.radius_meters === 8046.72, "Search supermarkets within the same radius")
         if (failSupermarket) return new Response("Database unavailable", { status: 503 })
         return Response.json(supermarketRows)
       }
-      if (url.pathname === "/rest/v1/restrooms") {
+      if (url.pathname === "/rest/v1/rpc/find_nearby_restrooms") {
         if (failDatabase) return new Response("Database unavailable", { status: 503 })
         return Response.json(databaseRows)
       }
@@ -100,7 +101,7 @@ Deno.test("nearby searches merge stored restrooms, businesses, and Refuge Restro
   try {
     const complete = await search()
     assert(complete.count === 4 && !complete.warning, "Merge stored restrooms, imported businesses, and Refuge")
-    assert(complete.data[0].provider === "refuge-restrooms", "Keep timestamped Refuge listings first")
+    assert(complete.data[0].osmType === "node", "Use deterministic source/ID tie breaking at equal distances")
     assert(complete.data.filter(place => place.id === 123).length === 2, "Keep distinct source identities")
     assert(complete.data.find(place => place.id === 456)?.toilets === "unknown",
       "Imported business presence must not imply restroom availability")

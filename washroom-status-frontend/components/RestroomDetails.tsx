@@ -7,22 +7,11 @@ import ReviewGrade from '@/components/ReviewGrade';
 import OwnerResponses from '@/components/OwnerResponses';
 import {restroomLabel} from '@/lib/restroom-label';
 import {useModalDialog} from '@/lib/use-modal-dialog';
+import {parsePublicReviews,type PublicReview} from '@/lib/public-reviews';
 export {restroomLabel} from '@/lib/restroom-label';
 export type Restroom={id:number;osm_type:'node'|'way'|'relation'|'refuge';source?:'refuge-restrooms';created_at?:string;directions?:string;lat:number;lon:number;name:string;wheelchair?:string;fee?:string;opening_hours?:string;category?:string;toilets?:string;distanceMiles?:number};
-type Review={id:string;rating:number;availability?:string|null;cleanliness_status?:string|null;issues:string[];comment:string;created_at:string;photo_urls:string[];owner_photo_urls?:string[]};
-function isReview(value:unknown):value is Review{
-  if(typeof value!=='object'||value===null)return false;
-  const review=value as Record<string,unknown>;
-  return typeof review.id==='string'&&typeof review.rating==='number'&&Number.isInteger(review.rating)&&review.rating>=1&&review.rating<=5&&
-    (review.availability===null||typeof review.availability==='string')&&
-    (review.cleanliness_status===null||typeof review.cleanliness_status==='string')&&
-    Array.isArray(review.issues)&&review.issues.every((issue:unknown)=>typeof issue==='string')&&
-    typeof review.comment==='string'&&typeof review.created_at==='string'&&Number.isFinite(Date.parse(review.created_at))&&
-    Array.isArray(review.photo_urls)&&review.photo_urls.every((url:unknown)=>typeof url==='string')&&
-    (review.owner_photo_urls===undefined||Array.isArray(review.owner_photo_urls)&&review.owner_photo_urls.every((url:unknown)=>typeof url==='string'));
-}
 export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom:Restroom;onClose:()=>void;onAddReview?:()=>void}){
-  const [reviews,setReviews]=useState<Review[]>([]);
+  const [reviews,setReviews]=useState<PublicReview[]>([]);
   const [average,setAverage]=useState<number|null>(null);
   const [reviewCount,setReviewCount]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -39,10 +28,7 @@ export default function RestroomDetails({restroom,onClose,onAddReview}:{restroom
     fetch(`/api/reviews?osm_type=${restroom.osm_type}&osm_id=${restroom.id}`).then(async response=>{
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'Could not load reviews');
-        if(!Array.isArray(data.reviews)||!data.reviews.every(isReview))throw new Error('Invalid reviews response');
-        if(!Number.isSafeInteger(data.review_count)||data.review_count<0||
-          (data.review_count===0?data.average!==null:typeof data.average!=='number'||!Number.isFinite(data.average)||data.average<1||data.average>5))throw new Error('Invalid review grade response.');
-        return data;
+        return parsePublicReviews(data,50);
       }).then(data=>{
         if(active){setReviews(data.reviews);setAverage(data.average??null);setReviewCount(data.review_count)}
       }).catch(error=>{

@@ -10,7 +10,7 @@ import NavigationLinks from '@/components/NavigationLinks';
 import {requestCurrentPosition} from '@/lib/geolocation';
 import ContributionStart from '@/components/ContributionStart';
 import LatestReview from '@/components/LatestReview';
-
+import {matchesRestroomFilter} from '@/lib/restroom-filters';
 
 export default function Home(){const [city,setCity]=useState('');const [items,setItems]=useState<Restroom[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [filter,setFilter]=useState('all');const [center,setCenter]=useState<[number,number]>([-98.5795,39.8283]);const [selected,setSelected]=useState<Restroom|null>(null);
 const [hasSearchOrigin,setHasSearchOrigin]=useState(false);
@@ -115,7 +115,7 @@ async function search(e:React.FormEvent){
   }catch(error){setError(apiFailureMessage(error instanceof Error?error.message:null,/^\d{5}$/.test(query)?'ZIP Geocoding API':'Photon Geocoding API'));focusAfterSearch.current=true;returnToMap()}
   finally{setSearching(false)}
 }
-const shown=sortByDistance(items.filter(x=>filter==='all'||(filter==='accessible'&&x.wheelchair==='yes')||(filter==='free'&&x.fee==='no')||(filter==='always'&&x.opening_hours==='24/7')));
+const shown=sortByDistance(items.filter(item=>matchesRestroomFilter(item,filter)));
 const hasResults=!busy&&!error&&shown.length>0;
 const addToiletButton=currentLocationActive&&location&&!locating&&!searching?<button type="button" aria-haspopup="dialog" onClick={()=>setToiletCoordinates([...location])} className="shrink-0 rounded-xl bg-green-600 px-3 py-3 text-sm font-bold text-white hover:bg-green-700">Add a toilet</button>:null;
 const radiusControl=<label className="flex flex-col items-start gap-1 text-sm font-semibold sm:flex-row sm:items-center sm:gap-2">Search radius<select aria-describedby="radius-search-help" value={radiusMiles} onChange={event=>{focusAfterSearch.current=false;setRadiusMiles(event.target.value)}} className="rounded-xl border border-slate-300 bg-white px-3 py-3">{['1','2','5','10'].map(miles=><option key={miles} value={miles}>{miles} {miles==='1'?'mile':'miles'}</option>)}</select></label>;

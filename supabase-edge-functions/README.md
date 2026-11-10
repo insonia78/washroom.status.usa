@@ -284,12 +284,30 @@ imported. See [the fuel import instructions](./scripts/README.md).
 
 Apply the supermarkets, schema-move, and supermarket-search migrations in
 order before deploying `places-api`. The private `app_locations.supermarkets`
-table is queried through the service-role-only `find_nearby_supermarkets`
-PostGIS RPC, which uses a geography index and paginates results. Existing rows,
+table is queried through the service-role-only `find_nearby_businesses`
+PostGIS RPC, which uses geography filtering and bounded nearest results. Existing rows,
 indexes, and the identity sequence are preserved when the table moves from
 `public`. The API merges supermarkets with the existing sources by OSM identity;
 stored restrooms and fuel take precedence. A supermarket listing does not
 confirm restroom availability or accessibility.
+
+### Bounded nearest searches
+
+Apply [the bounded-search migration](./supabase/migrations/20261110140000_bounded_nearby_search.sql)
+after the existing migrations **before deploying Places API**. It adds
+`find_nearby_restrooms` and `find_nearby_businesses`, both service-role-only.
+Each database source returns at most 201 nearest candidates. The old business
+RPCs remain available for compatibility, but Places API no longer paginates them.
+Refuge is bounded to three provider pages and 201 retained candidates.
+
+The four source queries start concurrently. After source-aware deduplication,
+the API returns the nearest 200 results and registers only that returned subset.
+A visible warning indicates truncation and explains that filters operate on
+the subset; narrowing the radius or moving the origin changes the search.
+Provider outages still return stored results with an explicit warning; database
+errors still fail the search. Apply and test in staging before production.
+The [SQL regression](./supabase/tests/bounded_nearby_search.sql) requires an
+isolated migrated database; its fixtures roll back.
 
 ## Function secrets and configuration
 

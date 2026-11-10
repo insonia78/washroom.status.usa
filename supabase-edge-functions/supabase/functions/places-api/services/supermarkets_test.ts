@@ -40,7 +40,7 @@ Deno.test("supermarket normalization keeps OSM identities and restroom-specific 
   }
 })
 
-Deno.test("supermarket RPC paginates, deduplicates, and surfaces database failures", async () => {
+Deno.test("supermarket RPC bounds candidates, deduplicates, and surfaces database failures", async () => {
   const originalFetch = globalThis.fetch
   const url = Deno.env.get("SUPABASE_URL")
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -49,7 +49,7 @@ Deno.test("supermarket RPC paginates, deduplicates, and surfaces database failur
   try {
     let calls = 0
     globalThis.fetch = (input, init) => {
-      assert(String(input) === "https://project.example/rest/v1/rpc/find_nearby_supermarkets", "Use the supermarket RPC")
+      assert(String(input) === "https://project.example/rest/v1/rpc/find_nearby_businesses", "Use bounded business RPC")
       const headers = new Headers(init?.headers)
       assert(init?.method === "POST" && init.signal instanceof AbortSignal, "Bound RPC with a timeout")
       assert(headers.get("Content-Profile") === "app_locations" && headers.get("apikey") === "test-secret",
@@ -57,17 +57,16 @@ Deno.test("supermarket RPC paginates, deduplicates, and surfaces database failur
       const body = JSON.parse(String(init.body))
       assert(body.search_latitude === 40 && body.search_longitude === -83 && body.radius_meters === 1609.344,
         "Forward the exact search origin and radius")
-      assert(body.page_size === 500 && body.page_offset === calls * 500, "Request every page")
+      assert(body.result_limit === 201 && body.business_kind === "supermarket", "Bound source candidates")
       calls++
-      return Promise.resolve(Response.json(calls === 1
-        ? Array.from({ length: 500 }, () => row)
-        : [{ ...row, osm_identity: "node/456" }]))
+      return Promise.resolve(Response.json([row, row, { ...row, osm_identity: "node/456" }]))
     }
-    assert((await findNearbySupermarkets(40, -83, 1609.344)).length === 2 && calls === 2,
-      "Deduplicate results across pages without truncation")
+    assert((await findNearbySupermarkets(40, -83, 1609.344)).length === 2 && calls === 1,
+      "Deduplicate results with one bounded query")
     for (const response of [
       new Response("missing RPC", { status: 404 }),
       Response.json({}),
+      Response.json(Array.from({ length: 202 }, () => row)),
       Response.json([{ ...row, osm_identity: null }]),
     ]) {
       globalThis.fetch = () => Promise.resolve(response)

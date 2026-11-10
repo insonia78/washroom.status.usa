@@ -34,7 +34,7 @@ Deno.test("fuel normalization preserves identities and honest restroom metadata"
   }
 })
 
-Deno.test("fuel RPC paginates, deduplicates, and fails explicitly on malformed results", async () => {
+Deno.test("fuel RPC bounds candidates, deduplicates, and fails explicitly on malformed results", async () => {
   const originalFetch = globalThis.fetch
   const url = Deno.env.get("SUPABASE_URL")
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -43,18 +43,19 @@ Deno.test("fuel RPC paginates, deduplicates, and fails explicitly on malformed r
   try {
     let calls = 0
     globalThis.fetch = (input, init) => {
-      assert(String(input) === "https://project.example/rest/v1/rpc/find_nearby_fuel", "Use internal database RPC")
+      assert(String(input) === "https://project.example/rest/v1/rpc/find_nearby_businesses", "Use bounded internal database RPC")
       assert(init?.method === "POST" && init.signal instanceof AbortSignal, "Bound RPC with timeout")
       const body = JSON.parse(String(init.body))
       assert(body.search_latitude === 40 && body.search_longitude === -83 && body.radius_meters === 1609.344, "Use requested origin and exact radius")
-      assert(body.page_size === 500 && body.page_offset === calls * 500, "Paginate all results")
+      assert(body.result_limit === 201 && body.business_kind === "fuel", "Bound source candidates")
       calls++
-      return Promise.resolve(Response.json(calls === 1 ? Array.from({ length: 500 }, () => row) : [{ ...row, osm_identity: "node/456" }]))
+      return Promise.resolve(Response.json([row, row, { ...row, osm_identity: "node/456" }]))
     }
-    assert((await findNearbyFuel(40, -83, 1609.344)).length === 2 && calls === 2, "Deduplicate across pages without truncating")
+    assert((await findNearbyFuel(40, -83, 1609.344)).length === 2 && calls === 1, "Deduplicate with one bounded query")
     for (const response of [
       new Response("missing RPC", { status: 404 }),
       Response.json({}),
+      Response.json(Array.from({ length: 202 }, () => row)),
       Response.json([{ ...row, osm_identity: null }]),
     ]) {
       globalThis.fetch = () => Promise.resolve(response)

@@ -25,7 +25,7 @@ Deno.test("ETL Refuge rows preserve source identity, deduplicate live results an
       }]);
     }
     if (url.hostname === "project.example") {
-      if (url.pathname === "/rest/v1/restrooms") return Response.json([row]);
+      if (url.pathname === "/rest/v1/rpc/find_nearby_restrooms") return Response.json([row]);
       if (url.pathname.startsWith("/rest/v1/rpc/")) return Response.json([]);
       if (url.pathname === "/rest/v1/review_locations" || url.pathname.startsWith("/storage/v1/object/")) {
         return new Response(null, { status: 201 });

@@ -130,7 +130,24 @@ npm run dev
    The server derives the gateway URL from the Supabase project URL. Optionally set server-only `WASHROOM_GATEWAY_URL` to a different gateway base URL, such as `http://127.0.0.1:55321/functions/v1/gateway`.
    Public searches and approved review reads do not require user sign-in. Review/toilet writes require a verified Supabase bearer session. Keep the public key configured for Auth. Set a dedicated `GATEWAY_IP_SIGNING_SECRET` (32+ random characters) in Next.js and the gateway, plus `UPSTASH_REDIS_REST_URL` and a read/write `UPSTASH_REDIS_REST_TOKEN` on the gateway. All application requests use server-signed IP assertions; unsigned direct gateway calls return 403. The shared limit is 200 requests/IP per 60 seconds, not a localStorage counter. See [the complete quota contract](../API.md#per-ip-request-limit) for Vercel trust, local loopback behavior and 503 configuration failures.
    Deploy `gateway`, `places-api`, and `frontend-api`. Set `PLACES_API_URL` and `FRONTEND_API_URL` to the respective function base URLs, and the same `GATEWAY_INTERNAL_SECRET` for all three functions. Never send that internal secret from the frontend. All three use `verify_jwt = false` in the checked-in Supabase config; backend functions enforce the internal gateway headers.
-   Searches default to a 5-mile radius (8,046.72 meters). The Search radius selector offers 1, 2, 5, and 10 miles and immediately reloads all place types through the gateway without requiring Search. Changing radius retains the current origin and cancels obsolete frontend requests; it does not geocode again. Places API combines stored restrooms, imported gas stations and supermarkets with Refuge Restrooms listings; Refuge entries are filtered to the selected radius and ordered newest first by the backend, while the UI sorts all results nearest first. There are no live Overpass business searches; the `/places/overpass` route has been removed. Refuge entries are clearly identified and use a separate source identity in the app's moderated review system. Before deploying Places API, apply the fuel-search migration and the supermarkets, schema-move, and supermarket-search migrations in `supabase-edge-functions/supabase/migrations`. Business rows are normalized into the existing place format, including parsed OSM IDs, geometry coordinates, trimmed names and restroom-specific metadata. Cards and details mark restroom availability unconfirmed unless explicitly tagged; `toilets=no` remains visible. Business presence and opening hours do not confirm restroom access. Stored and upstream results are deduplicated by source identity. If Refuge fails, stored results remain visible with a warning about incomplete coverage; if no locations can be returned, the error remains explicit. Partial responses are not cached.
+   Searches default to a 5-mile radius (8,046.72 meters). The selector offers 1, 2,
+   5 and 10 miles and reloads all place types without geocoding the origin again.
+   Changing radius cancels obsolete frontend requests. Places API queries stored
+   restrooms, fuel, supermarkets and Refuge concurrently, then returns at most
+   the **nearest 200** deduplicated locations. A visible warning asks users to
+   narrow the radius or move the search when coverage is limited; UI filters
+   apply only to that returned subset.
+   Apply all prerequisite migrations, including
+   `20261110140000_bounded_nearby_search.sql`, before deploying Places API.
+   Each database source is bounded to 201 nearest candidates, and Refuge to
+   three pages/201 candidates. Live Refuge beats archived Refuge; stored
+   restrooms beat matching businesses. Refuge uses a separate source identity
+   to avoid OSM ID collisions.
+   There are no live Overpass business searches. Business metadata does not
+   prove restroom access; missing tags remain unconfirmed and `toilets=no` is
+   preserved. Refuge outages retain stored results with an explicit warning;
+   database failures and outages with no results remain errors. Partial
+   responses are not cached.
 5. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` in the edge-function environment. Next.js does not need database credentials or a service-role key. Never put service-role keys in browser code, Git, or any `NEXT_PUBLIC_` variable.
 6. With current GPS location active, select a real restroom and choose **Add review**. Sign in using the email magic link, then answer availability, 1-5 cleanliness rating and Excellent/Clean/Average/Poor/Very Dirty condition; issues, comments and photos are optional. Reviews are saved as **pending**. Use an allowlisted moderator account to approve/reject them; only approved reviews are public. The historical anonymous-question migration remains a schema prerequisite, not authorization for anonymous writes.
 
@@ -146,6 +163,12 @@ npm run dev
 - Both the **Add review** and **Add a toilet** questionnaires offer **Take photo**, which requests the rear camera on supported mobile/tablet browsers (`capture="environment"`). Camera access starts only after tapping this button; browser/device support determines whether the camera or a file picker opens. **Upload photos** remains available on every device. Both options share a three-photo limit, JPEG/PNG/WebP validation (up to 12 MB per input photo), automatic JPEG compression, and removal controls. Photos are uploaded only when the questionnaire is submitted.
 - **Add review** is available on cards and in details while current GPS location is active, regardless of listing source. It opens a sign-in prompt and then the `/contribute` questionnaire. Three required radio groups collect Restroom Availability (Open/Closed/Temporarily unavailable/Unverified), Cleanliness Ratings (1-5), and Clean or Dirty Status (Excellent/Clean/Average/Poor/Very Dirty). Issues, comments and photos are optional; submissions remain pending. Reviews for Refuge listings are collected by this app, not submitted to Refuge Restrooms.
 - Each card shows the latest approved review with a local date/time timestamp. `GET /api/reviews?osm_type=node&osm_id=123&latest=1` returns at most one review, ordered newest first; pending/rejected reviews are excluded, but an empty comment is allowed and displays "No written comment." Cards show loading, empty, and retryable error states explicitly.
+- Cards and map previews request reviews only when their review section is
+  within 100 pixels of the visible area, with at most four latest-review HTTP
+  requests in flight. Leaving a search cancels queued/unmounted work; browsing
+  every card can still request every review. Photos are lazy-loaded. Cards and
+  details share one public-review validator, and cards/map markers share one
+  listing-filter predicate to prevent inconsistent behavior.
 - Cards show a five-star grade with fractional star fills, the numeric average out of 5, and the total approved review count. This uses **all approved review ratings**, including reviews without a written comment, not just the latest comment or the 50 displayed in details. Unrated restrooms show five empty stars and "Not yet rated", never a fabricated zero rating. Apply `../supabase-edge-functions/supabase/migrations/20261026150000_approved_review_summary.sql` and redeploy `frontend-api` to enable the server-only aggregate. The latest-comment response includes `average` and `review_count`.
 - Verified-account review submission with strict server-side payload and location checks; gateway-backed Email OTP Auth routes support sign-in
 - Source/ID verification against imported restrooms or the server-only registry of returned search listings before accepting reviews

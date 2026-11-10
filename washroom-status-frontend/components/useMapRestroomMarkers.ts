@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import type {Map as MapInstance} from 'maplibre-gl';
 import type {Restroom} from '@/components/RestroomDetails';
 import {apiFailureMessage} from '@/lib/user-messages';
+import {matchesRestroomFilter} from '@/lib/restroom-filters';
 
 export type MapPreview = {
   restroom: Restroom;
@@ -56,12 +57,7 @@ export default function useMapRestroomMarkers({
         closePreview();
       }, 200);
     };
-    const visibleItems = items.filter(item =>
-      filter === 'all' ||
-      (filter === 'accessible' && item.wheelchair === 'yes') ||
-      (filter === 'free' && item.fee === 'no') ||
-      (filter === 'always' && item.opening_hours === '24/7')
-    );
+    const visibleItems = items.filter(item => matchesRestroomFilter(item, filter));
     import('maplibre-gl').then(({Marker, Popup}) => {
       if (!active) return;
       visibleItems.forEach(item => {

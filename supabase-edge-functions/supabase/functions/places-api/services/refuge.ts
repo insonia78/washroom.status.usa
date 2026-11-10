@@ -1,11 +1,12 @@
 import { RequestError } from "../utils/errors.ts"
 import { logError } from "../utils/logger.ts"
 import { fetchAndArchiveProviderResponse } from "../../_shared/third-party-data-lake.ts"
+import { SOURCE_CANDIDATE_LIMIT } from "./search-limits.ts"
+import { distanceMeters } from "./distance.ts"
 
 const REFUGE_API_URL = "https://www.refugerestrooms.org/api/v1/restrooms/by_location"
 const PAGE_SIZE = 100
 const REQUEST_TIMEOUT_MS = 15_000
-const EARTH_RADIUS_METERS = 6_371_000
 
 type RefugeRestroom = {
   id: number
@@ -23,22 +24,6 @@ type RefugeRestroom = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function distanceMeters(
-  latitudeA: number,
-  longitudeA: number,
-  latitudeB: number,
-  longitudeB: number,
-): number {
-  const toRadians = (degrees: number) => degrees * Math.PI / 180
-  const latitudeDelta = toRadians(latitudeB - latitudeA)
-  const longitudeDelta = toRadians(longitudeB - longitudeA)
-  const haversine = Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(toRadians(latitudeA)) * Math.cos(toRadians(latitudeB)) *
-      Math.sin(longitudeDelta / 2) ** 2
-
-  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(haversine))
 }
 
 function normalizeRefugeRestroom(value: unknown): RefugeRestroom {
@@ -88,7 +73,7 @@ export async function findNearbyRefugeRestrooms(
 
   const places = []
   try {
-    for (let page = 1; ; page += 1) {
+    for (let page = 1; page <= Math.ceil(SOURCE_CANDIDATE_LIMIT / PAGE_SIZE); page += 1) {
       const url = new URL(REFUGE_API_URL)
       url.searchParams.set("lat", String(latitude))
       url.searchParams.set("lng", String(longitude))
@@ -110,6 +95,7 @@ export async function findNearbyRefugeRestrooms(
 
       let outsideRadius = false
       for (const row of rows) {
+        if (places.length === SOURCE_CANDIDATE_LIMIT) break
         const place = normalizeRefugeRestroom(row)
         const distance = distanceMeters(latitude, longitude, place.latitude, place.longitude)
         if (distance > radiusMeters) {
@@ -139,7 +125,7 @@ export async function findNearbyRefugeRestrooms(
         })
       }
 
-      if (outsideRadius || rows.length < PAGE_SIZE) break
+      if (outsideRadius || rows.length < PAGE_SIZE || places.length === SOURCE_CANDIDATE_LIMIT) break
     }
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError"
