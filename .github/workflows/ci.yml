@@ -1,4 +1,4 @@
-name: CI
+name: CI and vertical E2E
 
 on:
   push:
@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   frontend:
+    name: Frontend checks and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -35,6 +36,7 @@ jobs:
       - run: npm run build
 
   edge:
+    name: Edge function checks and tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -48,6 +50,7 @@ jobs:
         run: deno test --allow-env --allow-net --allow-read supabase-edge-functions/supabase/functions
 
   registration:
+    name: Python registration tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -67,6 +70,7 @@ jobs:
       - run: python -m unittest discover -s tests -p "test_*.py"
 
   vertical-e2e:
+    name: Vertical E2E (browser to database)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [frontend, edge, registration]
