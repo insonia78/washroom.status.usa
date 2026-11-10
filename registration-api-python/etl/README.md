@@ -25,15 +25,35 @@ records are never deleted.
      uses a session advisory lock). GitHub-hosted runners may require the IPv4
      session pooler instead of the IPv6-only direct endpoint.
 4. Push [the workflow](../../.github/workflows/monthly-refuge-etl.yml) to the default
-   branch. It runs on the first day of each month at **03:00 UTC**. GitHub schedules
-   can be delayed; they are not an exact-time guarantee. Production secrets are
-   never needed by the regular CI tests.
+   branch. With Actions enabled, scheduled runs perform a **real import and
+   cleanup**, not a dry run, on the first day of each month at **03:00 UTC**.
+   This is 22:00 EST / 23:00 EDT on the previous US Eastern calendar day.
+   GitHub schedules can be delayed; they are not an exact-time guarantee.
+   Production secrets are never needed by the regular CI tests.
 5. First use **Actions → Monthly Refuge data-lake ETL → Run workflow**, with
    `dry_run` checked. Inspect the counters, then uncheck it to import and clean up.
    Required environment approvals also apply to scheduled runs.
 
-No secrets, migration, production imports or deletions are deployed automatically
-by adding these files. Do not copy credentials into source or workflow YAML.
+Adding the files does not provision secrets, apply migrations or deploy Places
+API. Once the workflow is on the default branch and Actions is enabled, its
+schedule is active; missing configuration makes a run fail, not silently skip.
+Do not copy credentials into source or workflow YAML.
+
+## Workflow behavior
+
+- Manual dispatch defaults `dry_run` to true; uncheck it for a real import.
+  Scheduled runs always run without `--dry-run`.
+- Both modes need all three secrets, Storage access and a working database
+  connection. Dry-run still acquires the session advisory lock and validates
+  archives, but does not upsert records or delete objects.
+- The job uses Python 3.14 on Ubuntu, the `data-lake-etl` GitHub environment,
+  read-only repository permissions and a 120-minute timeout.
+- The workflow concurrency group does not cancel an in-progress run. A database
+  session lock also prevents simultaneous importers, including local invocations.
+- Any archive failures make the CLI exit nonzero. Inspect the logged path/error
+  class, correct configuration or data, and rerun; failed archives remain.
+- GitHub environment approvals apply to both scheduled and manual runs. Regular
+  CI uses a disposable PostgreSQL service, not these production secrets.
 
 ## Local commands
 

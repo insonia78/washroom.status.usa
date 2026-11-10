@@ -30,7 +30,7 @@ test('Next.js -> signed IP -> gateway -> Redis: cookies do not reset quota, diff
       assert.match(key, /^washroom:gateway:ip:v1:[a-f0-9]{64}$/);
       const count = (counts.get(key) ?? 0) + 1;
       counts.set(key, count);
-      return Response.json({ result: [count <= 100 ? 1 : 0, Math.max(0, 100 - count), 60] });
+      return Response.json({ result: [count <= 200 ? 1 : 0, Math.max(0, 200 - count), 60] });
     }
     return gateway(req);
   };
@@ -38,11 +38,11 @@ test('Next.js -> signed IP -> gateway -> Redis: cookies do not reset quota, diff
     headers: { 'x-vercel-forwarded-for': ip, 'x-forwarded-for': crypto.randomUUID(), cookie },
   }), '/frontend/reviews');
   try {
-    const responses = await Promise.all(Array.from({ length: 200 }, (_, i) =>
+    const responses = await Promise.all(Array.from({ length: 400 }, (_, i) =>
       send(i % 2 ? '192.0.2.1' : '::ffff:192.0.2.1', `washroom_device=${crypto.randomUUID()}`)));
-    assert.equal(responses.filter(response => response.status === 200).length, 100);
-    assert.equal(responses.filter(response => response.status === 429).length, 100);
-    assert.equal(forwarded, 100);
+    assert.equal(responses.filter(response => response.status === 200).length, 200);
+    assert.equal(responses.filter(response => response.status === 429).length, 200);
+    assert.equal(forwarded, 200);
     assert.equal(counts.size, 1);
     assert.equal((await send('192.0.2.2', '')).status, 200);
     assert.equal(counts.size, 2);

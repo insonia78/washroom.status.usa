@@ -35,9 +35,9 @@ export function withIpRateLimit(handler: Handler, consume: Consume = consumeIpRe
     }
     const response = allowance.allowed
       ? await handler(req)
-      : failure(req, 429, "Too many requests. Limit: 100 requests per IP address per minute.");
+      : failure(req, 429, "Too many requests. Limit: 200 requests per IP address per minute.");
     const headers = new Headers(response.headers);
-    headers.set("RateLimit-Limit", "100");
+    headers.set("RateLimit-Limit", "200");
     headers.set("RateLimit-Remaining", String(allowance.remaining));
     headers.set("RateLimit-Reset", String(allowance.retry_after));
     const exposed = headers.get("Access-Control-Expose-Headers");

@@ -1,6 +1,8 @@
 # Registration API v1
 
-`api/v1` is a FastAPI service for account registration management in the Codyza Weather Project.
+`api/v1` is the Washroom Status USA FastAPI service for application account
+management. Frontend review/toilet contribution sign-in uses Supabase Auth
+separately; this service does not provide that magic-link flow.
 
 ## Features
 
@@ -157,6 +159,9 @@ X-Washroom-Gateway-Secret: <shared-secret>
 
 If either header is missing or invalid, the API returns `403 Forbidden`.
 If `GATEWAY_INTERNAL_SECRET` is unset, the middleware allows requests through without enforcing gateway headers.
+Set it in production; unlike the Deno backend boundary, this Python middleware
+does not fail closed when the secret is missing. The gateway's signed-IP quota
+does not protect callers that bypass the gateway to reach an exposed Python API.
 
 ## Inbound traffic allowlist
 

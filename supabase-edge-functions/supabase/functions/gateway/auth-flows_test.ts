@@ -29,7 +29,7 @@ Deno.test("gateway preserves account and admin authentication flows behind IP co
     const url = new URL(request.url);
     if (url.hostname === "redis.example") {
       deviceCalls++;
-      return Promise.resolve(Response.json({ result: [1, 99, 60] }));
+      return Promise.resolve(Response.json({ result: [1, 199, 60] }));
     }
     assert(request.headers.get("x-washroom-gateway-secret") === config.GATEWAY_INTERNAL_SECRET,
       "Authentication backends require internal authorization");

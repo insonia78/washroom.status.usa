@@ -1,8 +1,13 @@
-# Codyza Weather Project
+# Washroom Status USA - Python services
 
-This repository contains the Python registration API for the Codyza Weather Project.
+This directory contains the Washroom Status USA registration API and monthly
+Refuge archive ETL.
 
-At the moment, the repository is focused on the `api/v1` service, which exposes a small FastAPI application for managing accounts, checking service health, and accepting trusted inbound traffic from the Supabase `gateway` edge function.
+The `api/v1` FastAPI service manages application accounts and health checks
+behind the Supabase gateway. The separate `etl` CLI imports private Refuge
+archives into the restroom database and deletes only committed archive files.
+The frontend's contribution sign-in uses Supabase Auth; these custom account
+endpoints do not replace that flow.
 
 ## Repository contents
 
@@ -14,6 +19,10 @@ api/
     routes/
     main.py
     pyproject.toml
+etl/
+  run.py
+  requirements.txt
+  tests/
 ```
 
 ## Project in this repository
@@ -32,6 +41,10 @@ api/
 - SQLModel-based database models
 
 When `GATEWAY_INTERNAL_SECRET` is configured, the account routes only accept trusted requests forwarded by the Supabase `gateway` edge function.
+If it is absent, the Python middleware currently skips gateway authentication;
+always configure it for production. Origin filtering is not authentication.
+Startup creates/updates account schema objects and requires appropriate database
+privileges; this is current behavior, not a separate migration runner.
 
 ## Tech stack
 

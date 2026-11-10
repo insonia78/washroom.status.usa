@@ -6,7 +6,7 @@ Edge Function secrets. Do not reuse `GATEWAY_INTERNAL_SECRET` or prefix it with
 `NEXT_PUBLIC_`. Configure gateway-only `UPSTASH_REDIS_REST_URL` and
 `UPSTASH_REDIS_REST_TOKEN`, then deploy Next.js and the gateway together.
 Next.js reads Vercel's overwritten `x-vercel-forwarded-for`, signs a hash of the
-IP, and forwards it to the gateway. All browsers behind one IP share 100 requests
+IP, and forwards it to the gateway. All browsers behind one IP share 200 requests
 per 60 seconds; clearing cookies does not reset quota. Direct unsigned gateway
 requests return 403; clients must use the Next.js adapters. Production outside
 Vercel fails closed until a trusted proxy integration is implemented.
@@ -27,11 +27,29 @@ and administrator allowlist inserts must then target `app_locations`, not `publi
 2. In Vercel, import this Next.js project. Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` using your existing Supabase project. Do not configure `SUPABASE_SERVICE_ROLE_KEY` in Next.js: database access now belongs to the edge backend only.
 3. Do not upload `.env.local` to GitHub or the ZIP. For local testing, create your own `.env.local` from `.env.example`.
 4. Deploy `frontend-api`, `places-api`, then the updated `gateway` using the checked-in Supabase config. Set `PLACES_API_URL` to `https://<project>.supabase.co/functions/v1/places-api`, `FRONTEND_API_URL` to `https://<project>.supabase.co/functions/v1/frontend-api`, and configure the same `GATEWAY_INTERNAL_SECRET` for all three functions. Backend functions need `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in their edge-function environment. Keep internal/database secrets out of Next.js. `FRONTEND_API_URL` can also be derived as a sibling of the configured Places API URL.
-5. Restroom requests follow `browser -> /api/restrooms -> gateway/places/bathrooms -> places-api/bathrooms`. The gateway URL defaults to `NEXT_PUBLIC_SUPABASE_URL/functions/v1/gateway`; set server-only `WASHROOM_GATEWAY_URL` to override it. Confirm `/api/restrooms?lat=39.9526&lon=-75.1652` returns locations and that map pins, accessible/free filters and opening hours work. Searches default to five miles and combine stored restrooms/imported gas stations with Refuge Restrooms. Deploy both `places-api` and `gateway` to remove Overpass calls and the old `/places/overpass` route.
+5. Restroom requests follow `browser -> /api/restrooms -> gateway/places/bathrooms -> places-api/bathrooms`. The gateway URL defaults to `NEXT_PUBLIC_SUPABASE_URL/functions/v1/gateway`; set server-only `WASHROOM_GATEWAY_URL` to override it. Confirm `/api/restrooms?lat=39.9526&lon=-75.1652` returns locations and that map pins, accessible/free filters and opening hours work. Searches default to five miles and combine stored restrooms, imported gas stations and supermarkets with live Refuge Restrooms. Imported Refuge copies preserve their provider identity and are deduplicated against live results. The `/places/overpass` route is removed; there is no live Overpass fallback.
 6. OpenFreeMap requires no map API key or billing setup. Verify the Liberty basemap and visible attribution load, that multiple markers and filters work, and that selecting a result recenters the map and offers Google Maps directions. Verify reviews, city searches and magic-link sign-in through `/gateway/frontend/*`. No direct-provider fallback exists. A missing deployment returns 404. Application data calls stay same-origin through the gateway; MapLibre loads map resources from `https://tiles.openfreemap.org`. The frontend CSP permits this host and the bundled same-origin map worker. Obsolete Google/HERE map environment variables can be removed from deployment settings.
-7. Production launch blockers: verify tile-provider traffic terms and switch providers at scale; cache/rate-limit gateway-backed Photon searches and replace its public demo at scale; implement review rate limiting and moderation controls; add privacy/terms and operational monitoring.
+7. Production readiness: verify tile-provider traffic terms and replace public demo geocoding at scale; consider shared geocoding caching; configure privacy/terms, retention, monitoring and recovery procedures. Gateway IP quotas, account daily submission caps and moderation controls are implemented, but require their secrets, migrations and allowlists. Verify them in the target environment rather than treating source code or CI success as proof of deployment.
 
-Before deploying anonymous review questions, apply `../supabase-edge-functions/supabase/migrations/20261026143000_anonymous_review_questions.sql` to an existing database (or the updated `supabase/schema.sql` for a new database), then redeploy `frontend-api` and the frontend. Confirm POST reviews work without Authorization, all three radio answers persist, new rows remain pending, and only the latest approved non-empty comment and its timestamp appear below each card's Add review button. Existing review rows keep unknown availability/condition rather than fabricated answers. Availability reports describe a visit, not verified live status.
+## Review authentication and historical migrations
+
+The migration `20261026143000_anonymous_review_questions.sql` is a historical
+schema prerequisite; its filename does not describe current authentication.
+Apply outstanding migrations in order, not this migration alone as a complete
+new-database setup. Do not rerun public-schema bootstrap SQL after cutover.
+
+POST reviews and toilet submissions require a verified, non-anonymous Supabase
+bearer session. Confirm valid submissions persist all questionnaire answers and
+remain pending; otherwise-valid unsigned submissions return 401 and anonymous
+or unverified sessions return 403. Test duplicate account/listing reviews (409)
+and both daily caps (429). Enable Email, configure SMTP and exact callback URLs
+using [the sign-in setup](./README.md#email-magic-link-sign-in-for-contributions).
+Searches and approved review reads remain public through the signed-IP adapters.
+
+Cards display the newest approved review, including its timestamp and a
+"No written comment." fallback when empty; pending/rejected reviews are excluded.
+Existing rows retain unknown availability/condition rather than fabricated
+answers. Availability reports describe a visit, not verified live status.
 
 For five-star card grades, also apply `../supabase-edge-functions/supabase/migrations/20261026150000_approved_review_summary.sql` before redeploying `frontend-api`. Its service-role-only aggregate counts all approved ratings for the selected restroom; pending/rejected reviews do not affect the score. Confirm fractional averages, total counts, unrated states, and that latest-comment timestamps remain visible.
 
@@ -164,14 +182,17 @@ and deploy the updated `places-api` before enabling the archive. Successful and
 failed calls to Refuge Restrooms and Zippopotam.us are written as individual JSON
 objects under the private `third-party-api-data-lake` bucket, partitioned by
 provider and UTC date. The archive retains full request URLs (including exact
-search coordinates or ZIP codes) and raw response bodies indefinitely. It does
+search coordinates or ZIP codes) and raw response bodies. There is no general
+automatic retention policy: objects remain until explicitly removed or cleaned
+by the configured Refuge ETL. It does
 not archive internal Supabase queries or store outbound authorization headers.
 Archive upload errors are logged and do not fail restroom searches. Review
-storage access and backup policies as the archive grows. Optional monthly
+storage access and backup policies as the archive grows. The monthly
 [Python ETL](../registration-api-python/etl/README.md) imports Refuge records and
 deletes only successfully committed Refuge archive files; ZIP archives and failed
-files remain. Apply its migration and configure its dedicated workflow secrets
-before enabling the scheduled job.
+files remain. Apply its migration and configure its dedicated workflow secrets.
+The checked-in workflow schedules a real import on day 1 at 03:00 UTC; only
+manual dispatch defaults to dry-run. See the ETL setup before enabling Actions.
 
 Run the focused edge-function tests from the repository root:
 
@@ -183,14 +204,15 @@ npx deno test --allow-env --allow-net supabase-edge-functions\supabase\functions
 
 The [CI workflow](../.github/workflows/ci.yml) runs frontend typechecking, the
 repository-wide 200-line source cap, Node tests, a production build, all Deno
-tests, and the Python unittest suite. Its final job runs Chromium journeys
+tests, Python registration unittests, and Python ETL tests against a dedicated
+PostgreSQL database. Its final job waits for all four check jobs and runs Chromium journeys
 through the production Next.js server, gateway and actual edge handlers to a
 fresh local Supabase stack (PostgreSQL/PostGIS, Auth, REST and Storage) and Redis.
 No hosted project credentials or production secrets are needed.
 
 The three [E2E specs](./e2e/specs) cover geolocation/search with registry and
 private archive persistence; verified sign-in, browser review submission and
-moderation; and 200 concurrent requests with exactly 100 permitted, cookie/header
+moderation; and 400 concurrent requests with exactly 200 permitted, cookie/header
 spoofing resistance, independent IPs, real 60-second expiry and direct-call denial.
 Only external search providers and map resources are substituted. The local
 HTTPS Upstash protocol bridge executes the production Lua against real Redis.

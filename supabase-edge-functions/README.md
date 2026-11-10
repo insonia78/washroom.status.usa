@@ -8,7 +8,7 @@ configuration. Deploy from this folder so the Supabase CLI finds
 
 Gateway IP quota: configure Upstash Redis before deploying the gateway and
 frontend. All non-OPTIONS requests share an atomic
-100-request / 60-second window per IP across edge instances.
+200-request / 60-second window per IP across edge instances.
 The gateway uses `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and the
 dedicated `GATEWAY_IP_SIGNING_SECRET` (32+ random characters). Set that signing
 secret in the Next.js server environment too; never share backend credentials
@@ -29,7 +29,8 @@ to verify enforcement and Redis REST error handling.
 
 Contribution authentication: `POST /frontend/reviews` and
 `POST /frontend/toilet-submissions` require verified, non-anonymous Supabase
-sessions. Public approved review reads and place searches remain unsigned.
+sessions. Public approved review reads and place searches do not require a user
+bearer session, but all gateway calls still require the server-signed IP assertion.
 Deploy the updated `frontend-api` with the frontend's email magic-link forms;
 enable the Email provider, configure SMTP and allow application callback URLs
 using [the frontend setup](../washroom-status-frontend/README.md#email-magic-link-sign-in-for-contributions).
@@ -204,9 +205,11 @@ and account writes (including the registration service) during migration.
 
    Redeploy the Python registration service and Next.js frontend using their
    existing deployment process. No new Supabase project URL or browser key is needed.
-4. Verify account registration/login/token revocation, stored restroom/fuel search,
-   anonymous reviews, moderator/admin allowlists, owner responses, exact-coordinate
-   toilet moderation and the three-per-account UTC quota before resuming traffic.
+4. Verify account registration/login/token revocation, stored restroom/business
+   search, public approved review reads, verified-account submissions,
+   moderator/admin allowlists, owner responses and exact-coordinate toilet
+   moderation before resuming traffic. Confirm both three-per-account UTC
+   submission caps and the signed-IP gateway quota.
 
 For private SQL checks, select schema explicitly, for example
 `select count(*) from app_locations.toilet_submissions;`. Moderator grants now use

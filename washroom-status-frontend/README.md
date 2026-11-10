@@ -48,7 +48,8 @@ from the verified account, and ignore client-supplied identity/publication field
 Existing email-authenticated sessions remain valid; moderator/admin email
 sign-in is unchanged. Reviews remain pending and the existing per-listing/account
 unique constraint returns 409 for a duplicate review. Existing anonymous reviews
-are preserved. The three-per-account UTC daily limit still applies to toilets.
+are preserved. Each account can submit 3 reviews and 3 toilets per UTC day,
+resetting at midnight UTC; rejection or deletion does not refund either quota.
 
 1. In Supabase **Authentication > Sign In / Providers > Email**, enable Email.
    Allow new signups if visitors should be able to create accounts through the link.
@@ -62,17 +63,24 @@ are preserved. The three-per-account UTC daily limit still applies to toilets.
    needed for magic-link sign-in. Existing user-ID/FK and review-uniqueness constraints
    are reused. Do not grant browser access to private application schemas.
 5. Test signed-out forms, email delivery, expired/invalid links, successful return,
-   both submissions and a fourth toilet submission's quota error.
+   both submissions, duplicate account/listing reviews (409), and each fourth
+   daily submission's quota error (429).
 
 Email OTP requests and refresh/session/token calls use the same-origin gateway
 Auth proxy. The user verifies the email through Supabase's emailed link.
-The callback reports provider/session errors explicitly, removes URL credentials,
-and offers a return to search. Re-select the restroom/current location and reopen
-the form after returning; unsaved form answers are not retained across navigation.
+The callback reports provider/session errors explicitly and removes URL credentials.
+The selected contribution context is stored locally for up to one hour so opening
+the magic link in the same browser can resume the questionnaire at `/contribute`.
+This browser state is not trusted identity or quota storage: the backend validates
+the session, listing, coordinates and submission limits independently. A different
+browser, expired context or unavailable storage requires returning to search and
+selecting the location again. Existing signed-in users go straight to the
+questionnaire. Closing or completing it clears the context, requests global
+sign-out, and returns to search. Unsaved questionnaire answers are not persisted.
 Setup reference: https://supabase.com/docs/guides/auth/auth-email-passwordless
 
-The older anonymous-review descriptions below are historical; authenticated
-magic-link contribution sign-in above supersedes them.
+Historical anonymous review records remain readable after approval; new
+contributions always require the verified-account flow above.
 
 **Database ownership:** after migration `20261030230000_private_application_schemas.sql`,
 application accounts/connections use private schema `app_accounts`; location,
@@ -107,41 +115,41 @@ The UI shows progress and actionable permission/HTTPS errors. Manual searches
 take precedence over pending location callbacks. Mobile HTTP LAN URLs such as
 `http://192.168.x.x:3000` cannot use browser geolocation; use an HTTPS deployment.
 
-```bash
-npm install
-cp .env.example .env.local
+```powershell
+npm ci
+Copy-Item .env.example .env.local
 # Add your Supabase project values to .env.local; no map API key is needed
 npm run dev
 ```
 
-1. Create/open your Supabase project. Run `supabase/schema.sql` in SQL Editor.
+1. Create/open your Supabase project. For a fresh database, follow the historical bootstrap prerequisites in [Supabase setup](./SUPABASE_SETUP.md), then apply all outstanding versioned application migrations in order. `supabase/schema.sql` alone is not the complete current schema. Existing private-schema databases must not rerun public-schema setup SQL.
 2. In Supabase Authentication, enable Email OTP/magic links. Set Site URL `http://localhost:3000` and add `http://localhost:3000/**` to allowed redirect URLs; add the deployed Vercel URL before production.
 3. The map uses MapLibre with OpenFreeMap's hosted Liberty style at `https://tiles.openfreemap.org/styles/liberty`. No map account, API key, or billing configuration is required. Keep the built-in OpenFreeMap/OpenMapTiles/OpenStreetMap attribution visible. Public hosting availability depends on OpenFreeMap; review its current usage guidance before scaling.
 4. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable/anon key) in `.env.local` and Vercel Environment Variables.
    Restroom searches follow `browser -> /api/restrooms -> gateway/places/bathrooms -> places-api/bathrooms`.
    The server derives the gateway URL from the Supabase project URL. Optionally set server-only `WASHROOM_GATEWAY_URL` to a different gateway base URL, such as `http://127.0.0.1:55321/functions/v1/gateway`.
-   Public restroom searches and anonymous reviews do not require an API key when gateway JWT verification is disabled; an API key is forwarded when configured. Optional Supabase Auth routes still require the public key.
+   Public searches and approved review reads do not require user sign-in. Review/toilet writes require a verified Supabase bearer session. Keep the public key configured for Auth. Set a dedicated `GATEWAY_IP_SIGNING_SECRET` (32+ random characters) in Next.js and the gateway, plus `UPSTASH_REDIS_REST_URL` and a read/write `UPSTASH_REDIS_REST_TOKEN` on the gateway. All application requests use server-signed IP assertions; unsigned direct gateway calls return 403. The shared limit is 200 requests/IP per 60 seconds, not a localStorage counter. See [the complete quota contract](../API.md#per-ip-request-limit) for Vercel trust, local loopback behavior and 503 configuration failures.
    Deploy `gateway`, `places-api`, and `frontend-api`. Set `PLACES_API_URL` and `FRONTEND_API_URL` to the respective function base URLs, and the same `GATEWAY_INTERNAL_SECRET` for all three functions. Never send that internal secret from the frontend. All three use `verify_jwt = false` in the checked-in Supabase config; backend functions enforce the internal gateway headers.
    Searches default to a 5-mile radius (8,046.72 meters). The Search radius selector offers 1, 2, 5, and 10 miles and immediately reloads all place types through the gateway without requiring Search. Changing radius retains the current origin and cancels obsolete frontend requests; it does not geocode again. Places API combines stored restrooms, imported gas stations and supermarkets with Refuge Restrooms listings; Refuge entries are filtered to the selected radius and ordered newest first by the backend, while the UI sorts all results nearest first. There are no live Overpass business searches; the `/places/overpass` route has been removed. Refuge entries are clearly identified and use a separate source identity in the app's moderated review system. Before deploying Places API, apply the fuel-search migration and the supermarkets, schema-move, and supermarket-search migrations in `supabase-edge-functions/supabase/migrations`. Business rows are normalized into the existing place format, including parsed OSM IDs, geometry coordinates, trimmed names and restroom-specific metadata. Cards and details mark restroom availability unconfirmed unless explicitly tagged; `toilets=no` remains visible. Business presence and opening hours do not confirm restroom access. Stored and upstream results are deduplicated by source identity. If Refuge fails, stored results remain visible with a warning about incomplete coverage; if no locations can be returned, the error remains explicit. Partial responses are not cached.
 5. Keep `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` in the edge-function environment. Next.js does not need database credentials or a service-role key. Never put service-role keys in browser code, Git, or any `NEXT_PUBLIC_` variable.
-6. For an existing database, apply `../supabase-edge-functions/supabase/migrations/20261026143000_anonymous_review_questions.sql` before deploying the updated `frontend-api`. New databases use the updated `supabase/schema.sql`. Visit localhost:3000, select a real restroom and choose **Add review**. No sign-in is required. Answer availability, 1-5 cleanliness rating, and Excellent/Clean/Average/Poor/Very Dirty condition, then optionally add issues and a comment. Reviews are saved as **pending**. In Supabase Table Editor, manually change `status` to `approved` after moderation. Only approved reviews are displayed.
+6. With current GPS location active, select a real restroom and choose **Add review**. Sign in using the email magic link, then answer availability, 1-5 cleanliness rating and Excellent/Clean/Average/Poor/Very Dirty condition; issues, comments and photos are optional. Reviews are saved as **pending**. Use an allowlisted moderator account to approve/reject them; only approved reviews are public. The historical anonymous-question migration remains a schema prerequisite, not authorization for anonymous writes.
 
 ## What is included
 
-- **Add a toilet** appears after browser geolocation succeeds (including when there are no nearby results), beside **Search radius** above the map on mobile and in the search toolbar on desktop. It is hidden during location lookup, after errors, and when typing or searching a manual address. Choose **Use my location** to re-enable it. The dialog uses the captured GPS coordinates, collects a required name and optional accessibility, fee, and access details, and saves a **pending** submission. Verified email sign-in is required; the dialog offers a magic link. Allow the site root URL in Supabase Auth redirects. Each account can save **3 toilets per UTC calendar day**, resetting at midnight UTC. The database atomically enforces this across tabs/concurrent requests; rejection or deletion does not refund the quota, and failed inserts do not consume it. Errors, including a fourth submission's HTTP 429, keep the form open; success is shown only after insertion is confirmed. Anonymous reviews remain unchanged.
-- Submission path: `browser -> /api/backend/toilet-submissions -> gateway/frontend/toilet-submissions -> frontend-api -> public.toilet_submissions`. Apply `../supabase-edge-functions/supabase/migrations/20261030220000_toilet_submissions.sql` (or `supabase/schema.sql` for a new database), the existing `20261026160000_review_moderation.sql`, then **`20261030223000_toilet_submission_accounts.sql` for both new and existing databases**, before deploying `gateway`, `frontend-api`, and the frontend. Submissions and quota counters are private under RLS; only the backend service role can write them. The backend verifies the session through Supabase Auth and uses that account ID, never a client-supplied identity. The moderator dashboard includes **Pending toilets** with full-precision coordinates, **View exact location on Google Maps**, and the existing Google Maps directions link. Both links target the saved coordinates, not a possibly ambiguous address/name. Allowlisted moderators can approve/reject; the database records who decided and when and rejects stale decisions. Approval does not automatically publish a map location or create a fake OpenStreetMap identity. Public listing publication is a separate workflow.
+- **Add a toilet** appears after browser geolocation succeeds (including when there are no nearby results), beside **Search radius** above the map on mobile and in the search toolbar on desktop. It is hidden during location lookup, after errors, and when typing or searching a manual address. Choose **Use my location** to re-enable it. The questionnaire uses the captured GPS coordinates, collects a required name and optional accessibility, fee, access details and photos, and saves a **pending** submission. Verified email sign-in is required; allow `/auth/callback` in Supabase Auth redirects. Each account can save **3 toilets per UTC calendar day**, resetting at midnight UTC. The database atomically enforces this across tabs/concurrent requests; rejection or deletion does not refund the quota, and failed inserts do not consume it. Errors, including a fourth submission's HTTP 429, keep the form open; success is shown only after insertion is confirmed.
+- Submission path: `browser -> /api/backend/toilet-submissions -> gateway/frontend/toilet-submissions -> frontend-api -> app_locations.toilet_submissions`. Apply outstanding migrations in order, including toilet submissions/accounts, private-schema routing and daily caps, before deploying `gateway`, `frontend-api`, and the frontend. Submissions and quota counters are private under RLS; only the backend service role can write them. The backend verifies the session through Supabase Auth and uses that account ID, never a client-supplied identity. The moderator dashboard includes **Pending toilets** with full-precision coordinates, **View exact location on Google Maps**, and the existing Google Maps directions link. Both links target the saved coordinates, not a possibly ambiguous address/name. Allowlisted moderators can approve/reject; the database records who decided and when and rejects stale decisions. Moderator approval does not automatically publish a map location: an administrator must complete final approval/publication.
 
 - OpenFreeMap display with multiple clickable location markers, restroom details, accessibility and fee tags, unverified availability
 - Hover over a map marker (or focus it with the keyboard) to preview its name, listing type, distance, accessibility, fee, hours, approved five-star average/count, and latest approved timestamped comment. Move into the scrollable preview to read or retry review errors; it remains open while hovered or focused. Escape or the close button dismisses it. From a focused marker, Arrow Down moves focus into the preview. Clicking/tapping a marker still selects its full details and also opens the preview; **View full details and reviews** selects the same location. Reviews work for every listing source, including Refuge Restrooms. Switching markers, filters, or search results removes the old preview and cancels obsolete review requests.
 - Each result card and listing's details include **Google Maps directions** to the location's coordinates. These are external navigation links with no API key requirement, not embedded Google Maps API calls. OpenFreeMap remains the map display. Navigation does not confirm restroom access. Cards and navigation links appear after a location search returns results.
 - Approved review feed with rating, review date, up to 50 recent reviews, and a five-star average/count over all approved ratings
 - Both the **Add review** and **Add a toilet** questionnaires offer **Take photo**, which requests the rear camera on supported mobile/tablet browsers (`capture="environment"`). Camera access starts only after tapping this button; browser/device support determines whether the camera or a file picker opens. **Upload photos** remains available on every device. Both options share a three-photo limit, JPEG/PNG/WebP validation (up to 12 MB per input photo), automatic JPEG compression, and removal controls. Photos are uploaded only when the questionnaire is submitted.
-- **Add review** on every result card and in the selected restroom's details opens an anonymous review modal for that location, with no listing-source exceptions. Three required radio groups collect Restroom Availability (Open/Closed/Temporarily unavailable/Unverified), Cleanliness Ratings (1-5), and Clean or Dirty Status (Excellent/Clean/Average/Poor/Very Dirty). Optional issue reports/comments and pending moderation remain. Reviews for Refuge listings are collected by this app, not submitted to Refuge Restrooms. Close with Escape, the close button, or the backdrop; keyboard focus returns to the opener.
-- Below each card's **Add review** button, the latest approved non-empty comment is shown with a local date/time timestamp. `GET /api/reviews?osm_type=node&osm_id=123&latest=1` returns at most one comment, ordered newest first; pending/rejected and empty comments are excluded. Cards show loading, empty, and retryable error states explicitly.
+- **Add review** is available on cards and in details while current GPS location is active, regardless of listing source. It opens a sign-in prompt and then the `/contribute` questionnaire. Three required radio groups collect Restroom Availability (Open/Closed/Temporarily unavailable/Unverified), Cleanliness Ratings (1-5), and Clean or Dirty Status (Excellent/Clean/Average/Poor/Very Dirty). Issues, comments and photos are optional; submissions remain pending. Reviews for Refuge listings are collected by this app, not submitted to Refuge Restrooms.
+- Each card shows the latest approved review with a local date/time timestamp. `GET /api/reviews?osm_type=node&osm_id=123&latest=1` returns at most one review, ordered newest first; pending/rejected reviews are excluded, but an empty comment is allowed and displays "No written comment." Cards show loading, empty, and retryable error states explicitly.
 - Cards show a five-star grade with fractional star fills, the numeric average out of 5, and the total approved review count. This uses **all approved review ratings**, including reviews without a written comment, not just the latest comment or the 50 displayed in details. Unrated restrooms show five empty stars and "Not yet rated", never a fabricated zero rating. Apply `../supabase-edge-functions/supabase/migrations/20261026150000_approved_review_summary.sql` and redeploy `frontend-api` to enable the server-only aggregate. The latest-comment response includes `average` and `review_count`.
-- Anonymous review submission with strict server-side payload checks; optional gateway-backed Email OTP Auth routes remain available separately
+- Verified-account review submission with strict server-side payload and location checks; gateway-backed Email OTP Auth routes support sign-in
 - Source/ID verification against imported restrooms or the server-only registry of returned search listings before accepting reviews
-- Pending-by-default moderation; RLS restricts public reads and prevents direct browser writes. Anonymous submissions have no account-based duplicate limit.
+- Pending-by-default moderation; RLS blocks direct browser writes. Duplicate account/listing reviews return 409, and each account has a 3-review UTC daily cap.
 - USA overview on arrival, map search and filters, Codyza branding on every page
 
 ## ZIP code searches
@@ -193,8 +201,9 @@ not application API calls. Browser geolocation uses the browser API, not a
 Next.js outbound request.
 
 `frontend-api` rejects requests lacking the shared internal gateway headers.
-Review submissions accept anonymous callers, validate all three radio answers,
-verify the listing source/ID, and save reviews as pending with no user identity.
+Review submissions require a verified, non-anonymous Supabase bearer session,
+validate all three radio answers and location fields, verify the listing
+source/ID, and save reviews as pending with server-derived account ownership.
 Auth proxy routes are allowlisted; arbitrary Supabase REST/admin access is not exposed.
 
 ## Reviews for every listed toilet
@@ -205,7 +214,7 @@ gateway review routes already handle all listing types; no new route is needed.
 Refresh the location search after deployment so previously cached results are registered.
 
 OpenStreetMap nodes, ways, relations, imported gas stations and supermarkets (including unconfirmed
-restroom availability), and Refuge Restrooms listings all accept the same anonymous
+restroom availability), and Refuge Restrooms listings all accept the same authenticated
 questionnaire. The backend registers each returned search result in private
 `review_locations` using service-role credentials. A failed registration is an explicit
 search error, never a silently unreviewable listing. Browser clients cannot register
@@ -340,17 +349,33 @@ Production requires explicit migration and deployment of `frontend-api`,
 
 ## Validation
 
-With Node.js 22.18+ or 24+, run `npm test` for the HTTP adapter and gateway-only boundary tests. Run `npm run build` with the development server stopped to avoid overwriting its generated output. The tests mock HTTP boundaries; a deployed smoke check still requires your Supabase environment. Backend tests live with `frontend-api` and the gateway.
+With Node.js 24 (as used in CI), run `npm ci`, `npm run typecheck`, `npm test`
+and `npm run build`. Stop the development server before building to avoid
+overwriting its generated output. Node tests mock HTTP boundaries; Deno backend
+tests live with the functions. The five-job CI also tests Python registration,
+the Python ETL against real PostgreSQL, and vertical Chromium flows through
+local Supabase and Redis. See [CI and vertical E2E](./DEPLOYMENT.md#ci-and-vertical-e2e)
+for prerequisites, substituted providers and local commands. Hosted production
+configuration still requires a deployed smoke check.
 
-## Not yet production ready
+## Production limitations and remaining work
 
-- **Photos intentionally disabled** until EXIF removal, private upload buckets, consent and moderator approval are implemented.
-- The review GET endpoint returns the **50 most recent approved reviews** while the average and `review_count` include all approved ratings. The latest-comment mode returns at most one non-empty comment with the same all-review grade. Public rankings remain out of scope.
-- Review submission requires an imported restroom record. Keep the database current with verified OSM locations; add anti-spam/rate limits, CAPTCHA and automated abuse detection.
+- Photos are implemented: browser processing re-encodes input images as JPEG,
+  reduces them to at most 1 MiB, and uses private upload buckets with moderated
+  visibility and signed read URLs. This is not a guarantee of photo anonymization;
+  operators still need consent, privacy, retention and moderation policies.
+- The review GET endpoint returns the **50 most recent approved reviews** while the average and `review_count` include all approved ratings. Latest-review mode returns at most one approved review, even if its comment is empty, with the same all-review grade. Public rankings remain out of scope.
+- Reviews require a stored restroom or a server-registered search listing.
+  Keep imported data current. IP quotas, verified accounts, duplicate checks and
+  daily submission caps exist; they do not prove a physical visit or prevent
+  all abuse. CAPTCHA and automated abuse detection are not implemented.
 - The map uses OpenFreeMap and gateway-backed Photon geocoding. Photon's [public demo](https://photon.komoot.io/) is for reasonable development traffic with no availability guarantee; heavy use may be throttled or blocked. Add shared geocoding caching/rate limiting and use a production provider or self-host at scale. Nominatim rejected requests from the edge runtime with HTTP 403, so it is not used for city searches.
-- The UI has no owner dashboard, public ranking, photo uploads, edit-review workflow, or automated moderation yet. The protected `/moderation` dashboard supports manual approval/rejection once its migration and moderator allowlist are configured.
-- Anonymous reviews are not proof of a visit and cannot enforce one submission per person. Add server-side rate limits and abuse detection before a public launch; all submissions remain pending until manually approved.
-- Add accessibility audits, integration tests, privacy/terms pages, monitoring and deployment hardening.
+- Owner, moderation and administration dashboards, photo uploads, owner responses
+  and private email replies are implemented and require their migrations and
+  allowlists. Public rankings, edit-review workflows and automated moderation
+  remain out of scope.
+- Expand accessibility audits and integration/load coverage; establish
+  privacy/terms, monitoring, recovery procedures and deployment hardening.
 
 **Security:** Rotate any password or credential that has been shared in chat. Never reuse it as a database secret.
 

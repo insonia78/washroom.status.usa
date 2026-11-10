@@ -38,8 +38,10 @@ existing verified email sessions are also accepted. Backend Auth validation,
 not the request body, determines `user_id`. Reviews are saved pending and
 duplicate account/listing reviews return 409. Missing/expired sessions return
 401; unverified/anonymous identities return 403. GET approved reviews and place
-searches remain public. Historical anonymous-submission references below are
-superseded by this requirement.
+searches remain public, but still pass through the signed-IP gateway boundary.
+Each account can submit 3 reviews and 3 toilets per UTC day; quota exhaustion
+returns 429. Historical anonymous rows are preserved, not permission for new
+anonymous submissions.
 
 ## Database schema ownership
 
@@ -59,11 +61,11 @@ grants deny `anon`/`authenticated`. Service-role credentials remain server-only.
 
 ### Per-IP request limit
 
-The gateway permits **100 requests per IP address per 60-second window**,
+The gateway permits **200 requests per IP address per 60-second window**,
 shared across all routes, methods and gateway instances. `OPTIONS` preflights
 are excluded; errors and denied authorization attempts still consume quota.
 The window starts with the IP's first request, not the wall-clock minute.
-Request 41 returns HTTP 429 before backend forwarding with `Retry-After` seconds.
+Request 201 returns HTTP 429 before backend forwarding with `Retry-After` seconds.
 Responses include `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset`
 (seconds until the window resets). Responses are `no-store`.
 
@@ -125,7 +127,7 @@ or `unknown`), and `notes` (string, at most 1000 characters; may be empty).
 The coordinate envelope matches browser location eligibility; it is not proof
 of a US address or GPS provenance. Moderators must verify the public location.
 The backend inserts only these fields plus forced `status: pending` into the
-private `public.toilet_submissions` table, with `user_id` from the server-verified
+private `app_locations.toilet_submissions` table, with `user_id` from the server-verified
 session (client identity/status are ignored). An atomic database counter permits
 at most **3 successful insertions per account per UTC calendar day**. It resets
 at midnight UTC; rejected/deleted submissions still count; failed inserts roll
@@ -247,6 +249,11 @@ Send **either**:
 | `radius` | string \| number | no | Search radius in meters, default `1000` |
 
 ### Example: coordinates
+
+This is the gateway's server-to-server request shape, not an unsigned browser
+request. The trusted Next.js adapter adds the signed-IP assertion described
+above. Browser clients normally use
+`GET /api/restrooms?lat=40.7128&lon=-74.0060&radius=1500`.
 
 ```http
 POST /functions/v1/gateway/places/bathrooms
