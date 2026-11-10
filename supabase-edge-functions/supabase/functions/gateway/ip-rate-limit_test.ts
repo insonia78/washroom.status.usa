@@ -37,14 +37,14 @@ Deno.test("IP assertions normalize addresses, hide raw IPs, reject tampering and
   }
 });
 
-Deno.test("40 requests per IP, regardless of cookies or forwarding headers; other IPs independent", async () => {
+Deno.test("100 requests per IP, regardless of cookies or forwarding headers; other IPs independent", async () => {
   const previous = Deno.env.get("GATEWAY_IP_SIGNING_SECRET");
   Deno.env.set("GATEWAY_IP_SIGNING_SECRET", secret);
   const counts = new Map<string, number>();
   const consume = (id: string): Promise<IpAllowance> => {
     const count = (counts.get(id) ?? 0) + 1;
     counts.set(id, count);
-    return Promise.resolve({ allowed: count <= 40, remaining: Math.max(0, 40 - count), retry_after: 60 });
+    return Promise.resolve({ allowed: count <= 100, remaining: Math.max(0, 100 - count), retry_after: 60 });
   };
   let forwarded = 0;
   const handler = withIpRateLimit(() => {
@@ -52,20 +52,20 @@ Deno.test("40 requests per IP, regardless of cookies or forwarding headers; othe
     return Promise.resolve(Response.json({ ok: true }));
   }, consume);
   try {
-    for (let i = 1; i <= 41; i++) {
+    for (let i = 1; i <= 101; i++) {
       const response = await handler(await request("192.0.2.1", {
         cookie: `washroom_device=${crypto.randomUUID()}`, "x-forwarded-for": `198.51.100.${i}`,
       }));
-      assert(response.status === (i <= 40 ? 200 : 429), `Unexpected status for request ${i}`);
-      assert(response.headers.get("ratelimit-limit") === "40", "Missing limit");
-      assert(response.headers.get("ratelimit-remaining") === String(Math.max(0, 40 - i)), "Wrong remaining");
+      assert(response.status === (i <= 100 ? 200 : 429), `Unexpected status for request ${i}`);
+      assert(response.headers.get("ratelimit-limit") === "100", "Missing limit");
+      assert(response.headers.get("ratelimit-remaining") === String(Math.max(0, 100 - i)), "Wrong remaining");
       assert(response.headers.get("cache-control") === "no-store", "IP response can be cached");
       assert(!response.headers.has("set-cookie") && !response.headers.has(clientIpHeader), "Identity leaked");
-      if (i === 41) assert(response.headers.get("retry-after") === "60", "Missing retry delay");
+      if (i === 101) assert(response.headers.get("retry-after") === "60", "Missing retry delay");
     }
-    assert(forwarded === 40, "Over-limit request reached backend");
+    assert(forwarded === 100, "Over-limit request reached backend");
     const other = await handler(await request("192.0.2.2"));
-    assert(other.status === 200 && other.headers.get("ratelimit-remaining") === "39", "Other IP affected");
+    assert(other.status === 200 && other.headers.get("ratelimit-remaining") === "99", "Other IP affected");
     const preflight = await handler(new Request("https://gateway.example", { method: "OPTIONS" }));
     assert(preflight.status === 200 && counts.size === 2, "OPTIONS consumed quota");
     const unsigned = await handler(new Request("https://gateway.example", {

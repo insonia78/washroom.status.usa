@@ -89,7 +89,10 @@ function mergePlaces(
   const places = new Map<string, ReturnType<typeof normalizeFuelPlace> | RestroomPlace | typeof refugePlaces[number]>(
     refugePlaces.map(place => [`${place.osmType}:${place.id}`, place]),
   )
-  for (const place of storedPlaces) places.set(`${place.osmType}:${place.id}`, place)
+  for (const place of storedPlaces) {
+    const key = `${place.osmType}:${place.id}`
+    if (place.osmType !== "refuge" || !places.has(key)) places.set(key, place)
+  }
   for (const place of supermarkets) {
     const key = `${place.osmType}:${place.id}`
     if (!places.has(key)) places.set(key, place)

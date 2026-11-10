@@ -28,7 +28,7 @@ export async function consumeIpRequest(ipHash: string): Promise<IpAllowance> {
   }
   const [allowed, remaining, retryAfter]: unknown[] = result;
   if ((allowed !== 0 && allowed !== 1) ||
-      typeof remaining !== "number" || !Number.isInteger(remaining) || remaining < 0 || remaining > 39 ||
+      typeof remaining !== "number" || !Number.isInteger(remaining) || remaining < 0 || remaining > 99 ||
       typeof retryAfter !== "number" || !Number.isInteger(retryAfter) || retryAfter < 1 || retryAfter > 60 ||
       (allowed === 0 && remaining !== 0)) {
     throw new Error("Gateway Redis rate-limit storage returned an invalid allowance.");

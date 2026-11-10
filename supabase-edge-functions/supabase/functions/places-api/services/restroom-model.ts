@@ -1,5 +1,5 @@
 export type RestroomRow = {
-  osm_type: "node" | "way" | "relation"
+  osm_type: "node" | "way" | "relation" | "refuge"
   osm_id: number
   name: string | null
   latitude: number
@@ -49,6 +49,7 @@ export function toRestroomPlace(row: RestroomRow): RestroomPlace {
     changingTable: row.changing_table || "no",
     unisex: row.unisex || "unknown",
     toilets: "unknown",
+    ...(row.osm_type === "refuge" ? { provider: "refuge-restrooms" } : {}),
     coordinates: {
       latitude: row.latitude,
       longitude: row.longitude,

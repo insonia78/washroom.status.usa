@@ -15,15 +15,15 @@ Deno.test("rate store uses atomic Redis EVAL, validates allowances and reports f
           !command[1].includes("redis.call('PTTL'") || init?.redirect !== "error") {
         throw new Error("Wrong Redis REST command");
       }
-      return Response.json({ result: [1, 39, 60] });
+      return Response.json({ result: [1, 99, 60] });
     };
     const result = await consumeIpRequest("ip-hash");
-    if (!result.allowed || result.remaining !== 39) throw new Error("Wrong result");
+    if (!result.allowed || result.remaining !== 99) throw new Error("Wrong result");
     for (const response of [
       new Response("Unavailable", { status: 503 }),
-      Response.json([]), Response.json({ result: [1, 99, 60] }),
-      Response.json({ result: [0, 1, 60] }), Response.json({ result: [1, 39, 0] }),
-      Response.json({ error: "ERR script failed" }), Response.json({ result: [1, 39, 60], error: "ERR" }),
+      Response.json([]), Response.json({ result: [1, 100, 60] }),
+      Response.json({ result: [0, 1, 60] }), Response.json({ result: [1, 99, 0] }),
+      Response.json({ error: "ERR script failed" }), Response.json({ result: [1, 99, 60], error: "ERR" }),
     ]) {
       globalThis.fetch = async () => response;
       let failed = false;

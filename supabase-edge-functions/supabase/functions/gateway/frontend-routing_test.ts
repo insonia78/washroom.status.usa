@@ -20,7 +20,7 @@ Deno.test("gateway routes frontend API calls with internal authorization and str
     const req = new Request(input, init);
     const url = new URL(req.url);
     if (url.hostname === "redis.example") {
-      return Response.json({ result: [1, 39, 60] });
+      return Response.json({ result: [1, 99, 60] });
     }
     if (url.pathname.startsWith("/functions/v1/frontend-api/")) {
       forwarded++;

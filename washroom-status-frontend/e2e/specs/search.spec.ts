@@ -15,7 +15,7 @@ test('location search crosses Next.js, gateway and Places API and persists the r
     await page.goto('/');
     const response = await responsePromise;
     expect(response.status()).toBe(200);
-    expect(response.headers()['ratelimit-limit']).toBe('40');
+    expect(response.headers()['ratelimit-limit']).toBe('100');
     await expect(page.getByRole('button', { name: 'View details for E2E Public Restroom' })).toBeVisible();
     await page.getByRole('button', { name: 'View details for E2E Public Restroom' }).click();
     await expect(page.getByRole('dialog')).toContainText('E2E Public Restroom');

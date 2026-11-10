@@ -8,7 +8,7 @@ configuration. Deploy from this folder so the Supabase CLI finds
 
 Gateway IP quota: configure Upstash Redis before deploying the gateway and
 frontend. All non-OPTIONS requests share an atomic
-40-request / 60-second window per IP across edge instances.
+100-request / 60-second window per IP across edge instances.
 The gateway uses `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and the
 dedicated `GATEWAY_IP_SIGNING_SECRET` (32+ random characters). Set that signing
 secret in the Next.js server environment too; never share backend credentials

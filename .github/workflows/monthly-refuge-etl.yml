@@ -1,0 +1,48 @@
+name: Monthly Refuge data-lake ETL
+
+on:
+  schedule:
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Validate archives without importing or deleting
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monthly-refuge-etl
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Import committed Refuge data and clean archives
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: data-lake-etl
+    defaults:
+      run:
+        working-directory: registration-api-python/etl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: registration-api-python/etl/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Import archives
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ETL_DATABASE_URL: ${{ secrets.ETL_DATABASE_URL }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python run.py --dry-run
+          else
+            python run.py
+          fi

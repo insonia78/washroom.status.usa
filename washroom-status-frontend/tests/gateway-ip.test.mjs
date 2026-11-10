@@ -61,11 +61,11 @@ test('missing/malformed trusted IP, untrusted production and signing misconfigur
 
 test('quota response headers propagate without cookies, signatures or caching', () => {
   const response = new Response(null, { headers: {
-    'RateLimit-Limit': '40', 'RateLimit-Remaining': '0', 'RateLimit-Reset': '35', 'Retry-After': '35',
+    'RateLimit-Limit': '100', 'RateLimit-Remaining': '0', 'RateLimit-Reset': '35', 'Retry-After': '35',
     'Set-Cookie': 'washroom_device=old', [clientIpHeader]: 'private-assertion',
   } });
   const headers = gatewayRateResponseHeaders(response);
-  assert.equal(headers.get('ratelimit-limit'), '40');
+  assert.equal(headers.get('ratelimit-limit'), '100');
   assert.equal(headers.get('ratelimit-remaining'), '0');
   assert.equal(headers.get('ratelimit-reset'), '35');
   assert.equal(headers.get('retry-after'), '35');
@@ -79,7 +79,7 @@ test('proxy and restroom adapter forward signed IPs and preserve 429 and retry h
     assert.ok(await verifyClientIp(new Headers(init.headers).get(clientIpHeader), process.env.GATEWAY_IP_SIGNING_SECRET));
     assert.equal(new Headers(init.headers).has('cookie'), false);
     return Response.json({ error: 'Too many requests' }, { status: 429, headers: {
-      'Retry-After': '20', 'RateLimit-Limit': '40', 'RateLimit-Remaining': '0',
+      'Retry-After': '20', 'RateLimit-Limit': '100', 'RateLimit-Remaining': '0',
     } });
   };
   const responses = [
@@ -98,12 +98,12 @@ test('proxy and restroom adapter forward signed IPs and preserve 429 and retry h
 
 test('first search does not create identity cookies and cannot enter shared caches', async () => {
   globalThis.fetch = async () => Response.json({ success: true, data: [] }, { headers: {
-    'RateLimit-Limit': '40', 'RateLimit-Remaining': '39', 'RateLimit-Reset': '60',
+    'RateLimit-Limit': '100', 'RateLimit-Remaining': '99', 'RateLimit-Reset': '60',
   } });
   const response = await restroomsGet(new NextRequest(request('/api/restrooms?lat=42.36&lon=-71.06')));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.equal(response.headers.get('ratelimit-remaining'), '39');
+  assert.equal(response.headers.get('ratelimit-remaining'), '99');
   assert.equal(response.headers.has('set-cookie'), false);
   assert.deepEqual((await response.json()).restrooms, []);
 });

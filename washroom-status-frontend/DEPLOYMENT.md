@@ -6,7 +6,7 @@ Edge Function secrets. Do not reuse `GATEWAY_INTERNAL_SECRET` or prefix it with
 `NEXT_PUBLIC_`. Configure gateway-only `UPSTASH_REDIS_REST_URL` and
 `UPSTASH_REDIS_REST_TOKEN`, then deploy Next.js and the gateway together.
 Next.js reads Vercel's overwritten `x-vercel-forwarded-for`, signs a hash of the
-IP, and forwards it to the gateway. All browsers behind one IP share 40 requests
+IP, and forwards it to the gateway. All browsers behind one IP share 100 requests
 per 60 seconds; clearing cookies does not reset quota. Direct unsigned gateway
 requests return 403; clients must use the Next.js adapters. Production outside
 Vercel fails closed until a trusted proxy integration is implemented.
@@ -167,7 +167,11 @@ provider and UTC date. The archive retains full request URLs (including exact
 search coordinates or ZIP codes) and raw response bodies indefinitely. It does
 not archive internal Supabase queries or store outbound authorization headers.
 Archive upload errors are logged and do not fail restroom searches. Review
-storage access and backup policies as the archive grows.
+storage access and backup policies as the archive grows. Optional monthly
+[Python ETL](../registration-api-python/etl/README.md) imports Refuge records and
+deletes only successfully committed Refuge archive files; ZIP archives and failed
+files remain. Apply its migration and configure its dedicated workflow secrets
+before enabling the scheduled job.
 
 Run the focused edge-function tests from the repository root:
 
@@ -186,7 +190,7 @@ No hosted project credentials or production secrets are needed.
 
 The three [E2E specs](./e2e/specs) cover geolocation/search with registry and
 private archive persistence; verified sign-in, browser review submission and
-moderation; and 80 concurrent requests with exactly 40 permitted, cookie/header
+moderation; and 200 concurrent requests with exactly 100 permitted, cookie/header
 spoofing resistance, independent IPs, real 60-second expiry and direct-call denial.
 Only external search providers and map resources are substituted. The local
 HTTPS Upstash protocol bridge executes the production Lua against real Redis.

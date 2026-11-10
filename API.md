@@ -59,7 +59,7 @@ grants deny `anon`/`authenticated`. Service-role credentials remain server-only.
 
 ### Per-IP request limit
 
-The gateway permits **40 requests per IP address per 60-second window**,
+The gateway permits **100 requests per IP address per 60-second window**,
 shared across all routes, methods and gateway instances. `OPTIONS` preflights
 are excluded; errors and denied authorization attempts still consume quota.
 The window starts with the IP's first request, not the wall-clock minute.

@@ -19,6 +19,7 @@ api/
 ## Project in this repository
 
 - [`api/v1`](./api/v1/README.md) - FastAPI-based registration API backed by PostgreSQL
+- [`etl`](./etl/README.md) - Monthly Refuge archive import and post-commit cleanup
 
 ## What the API currently provides
 

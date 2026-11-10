@@ -26,7 +26,7 @@ Deno.test("gateway forwards public place requests with internal authorization to
     const request = new Request(input, init);
     const url = new URL(request.url);
     if (url.hostname === "redis.example") {
-      return Response.json({ result: [1, 39, 60] });
+      return Response.json({ result: [1, 99, 60] });
     }
     if (["/rest/v1/rpc/find_nearby_fuel", "/rest/v1/rpc/find_nearby_supermarkets"].includes(url.pathname)) {
       return Response.json([]);
